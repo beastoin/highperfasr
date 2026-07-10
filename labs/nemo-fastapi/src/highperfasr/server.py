@@ -260,7 +260,7 @@ def _require_stream():
         )
 
 
-@app.post("/v1/transcribe")
+@app.post("/v1/transcriptions")
 async def transcribe(
     file: UploadFile = File(...),
     timestamps: bool = Query(False, description="Include word-level timestamps"),
@@ -289,7 +289,7 @@ async def transcribe(
 _MAX_BATCH_FILES = 64
 
 
-@app.post("/v1/transcribe/batch")
+@app.post("/v1/transcriptions:batch")
 async def transcribe_batch(
     files: list[UploadFile] = File(...),
     timestamps: bool = Query(False),

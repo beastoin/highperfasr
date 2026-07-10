@@ -1,6 +1,6 @@
 # Root pyproject.toml — repo tooling and benchmark utilities.
 # This is NOT a Python SDK. The highperfasr protocol is language-neutral.
-# Implementation-specific packages live in labs/ or sdks/.
+# Implementation-specific packages live in labs/.
 
 [build-system]
 requires = ["setuptools >= 61.0"]

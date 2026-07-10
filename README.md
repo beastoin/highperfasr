@@ -1,97 +1,119 @@
 # highperfasr
 
-A language-neutral protocol, conformance suite, and benchmark harness for production ASR serving.
+Serving optimization for existing open-source ASR models.
 
-highperfasr defines **how** to serve speech recognition — not which framework or language to use. Any server that implements the protocol can be benchmarked, compared, and certified.
+highperfasr does not train models or change recognition quality. It tunes server configuration and patches framework bottlenecks to maximize throughput and concurrency while preserving the model's published WER.
 
-## What highperfasr IS
+Run batch and streaming transcription on a single GPU with a simple, framework-agnostic protocol:
 
-- **Protocol spec** — REST batch + WebSocket streaming APIs (OpenAPI 3.1 + AsyncAPI 3.1)
-- **Benchmark suite** — MLPerf-inspired scenarios with reproducible reports
-- **Conformance tests** — black-box verification against any server URL
-- **Published reports** — hardware-specific, dataset-pinned, fully reproducible results
+- REST endpoint for file transcription
+- WebSocket endpoint for real-time PCM16 streams
+- Docker Compose for local GPU serving
+- GKE L4 manifest for single-GPU deployment
+- Published benchmarks with reproducible results
 
-## What highperfasr is NOT
+Measured on one GKE L4 GPU with model quality preserved:
 
-- A Python package or framework
-- A NeMo abstraction layer
-- A serving framework (use Triton, vLLM, FastAPI, Go, Rust — whatever fits)
+| Workload | Result |
+|----------|--------|
+| Streaming concurrency | 512 WebSocket streams, 0 failures |
+| Streaming quality | 3.21% WER on LibriSpeech test-clean |
+| Streaming throughput | 297 sessions/min, 38.69x realtime |
+| Batch throughput | 178x realtime, about 3 hours of audio per minute |
+| Batch quality | 1.57% WER on LibriSpeech test-clean |
+| Cost | About $0.70/hr on GKE L4 |
 
-## First Published Result
-
+```bash
+git clone https://github.com/beastoin/highperfasr
+cd highperfasr
+docker compose up -d
+curl -F "file=@audio.wav" http://localhost:8000/v1/transcriptions
 ```
-HighPerfASR OpenASR-Streaming v1alpha1
-SUT:         labs/nemo-fastapi @ eb79ddf
-Hardware:    NVIDIA L4 24GB
-Dataset:     LibriSpeech test-clean (2620 files, SHA256 pinned)
-Scenario:    512 real-time streams, 10 min soak
-Quality:     3.21% WER (Whisper normalization)
-Throughput:  297 sessions/min
-Reliability: 512/512 completed, 0 failures
-VRAM:        8672 MB high-water (38% of 24GB)
-```
 
-See [reports/2026-l4-nemo-512-streams/](reports/2026-l4-nemo-512-streams/) for full report.
+## Performance
+
+The published L4 streaming benchmark runs 512 persistent WebSocket streams for a
+10-minute real-time soak across all 2,620 files in LibriSpeech test-clean.
+
+| Metric | Value |
+|--------|-------|
+| GPU | NVIDIA L4 24GB |
+| Concurrent streams | 512 |
+| Failures | 0 / 512 |
+| WER | 3.21% (LibriSpeech test-clean) |
+| Throughput | 297 sessions/min |
+| Realtime factor | 38.69x |
+| VRAM | 8672 MB (38%) |
+
+Quality rubric: high quality means real speech corpus, standard WER normalization,
+sustained concurrent load, and reproducible artifacts. This run uses LibriSpeech
+test-clean (2,620 files, 5.4 hours, CC-BY-4.0), Whisper EnglishTextNormalizer,
+`nvidia/nemotron-3.5-asr-streaming-0.6b`, and a 512-stream realtime-paced 10-minute soak.
+Verify [result.json](benchmarks/results/2026-l4-nemo-512-streams/result.json),
+[c=32..512 sweep](benchmarks/results/2026-l4-nemo-512-streams/concurrency-sweep.json),
+and [report schema](benchmarks/report-schema.json).
+
+Full report: [benchmarks/results/2026-l4-nemo-512-streams/](benchmarks/results/2026-l4-nemo-512-streams/)
+
+## Deploy
+
+Prerequisites: Docker, NVIDIA Container Toolkit, and a CUDA-capable GPU. The
+first run downloads the ASR models and caches them in Docker volumes.
+
+| Command | What |
+|---------|------|
+| `docker compose up -d` | Start batch (:8000) + streaming (:8001) |
+| `docker compose up -d stream` | Start streaming only |
+| `docker compose up -d batch` | Start batch only |
+| `make health` | Check server readiness |
+| `make smoke` | Run a quick transcription test |
+| `docker compose logs -f` | Tail server logs |
+
+### GKE L4
+
+```bash
+docker build --target stream -t $REGISTRY/highperfasr-stream:v0.1.0 .
+docker push $REGISTRY/highperfasr-stream:v0.1.0
+kubectl apply -f gke-l4.yaml
+```
 
 ## Protocol (v1alpha1)
 
-### Batch — REST API
+highperfasr uses a framework-agnostic protocol: REST for files, WebSocket for
+live audio, and health checks for orchestration.
 
-```bash
-# Transcribe a file
-curl -F "file=@audio.wav" http://localhost:8000/v1/transcriptions
+| Endpoint | Mode | Input |
+|----------|------|-------|
+| `POST /v1/transcriptions` | Batch | Multipart file upload |
+| `WebSocket /v1/stream` | Streaming | Raw PCM16 audio frames |
+| `GET /health` | Health | Readiness and server mode |
 
-# Health check
-curl http://localhost:8000/health
+Full spec: [spec/protocol.md](spec/protocol.md) | [OpenAPI](spec/openapi.yaml) | [AsyncAPI](spec/asyncapi.yaml)
+
+## Structure
+
+```text
+Dockerfile           # multi-target image: batch + stream
+compose.yaml         # docker compose up -d
+gke-l4.yaml          # GKE L4 GPU deployment
+labs/nemo-fastapi/   # NeMo serving + framework patches
+spec/                # REST + WebSocket protocol
+benchmarks/          # benchmark reports and tooling
 ```
 
-### Streaming — WebSocket
+## Users & Sponsors
 
-```
-ws://localhost:8000/v1/stream
+- **[Omi](https://omi.me)** uses highperfasr in production for an AI wearable
+  workload with thousands of concurrent streams. Omi also sponsors the GPU
+  benchmark work published in this repository.
 
-1. Server sends: {"stream_id": "...", "status": "opened"}
-2. Client sends: raw PCM16 audio (binary frames)
-3. Server sends: {"partial_transcript": "...", "final_transcript": "...", "is_final": false}
-4. Client sends: {"action": "close"}
-5. Server sends: final transcript + closes
-```
+## Mission
 
-Full spec: [spec/protocol.md](spec/protocol.md)
+Speech recognition infrastructure should be something teams can run, measure,
+and control.
 
-## Repository Structure
-
-```
-highperfasr/
-  spec/                    # The standard (protocol + API specs)
-    protocol.md            # Normative RFC-style specification
-    openapi.yaml           # REST batch API (OpenAPI 3.1)
-    asyncapi.yaml          # WebSocket streaming API (AsyncAPI 3.1)
-    schemas/               # Shared JSON Schema definitions
-
-  reports/                 # Published benchmark results
-    report-schema.json     # Machine-readable report format
-    2026-l4-nemo-512-streams/
-
-  benchmarks/              # Benchmark suite definitions
-    openasr/               # OpenASR industrial benchmark scenarios
-
-  conformance/             # Black-box protocol conformance tests
-
-  labs/                    # Implementation examples + experiments
-    nemo-fastapi/          # Production NeMo server (Python/FastAPI)
-    nemo-patches/          # NeMo framework patches with evidence
-```
-
-## Implementing the Protocol
-
-Any server in any language that implements the endpoints defined in `spec/` is a valid highperfasr server. The conformance suite verifies compliance, and the benchmark suite measures performance.
-
-Example implementations:
-- **Python/NeMo** — `labs/nemo-fastapi/` (production-tested, 512 concurrent streams on L4)
-- **Faster-Whisper** — planned
-- **Go** — planned
-- **Rust** — planned
+highperfasr exists to help companies keep audio inside their own pipeline, on
+their own infrastructure, without depending on third-party ASR APIs.
 
 ## License
 

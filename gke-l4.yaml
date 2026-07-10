@@ -1,0 +1,279 @@
+# HighPerfASR — GKE L4 GPU deployment (all resources in one file).
+#
+# Deploy:
+#   docker build --target stream -t $REGISTRY/highperfasr-stream:v0.1.0 .
+#   docker push $REGISTRY/highperfasr-stream:v0.1.0
+#   kubectl apply -f gke-l4.yaml
+#
+# Prerequisites:
+#   - GKE cluster with L4 GPU node pool
+#   - Update `image:` fields below with your registry
+
+# --- Streaming Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: highperfasr-stream
+  labels:
+    app: highperfasr-stream
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: highperfasr-stream
+  template:
+    metadata:
+      labels:
+        app: highperfasr-stream
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: highperfasr-stream
+          image: highperfasr-stream:v0.1.0  # <-- replace with your registry
+          imagePullPolicy: IfNotPresent
+          args: ["serve", "--config", "/app/configs/serving-stream.yaml"]
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: HF_HOME
+              value: "/model-cache"
+            - name: NUMBA_CACHE_DIR
+              value: "/tmp/numba_cache"
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: model-cache
+              mountPath: /model-cache
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 180
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: highperfasr-stream-model-cache
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-l4
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: highperfasr-stream-model-cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard-rwo
+---
+# --- Batch Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: highperfasr-batch
+  labels:
+    app: highperfasr-batch
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: highperfasr-batch
+  template:
+    metadata:
+      labels:
+        app: highperfasr-batch
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: highperfasr-batch
+          image: highperfasr-batch:v0.1.0  # <-- replace with your registry
+          imagePullPolicy: IfNotPresent
+          args: ["serve", "--config", "/app/configs/serving-batch.yaml"]
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: HF_HOME
+              value: "/model-cache"
+            - name: NUMBA_CACHE_DIR
+              value: "/tmp/numba_cache"
+          resources:
+            requests:
+              cpu: "2"
+              memory: "6Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: model-cache
+              mountPath: /model-cache
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 120
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: highperfasr-batch-model-cache
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-l4
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: highperfasr-batch-model-cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard-rwo
+---
+# --- Services ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: highperfasr-batch
+  labels:
+    app: highperfasr-batch
+spec:
+  type: ClusterIP
+  selector:
+    app: highperfasr-batch
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: highperfasr-stream
+  labels:
+    app: highperfasr-stream
+spec:
+  type: ClusterIP
+  selector:
+    app: highperfasr-stream
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+---
+# --- Batch HPA ---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: highperfasr-batch
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: highperfasr-batch
+  minReplicas: 1
+  maxReplicas: 4
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 300
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
