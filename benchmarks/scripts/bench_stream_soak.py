@@ -495,7 +495,7 @@ async def main():
     log.info(f"VRAM after warmup: {get_vram_mb()} MB")
 
     report = {
-        "benchmark": "NeMo ASR Long-Lived Streaming Benchmark",
+        "benchmark": "Streaming Soak ASR Benchmark",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "server": args.server,
         "concurrency": args.concurrency,

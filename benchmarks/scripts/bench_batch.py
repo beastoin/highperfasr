@@ -333,7 +333,7 @@ async def main():
     log.info(f"Using {len(wav_files)} WAV files, {len(refs)} references")
 
     report = {
-        "benchmark": "NeMo ASR Batch Benchmark",
+        "benchmark": "Batch ASR Benchmark",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "server": args.server,
         "samples": len(wav_files),
