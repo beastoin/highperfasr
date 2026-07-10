@@ -46,3 +46,7 @@ def _serve(args):
         port=args.port,
         model=args.model,
     )
+
+
+if __name__ == "__main__":
+    main()
