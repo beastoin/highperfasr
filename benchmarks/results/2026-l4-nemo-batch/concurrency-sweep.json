@@ -1,0 +1,17 @@
+{
+  "scenario": "batch-concurrency",
+  "dataset": "LibriSpeech test-clean",
+  "gpu": "NVIDIA L4 24GB",
+  "model": "nvidia/parakeet-tdt-0.6b-v2",
+  "wer": 1.57,
+  "normalization": "whisper",
+  "levels": [
+    {"concurrency": 1, "rps": 1.4, "rtfx": 13, "failures": 0, "p50_ms": 711, "p99_ms": 1462},
+    {"concurrency": 8, "rps": 7.7, "rtfx": 70, "failures": 0, "p50_ms": 959, "p99_ms": 2172},
+    {"concurrency": 32, "rps": 13.5, "rtfx": 118, "failures": 0, "p50_ms": 2207, "p99_ms": 2608},
+    {"concurrency": 64, "rps": 14.1, "rtfx": 124, "failures": 0, "p50_ms": 4418, "p99_ms": 5282},
+    {"concurrency": 128, "rps": 14.4, "rtfx": 131, "failures": 0, "p50_ms": 8646, "p99_ms": 11864},
+    {"concurrency": 256, "rps": 19.5, "rtfx": 178, "failures": 0, "p50_ms": 10229, "p99_ms": 13986},
+    {"concurrency": 512, "rps": 19.2, "rtfx": 175, "failures": 0, "p50_ms": 10615, "p99_ms": 20784}
+  ]
+}

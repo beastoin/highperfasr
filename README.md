@@ -32,41 +32,41 @@ curl -F "file=@audio.wav" http://localhost:8000/v1/transcriptions
 
 ## Performance
 
-### RTFx Scaling
+### Streaming (Nemotron 3.5 ASR 0.6B)
 
 ![RTFx Scaling](benchmarks/results/2026-l4-nemo-512-streams/rtfx-scaling.png)
 
-### Throughput Scaling
-
 ![Throughput Scaling](benchmarks/results/2026-l4-nemo-512-streams/throughput-scaling.png)
-
-### Cost Efficiency
 
 ![Cost Efficiency](benchmarks/results/2026-l4-nemo-512-streams/cost-efficiency.png)
 
-### Benchmark Details
-
 512 persistent WebSocket streams, 10-minute real-time soak, all 2,620 LibriSpeech
-test-clean files.
+test-clean files. WER 3.21%, 297 sessions/min, 8672 MB VRAM (38%), 0 failures.
 
-| Metric | Value |
-|--------|-------|
-| GPU | NVIDIA L4 24GB |
-| Concurrent streams | 512 |
-| Failures | 0 / 512 |
-| WER | 3.21% (LibriSpeech test-clean) |
-| Throughput | 297 sessions/min |
-| Realtime factor | 38.69x |
-| VRAM | 8672 MB (38%) |
+Full report: [benchmarks/results/2026-l4-nemo-512-streams/](benchmarks/results/2026-l4-nemo-512-streams/)
+
+### Batch (Parakeet TDT 0.6B)
+
+![Batch RTFx Scaling](benchmarks/results/2026-l4-nemo-batch/rtfx-scaling.png)
+
+![Batch Throughput](benchmarks/results/2026-l4-nemo-batch/throughput-scaling.png)
+
+![Batch Latency](benchmarks/results/2026-l4-nemo-batch/latency-scaling.png)
+
+![Batch Cost Efficiency](benchmarks/results/2026-l4-nemo-batch/cost-efficiency.png)
+
+REST concurrency sweep c=1..512, LibriSpeech test-clean (200 files).
+WER 1.57%, peak 19.5 RPS (178x realtime), 0 failures at every level.
+
+Full report: [benchmarks/results/2026-l4-nemo-batch/](benchmarks/results/2026-l4-nemo-batch/)
+
+### Methodology
 
 Quality rubric: real speech corpus, standard WER normalization (Whisper
 EnglishTextNormalizer), sustained concurrent load, reproducible artifacts.
-Model: `nvidia/nemotron-3.5-asr-streaming-0.6b`.
-Verify: [result.json](benchmarks/results/2026-l4-nemo-512-streams/result.json),
-[c=32..512 sweep](benchmarks/results/2026-l4-nemo-512-streams/concurrency-sweep.json),
-[report schema](benchmarks/report-schema.json).
-
-Full report: [benchmarks/results/2026-l4-nemo-512-streams/](benchmarks/results/2026-l4-nemo-512-streams/)
+Verify: [report schema](benchmarks/report-schema.json),
+[streaming result.json](benchmarks/results/2026-l4-nemo-512-streams/result.json),
+[batch result.json](benchmarks/results/2026-l4-nemo-batch/result.json).
 
 ## Deploy
 
