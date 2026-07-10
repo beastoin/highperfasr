@@ -116,26 +116,15 @@ benchmarks/          # benchmark reports and tooling
 
 ## Q&A
 
-**Does it support punctuation and capitalization?**
-Yes. Built into the model output for both batch and streaming.
-
-**Does it support word-level timestamps?**
-Yes, in batch mode. Pass `?timestamps=true` on the REST endpoint.
-
-**Does it support multiple languages?**
-Streaming mode supports multilingual transcription via prompt-conditioned language selection. Batch mode is English-only with the current model.
-
-**Does it support diarization (speaker identification)?**
-Not yet. Diarization requires a separate model (e.g. pyannote). It is on the roadmap.
-
-**Does it support long audio files?**
-Yes, batch mode handles audio up to 1 hour on L4 via automatic local attention switching.
-
-**Does it support inverse text normalization (ITN)?**
-Not yet. The underlying models support it, but it is not exposed in the serving layer.
-
-**What about partial/streaming transcripts?**
-Yes. Streaming mode sends partial transcripts after each chunk, followed by a final transcript.
+| Feature | Batch | Streaming |
+|---------|:-----:|:---------:|
+| Punctuation & capitalization | Yes | Yes |
+| Word timestamps | Yes | — |
+| Partial transcripts | — | Yes |
+| Multilingual | — | Yes |
+| Long audio (>10 min) | Yes | — |
+| Diarization | Roadmap | Roadmap |
+| ITN | Roadmap | Roadmap |
 
 ## Users & Sponsors
 
