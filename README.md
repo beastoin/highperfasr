@@ -111,35 +111,25 @@ compose.yaml         # docker compose up -d
 gke-l4.yaml          # GKE L4 GPU deployment
 labs/nemo-fastapi/   # NeMo serving + framework patches (fork: github.com/beastoin/NeMo)
 spec/                # REST + WebSocket protocol
-benchmarks/          # benchmark reports and results
+benchmarks/scripts/  # reproducible benchmark scripts (batch, streaming, WER)
+benchmarks/results/  # published benchmark reports (JSON + markdown)
 ```
 
 ## Q&A
 
-**What languages are supported?**
-Batch (Parakeet TDT 0.6B): 25 European languages with auto-detection — English,
-French, German, Spanish, Italian, Portuguese, Dutch, Polish, Russian, Ukrainian,
-and 15 more. Streaming (Nemotron 3.5 ASR 0.6B): 36 languages across 40 locales
-including Arabic, Japanese, Korean, Mandarin, Hindi, Thai, and all European
-languages. Language is set via `target_lang` in the streaming config.
+| Question | Batch (Parakeet TDT 0.6B v3) | Streaming (Nemotron 3.5 ASR 0.6B) |
+|----------|------|-----------|
+| What languages are supported? | 25 European languages, auto-detect | 36 languages / 40 locales, auto-detect |
+| Punctuation & capitalization? | Yes | Yes |
+| Word-level timestamps? | Yes | Partial transcripts (real-time) |
+| Maximum audio length? | 24 min (full attention), 3 hr (local attention) | Indefinite (persistent WebSocket) |
+| Speaker diarization? | Roadmap | Roadmap |
+| Inverse text normalization (ITN)? | Roadmap | Roadmap |
 
-**Does it support punctuation and capitalization?**
-Yes, both batch and streaming models output punctuated, capitalized text.
-
-**Can I get word-level timestamps?**
-Batch mode returns word timestamps. Streaming mode returns partial transcripts
-in real time instead.
-
-**How long can audio files be?**
-Batch mode handles files up to 24 minutes (full attention) or 3 hours (local
-attention mode). Streaming mode runs indefinitely over persistent WebSocket
-connections.
-
-**Is diarization supported?**
-Not yet. Speaker diarization is on the roadmap for both modes.
-
-**Is inverse text normalization (ITN) available?**
-On the roadmap. Currently outputs normalized text without ITN post-processing.
+**Languages — Batch:** bg, cs, da, de, el, en, es, et, fi, fr, hr, hu, it, lt,
+lv, mt, nl, pl, pt, ro, ru, sk, sl, sv, uk (25 European).
+**Languages — Streaming:** all batch languages plus ar, ja, ko, zh, hi, th, and
+14 more locales (40 total). Set `target_lang` in config or use `auto`.
 
 ## Users & Sponsors
 
