@@ -197,12 +197,13 @@ async def main():
     parser.add_argument("--warmup", type=int, default=10, help="Warmup streams (default: 10)")
     parser.add_argument("--output", default="/tmp/bench_stream_report.json", help="Output JSON path")
     parser.add_argument("--skip-wer", action="store_true", help="Skip WER computation")
+    parser.add_argument("--endpoint", default="/v1/stream", help="WebSocket endpoint path (default: /v1/stream)")
     parser.add_argument("--smart", action="store_true", help="Smart mode: sweep high-to-low, early-stop on match")
     parser.add_argument("--baseline", default=None, help="Path to previous report JSON for smart comparison")
     args = parser.parse_args()
 
     levels = [int(x) for x in args.concurrency.split(",")]
-    ws_url = f"{args.server}/v1/stream"
+    ws_url = f"{args.server}{args.endpoint}"
 
     baseline_report, baseline_sweep = None, {}
     if args.baseline:

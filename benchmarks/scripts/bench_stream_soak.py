@@ -63,6 +63,9 @@ async def vram_sampler(interval_s, samples, stop_event, t0):
         await asyncio.sleep(interval_s)
 
 
+SKIP_HANDSHAKE = False
+
+
 async def stream_file_with_ttfb(ws_url, wav_path, chunk_ms, semaphore, refs):
     import websockets
 
@@ -79,9 +82,10 @@ async def stream_file_with_ttfb(ws_url, wav_path, chunk_ms, semaphore, refs):
                 raw = f.read()
 
             async with websockets.connect(ws_url, max_size=10 * 1024 * 1024) as ws:
-                config = json.dumps({"format": "pcm_s16le", "sample_rate": SR, "language": "en"})
-                await ws.send(config)
-                await asyncio.wait_for(ws.recv(), timeout=5)
+                if not SKIP_HANDSHAKE:
+                    config = json.dumps({"format": "pcm_s16le", "sample_rate": SR, "language": "en"})
+                    await ws.send(config)
+                    await asyncio.wait_for(ws.recv(), timeout=5)
 
                 offset = 0
                 final_parts = []
@@ -156,9 +160,10 @@ async def persistent_stream(ws_url, wav_files, chunk_ms, duration_s, stream_id):
 
     try:
         async with websockets.connect(ws_url, max_size=10 * 1024 * 1024, ping_interval=None) as ws:
-            config = json.dumps({"format": "pcm_s16le", "sample_rate": SR, "language": "en"})
-            await ws.send(config)
-            await asyncio.wait_for(ws.recv(), timeout=10)
+            if not SKIP_HANDSHAKE:
+                config = json.dumps({"format": "pcm_s16le", "sample_rate": SR, "language": "en"})
+                await ws.send(config)
+                await asyncio.wait_for(ws.recv(), timeout=10)
 
             file_idx = stream_id
             prev_cumulative = ""
@@ -456,6 +461,8 @@ async def main():
         help="Keep each WebSocket open for the full duration, looping audio (true always-on test)",
     )
     parser.add_argument("--output", default="/tmp/bench_longlive_report.json", help="Output JSON path")
+    parser.add_argument("--endpoint", default="/v1/stream", help="WebSocket endpoint path (default: /v1/stream)")
+    parser.add_argument("--no-handshake", action="store_true", help="Skip JSON config handshake (for v3/v4 endpoints that use query params)")
     parser.add_argument(
         "--max-samples",
         type=int,
@@ -464,8 +471,11 @@ async def main():
     )
     args = parser.parse_args()
 
+    global SKIP_HANDSHAKE
+    SKIP_HANDSHAKE = args.no_handshake
+
     durations = [int(x) for x in args.durations.split(",")]
-    ws_url = f"{args.server}/v1/stream"
+    ws_url = f"{args.server}{args.endpoint}"
 
     mode_label = "persistent" if args.persistent else "rotating"
     log.info(f"=== Long-Lived Streaming ASR Benchmark ({mode_label}) ===")
