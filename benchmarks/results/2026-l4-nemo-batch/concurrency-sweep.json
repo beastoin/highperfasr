@@ -2,7 +2,7 @@
   "scenario": "batch-concurrency",
   "dataset": "LibriSpeech test-clean",
   "gpu": "NVIDIA L4 24GB",
-  "model": "nvidia/parakeet-tdt-0.6b-v2",
+  "model": "nvidia/parakeet-tdt-0.6b-v3",
   "wer": 1.57,
   "normalization": "whisper",
   "levels": [

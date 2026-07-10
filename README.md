@@ -90,7 +90,7 @@ docker push $REGISTRY/highperfasr-stream:v0.1.0
 kubectl apply -f gke-l4.yaml
 ```
 
-## Protocol (v1alpha1)
+## Protocol (v1alpha1, draft)
 
 highperfasr uses a framework-agnostic protocol: REST for files, WebSocket for
 live audio, and health checks for orchestration.
@@ -109,9 +109,9 @@ Full spec: [spec/protocol.md](spec/protocol.md) | [OpenAPI](spec/openapi.yaml) |
 Dockerfile           # multi-target image: batch + stream
 compose.yaml         # docker compose up -d
 gke-l4.yaml          # GKE L4 GPU deployment
-labs/nemo-fastapi/   # NeMo serving + framework patches
+labs/nemo-fastapi/   # NeMo serving + framework patches (fork: github.com/beastoin/NeMo)
 spec/                # REST + WebSocket protocol
-benchmarks/          # benchmark reports and tooling
+benchmarks/          # benchmark reports and results
 ```
 
 ## Q&A

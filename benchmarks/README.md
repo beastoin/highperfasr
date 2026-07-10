@@ -1,6 +1,6 @@
 # Benchmarks
 
-Published results and benchmark tooling for HighPerfASR.
+Published results and benchmark reports for highperfasr.
 
 ## Published Results
 

@@ -1,4 +1,4 @@
-# HighPerfASR Benchmark Report: L4 Streaming 512 Concurrent
+# highperfasr Benchmark Report: L4 Streaming 512 Concurrent
 
 **Report ID:** 2026-l4-nemo-512-streams
 **Protocol Version:** v1alpha1

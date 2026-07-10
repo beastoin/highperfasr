@@ -1,7 +1,7 @@
 """NeMo compatibility patches — version-gated, idempotent, logged at startup.
 
 Each patch fixes a specific NeMo issue that affects production serving.
-Evidence and reproduction scripts live in labs/nemo-fixes/.
+See https://github.com/beastoin/NeMo for the patched NeMo fork.
 """
 
 import logging

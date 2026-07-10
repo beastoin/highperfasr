@@ -7,7 +7,7 @@
     "name": "NeMo FastAPI Server (batch mode)",
     "implementation": "labs/nemo-fastapi",
     "git_sha": "eb79ddf",
-    "model_name": "nvidia/parakeet-tdt-0.6b-v2",
+    "model_name": "nvidia/parakeet-tdt-0.6b-v3",
     "model_params": "0.6B"
   },
   "hardware": {
