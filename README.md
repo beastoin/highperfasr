@@ -153,4 +153,4 @@ their own infrastructure, without depending on third-party ASR APIs.
 
 ## License
 
-Apache-2.0
+MIT
