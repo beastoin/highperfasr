@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HighPerfASR Benchmark Report",
+  "version": "v1alpha1",
+  "type": "object",
+  "required": ["schema_version", "report_id", "generated_at", "protocol_version", "sut", "hardware", "software", "dataset", "scenario", "quality", "performance", "reliability", "resources", "reproduction"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Report schema version"
+    },
+    "report_id": {
+      "type": "string",
+      "description": "Unique report identifier"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "protocol_version": {
+      "type": "string",
+      "description": "HighPerfASR protocol version tested"
+    },
+    "sut": {
+      "type": "object",
+      "description": "System Under Test",
+      "required": ["name", "implementation", "git_sha"],
+      "properties": {
+        "name": { "type": "string" },
+        "implementation": { "type": "string", "description": "Path within highperfasr repo or external URL" },
+        "git_sha": { "type": "string" },
+        "model_name": { "type": "string" },
+        "model_params": { "type": "string" }
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "required": ["gpu", "gpu_memory_gb"],
+      "properties": {
+        "gpu": { "type": "string" },
+        "gpu_count": { "type": "integer" },
+        "gpu_memory_gb": { "type": "number" },
+        "cpu": { "type": "string" },
+        "ram_gb": { "type": "number" }
+      }
+    },
+    "software": {
+      "type": "object",
+      "required": ["cuda_version", "driver_version"],
+      "properties": {
+        "cuda_version": { "type": "string" },
+        "driver_version": { "type": "string" },
+        "pytorch_version": { "type": "string" },
+        "framework_version": { "type": "string", "description": "NeMo, Whisper, etc." },
+        "python_version": { "type": "string" },
+        "container_image": { "type": "string" },
+        "container_digest": { "type": "string" }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "required": ["name", "split", "num_files", "total_audio_hours"],
+      "properties": {
+        "name": { "type": "string" },
+        "split": { "type": "string" },
+        "num_files": { "type": "integer" },
+        "total_audio_hours": { "type": "number" },
+        "license": { "type": "string" },
+        "manifest_sha256": { "type": "string" }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "required": ["name", "mode"],
+      "properties": {
+        "name": { "type": "string" },
+        "mode": { "type": "string", "enum": ["offline", "server", "streaming-realtime", "streaming-saturation", "long-form", "soak", "overload"] },
+        "concurrency": { "type": "integer" },
+        "duration_seconds": { "type": "number" },
+        "description": { "type": "string" }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "wer": { "type": "number", "description": "Word Error Rate (0-100)" },
+        "cer": { "type": "number", "description": "Character Error Rate (0-100)" },
+        "normalization": { "type": "string", "description": "Text normalization method used" }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "properties": {
+        "rtfx": { "type": "number", "description": "Real-Time Factor (>1 means faster than real-time)" },
+        "sessions_per_min": { "type": "number" },
+        "rps": { "type": "number", "description": "Requests per second (batch mode)" },
+        "p50_ms": { "type": "number" },
+        "p95_ms": { "type": "number" },
+        "p99_ms": { "type": "number" },
+        "max_concurrent_streams": { "type": "integer" }
+      }
+    },
+    "reliability": {
+      "type": "object",
+      "properties": {
+        "total_requests": { "type": "integer" },
+        "successful": { "type": "integer" },
+        "failed": { "type": "integer" },
+        "failure_rate": { "type": "number" }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "vram_baseline_mb": { "type": "number" },
+        "vram_highwater_mb": { "type": "number" },
+        "vram_total_mb": { "type": "number" },
+        "vram_utilization": { "type": "number", "description": "0-1 fraction" }
+      }
+    },
+    "reproduction": {
+      "type": "object",
+      "required": ["command"],
+      "properties": {
+        "command": { "type": "string", "description": "Exact command to reproduce" },
+        "config_file": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

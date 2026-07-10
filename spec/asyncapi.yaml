@@ -1,0 +1,168 @@
+asyncapi: "3.0.0"
+info:
+  title: HighPerfASR Streaming API
+  version: v1alpha1
+  description: |
+    WebSocket API for real-time streaming ASR. Part of the HighPerfASR protocol.
+    See spec/protocol.md for the normative specification.
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  local:
+    host: localhost:8000
+    protocol: ws
+    description: Local development server
+
+channels:
+  stream:
+    address: /v1/stream
+    messages:
+      sessionOpened:
+        $ref: "#/components/messages/SessionOpened"
+      transcriptUpdate:
+        $ref: "#/components/messages/TranscriptUpdate"
+      finalTranscript:
+        $ref: "#/components/messages/FinalTranscript"
+      streamError:
+        $ref: "#/components/messages/StreamError"
+      audioChunk:
+        $ref: "#/components/messages/AudioChunk"
+      closeAction:
+        $ref: "#/components/messages/CloseAction"
+
+operations:
+  receiveSessionOpened:
+    action: receive
+    channel:
+      $ref: "#/channels/stream"
+    messages:
+      - $ref: "#/channels/stream/messages/sessionOpened"
+    description: Server confirms the stream session is opened
+
+  receiveTranscript:
+    action: receive
+    channel:
+      $ref: "#/channels/stream"
+    messages:
+      - $ref: "#/channels/stream/messages/transcriptUpdate"
+    description: Server sends transcript updates (partial and final)
+
+  receiveFinalTranscript:
+    action: receive
+    channel:
+      $ref: "#/channels/stream"
+    messages:
+      - $ref: "#/channels/stream/messages/finalTranscript"
+    description: Server sends complete transcript on session close
+
+  receiveError:
+    action: receive
+    channel:
+      $ref: "#/channels/stream"
+    messages:
+      - $ref: "#/channels/stream/messages/streamError"
+    description: Server sends error notification
+
+  sendAudio:
+    action: send
+    channel:
+      $ref: "#/channels/stream"
+    messages:
+      - $ref: "#/channels/stream/messages/audioChunk"
+    description: Client sends raw PCM16 audio as binary frames
+
+  sendClose:
+    action: send
+    channel:
+      $ref: "#/channels/stream"
+    messages:
+      - $ref: "#/channels/stream/messages/closeAction"
+    description: Client requests session finalization
+
+components:
+  messages:
+    SessionOpened:
+      name: sessionOpened
+      payload:
+        type: object
+        required:
+          - stream_id
+          - status
+        properties:
+          stream_id:
+            type: string
+            format: uuid
+          status:
+            type: string
+            const: opened
+
+    TranscriptUpdate:
+      name: transcriptUpdate
+      payload:
+        type: object
+        required:
+          - stream_id
+          - partial_transcript
+          - final_transcript
+          - is_final
+        properties:
+          stream_id:
+            type: string
+          partial_transcript:
+            type: string
+            description: Current hypothesis for uncommitted audio (may change)
+          final_transcript:
+            type: string
+            description: Newly confirmed words (will not change once emitted)
+          is_final:
+            type: boolean
+            description: True when final_transcript is non-empty
+
+    FinalTranscript:
+      name: finalTranscript
+      payload:
+        type: object
+        required:
+          - stream_id
+          - final_text
+          - status
+        properties:
+          stream_id:
+            type: string
+          final_text:
+            type: string
+            description: Complete transcript for the entire session
+          status:
+            type: string
+            const: closed
+
+    StreamError:
+      name: streamError
+      payload:
+        type: object
+        required:
+          - error
+        properties:
+          error:
+            type: string
+
+    AudioChunk:
+      name: audioChunk
+      contentType: application/octet-stream
+      payload:
+        type: string
+        format: binary
+        description: Raw PCM16 mono audio at configured sample rate (default 16kHz)
+
+    CloseAction:
+      name: closeAction
+      payload:
+        type: object
+        required:
+          - action
+        properties:
+          action:
+            type: string
+            const: close

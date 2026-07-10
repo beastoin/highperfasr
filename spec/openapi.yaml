@@ -1,0 +1,219 @@
+openapi: "3.1.0"
+info:
+  title: HighPerfASR Batch API
+  version: v1alpha1
+  description: |
+    REST API for batch ASR transcription. Part of the HighPerfASR protocol.
+    See spec/protocol.md for the normative specification.
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Server health status
+      responses:
+        "200":
+          description: Server health information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /v1/capabilities:
+    get:
+      operationId: getCapabilities
+      summary: Server capabilities and supported features
+      responses:
+        "200":
+          description: Server capabilities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapabilitiesResponse"
+
+  /v1/transcriptions:
+    post:
+      operationId: transcribe
+      summary: Transcribe a single audio file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file (WAV, FLAC, MP3)
+      parameters:
+        - name: timestamps
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include word-level timestamps
+      responses:
+        "200":
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptionResult"
+        "413":
+          description: File exceeds size limit
+        "415":
+          description: Unsupported audio format
+        "503":
+          description: Server overloaded
+
+  /v1/transcriptions:batch:
+    post:
+      operationId: transcribeBatch
+      summary: Transcribe multiple audio files
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      parameters:
+        - name: timestamps
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Batch transcription results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchTranscriptionResult"
+        "400":
+          description: Too many files
+
+  /metrics:
+    get:
+      operationId: getMetrics
+      summary: Server metrics
+      responses:
+        "200":
+          description: Server metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetricsResponse"
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - ready
+        - mode
+      properties:
+        status:
+          type: string
+          enum: [ok, loading]
+        ready:
+          type: boolean
+        mode:
+          type: string
+          enum: [batch, stream, both]
+        uptime_seconds:
+          type: number
+
+    CapabilitiesResponse:
+      type: object
+      properties:
+        protocol_version:
+          type: string
+        modes:
+          type: array
+          items:
+            type: string
+            enum: [batch, stream]
+        audio_formats:
+          type: array
+          items:
+            type: string
+        sample_rates:
+          type: array
+          items:
+            type: integer
+        languages:
+          type: array
+          items:
+            type: string
+        features:
+          type: object
+          properties:
+            timestamps:
+              type: boolean
+            partial_transcripts:
+              type: boolean
+            batch_upload:
+              type: boolean
+
+    TranscriptionResult:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+        words:
+          type: array
+          items:
+            $ref: "#/components/schemas/WordTimestamp"
+
+    WordTimestamp:
+      type: object
+      required:
+        - word
+        - start
+        - end
+      properties:
+        word:
+          type: string
+        start:
+          type: number
+        end:
+          type: number
+
+    BatchTranscriptionResult:
+      type: object
+      required:
+        - results
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/TranscriptionResult"
+
+    MetricsResponse:
+      type: object
+      properties:
+        uptime_seconds:
+          type: number
+        mode:
+          type: string

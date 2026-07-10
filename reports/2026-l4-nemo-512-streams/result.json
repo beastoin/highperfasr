@@ -1,0 +1,72 @@
+{
+  "schema_version": "v1alpha1",
+  "report_id": "2026-l4-nemo-512-streams",
+  "generated_at": "2026-07-05T00:00:00Z",
+  "protocol_version": "v1alpha1",
+  "sut": {
+    "name": "NeMo FastAPI Server",
+    "implementation": "labs/nemo-fastapi",
+    "git_sha": "eb79ddf",
+    "model_name": "nvidia/nemotron-3.5-asr-streaming-0.6b",
+    "model_params": "0.6B"
+  },
+  "hardware": {
+    "gpu": "NVIDIA L4",
+    "gpu_count": 1,
+    "gpu_memory_gb": 24,
+    "cpu": "GKE n2d-standard-4",
+    "ram_gb": 26
+  },
+  "software": {
+    "cuda_version": "12.8",
+    "driver_version": "570.86.15",
+    "pytorch_version": "2.6.0",
+    "framework_version": "NeMo 2.5",
+    "python_version": "3.12",
+    "container_image": "nvcr.io/nvidia/nemo:26.02"
+  },
+  "dataset": {
+    "name": "LibriSpeech",
+    "split": "test-clean",
+    "num_files": 2620,
+    "total_audio_hours": 5.4,
+    "license": "CC-BY-4.0"
+  },
+  "scenario": {
+    "name": "streaming-soak-512",
+    "mode": "soak",
+    "concurrency": 512,
+    "duration_seconds": 600,
+    "description": "512 persistent WebSocket streams, real-time paced, 10 minute soak with diverse audio (all 2620 LibriSpeech test-clean files)"
+  },
+  "quality": {
+    "wer": 3.21,
+    "normalization": "Whisper EnglishTextNormalizer (lowercase, expand contractions, strip punctuation)"
+  },
+  "performance": {
+    "rtfx": 38.69,
+    "sessions_per_min": 297,
+    "max_concurrent_streams": 512
+  },
+  "reliability": {
+    "total_requests": 512,
+    "successful": 512,
+    "failed": 0,
+    "failure_rate": 0.0
+  },
+  "resources": {
+    "vram_baseline_mb": 8250,
+    "vram_highwater_mb": 8672,
+    "vram_total_mb": 23034,
+    "vram_utilization": 0.38
+  },
+  "reproduction": {
+    "command": "python3 bench_stream_longlive.py --server ws://localhost:8000 --concurrency 512 --durations 600 --persistent --max-samples 0 --vram-interval 10",
+    "config_file": "labs/nemo-fastapi/configs/serving-stream.yaml",
+    "notes": "Run inside NGC nemo:26.02 container on GKE with L4 GPU. num_slots auto-set to 512 from max_concurrent_streams config."
+  },
+  "artifacts": [
+    {"name": "summary", "path": "summary.md", "description": "Human-readable report summary"},
+    {"name": "concurrency_sweep", "path": "concurrency-sweep.json", "description": "Full concurrency sweep results (c=32 to c=512)"}
+  ]
+}

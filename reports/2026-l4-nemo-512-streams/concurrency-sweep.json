@@ -1,0 +1,15 @@
+{
+  "scenario": "streaming-saturation",
+  "dataset": "LibriSpeech test-clean",
+  "gpu": "NVIDIA L4 24GB",
+  "model": "nvidia/nemotron-3.5-asr-streaming-0.6b",
+  "wer_at_c1": 3.21,
+  "normalization": "whisper",
+  "levels": [
+    {"concurrency": 32, "rtfx": 10.32, "sessions_per_min": 79.2, "failures": 0},
+    {"concurrency": 64, "rtfx": 13.05, "sessions_per_min": 100.2, "failures": 0},
+    {"concurrency": 128, "rtfx": 18.76, "sessions_per_min": 144.0, "failures": 0},
+    {"concurrency": 256, "rtfx": 27.55, "sessions_per_min": 211.4, "failures": 0},
+    {"concurrency": 512, "rtfx": 38.69, "sessions_per_min": 297.0, "failures": 0}
+  ]
+}
