@@ -14,6 +14,8 @@ Dependencies: `pip install aiohttp websockets jiwer whisper-normalizer soundfile
 | `bench_batch.py` | Batch REST benchmark — concurrency sweep, sustained load, WER |
 | `bench_stream.py` | Streaming WebSocket benchmark — concurrency sweep, WER |
 | `bench_stream_soak.py` | Sustained streaming soak — persistent connections, VRAM tracking, TTFB |
+| `bench_combined.py` | Simultaneous batch + streaming load, chaos testing |
+| `eval_wer_detailed.py` | Per-utterance WER with S/I/D error breakdown — verification artifact |
 | `wer_utils.py` | WER computation with Whisper EnglishTextNormalizer |
 
 ### Quick start
