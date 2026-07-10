@@ -1,0 +1,29 @@
+# highperfasr — Streaming Only (L4/A10/A100)
+#
+# Benchmarked on L4 24GB:
+#   512 concurrent streams, 0 failures, 297 sess/min
+#   WER: 3.21% (LibriSpeech test-clean)
+#   VRAM: ~8.7 GB (512 decoder slots preallocated)
+mode: stream
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+
+stream_model:
+  name: "nvidia/nemotron-3.5-asr-streaming-0.6b"
+  device: "cuda:0"
+  compile: false
+  amp: true
+  latency_mode: "480ms"
+  source_language: "English"
+
+stream:
+  max_concurrent_streams: 512
+  chunk_duration_ms: 160
+  sample_rate: 16000
+  max_stream_duration: 0
+  idle_timeout: 300
+  max_chunk_bytes: 524288
+  max_stream_drain: 16

@@ -1,0 +1,33 @@
+# highperfasr — Batch Only (L4/A10/A100)
+#
+# Benchmarked on L4 24GB:
+#   WER: 1.57% (LibriSpeech test-clean)
+#   Throughput: 20 RPS sustained at c=64, 178x real-time
+#   VRAM: ~4 GB
+mode: batch
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+
+batch_model:
+  name: "nvidia/parakeet-tdt-0.6b-v3"
+  device: "cuda:0"
+  attention_mode: "auto"
+  auto_local_attn_threshold_sec: 300
+  local_attn_context: [128, 128]
+  max_file_duration_sec: 3600
+  compile: true
+  amp: true
+  cuda_graphs: true
+
+batcher:
+  max_batch_size: 32
+  max_wait_seconds: 0.002
+  max_queue_depth: 4096
+  max_upload_bytes: 536870912
+  vram_safety_factor: 0.8
+  vram_bytes_per_t2: 136.6
+  starvation_timeout_sec: 5.0
+  max_inflight: 2
