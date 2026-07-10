@@ -60,7 +60,7 @@
     "vram_total_mb": 23034
   },
   "reproduction": {
-    "command": "python3 bench_batch.py --server http://localhost:8000 --concurrency 1,8,32,64,128,256,512",
+    "command": "python3 benchmarks/scripts/bench_batch.py --server http://localhost:8000 --concurrency 1,8,32,64,128,256,512",
     "config_file": "labs/nemo-fastapi/configs/serving-batch.yaml",
     "notes": "Run inside NGC nemo:26.02 container on GKE with L4 GPU. Parakeet TDT 0.6B with VRAM-aware batch sizing."
   },

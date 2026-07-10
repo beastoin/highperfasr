@@ -60,7 +60,7 @@ VRAM stabilized at 8672 MB after ~5 minutes. No memory leak detected.
 highperfasr serve --config labs/nemo-fastapi/configs/serving-stream.yaml
 
 # Benchmark
-python3 bench_stream_longlive.py \
+python3 benchmarks/scripts/bench_stream.py \
   --server ws://localhost:8000 \
   --concurrency 512 \
   --durations 600 \

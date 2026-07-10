@@ -1,26 +1,28 @@
 # Benchmarks
 
-Published results, scripts, and tooling for highperfasr benchmarks.
+Published results and scripts for highperfasr.
 
 ## Scripts
 
-All scripts are in [`scripts/`](scripts/). Dependencies: `aiohttp`, `jiwer`, `whisper-normalizer` (optional for WER).
+All scripts are in [`scripts/`](scripts/). They are standalone — no NeMo imports,
+just a server URL.
+
+Dependencies: `pip install aiohttp websockets jiwer whisper-normalizer soundfile`
 
 | Script | Purpose |
 |--------|---------|
-| `bench_batch.py` | Batch concurrency sweep with WER — LibriSpeech auto-download, warmup, structured JSON output |
-| `bench_stream.py` | Streaming WebSocket benchmark — realtime-paced audio, concurrency sweep |
-| `bench_stream_longlive.py` | Sustained streaming soak test — persistent connections, VRAM monitoring, TTFB |
+| `bench_batch.py` | Batch REST benchmark — concurrency sweep, sustained load, WER |
+| `bench_stream.py` | Streaming WebSocket benchmark — persistent connections, VRAM tracking, TTFB |
 | `wer_utils.py` | WER computation with Whisper EnglishTextNormalizer |
 
 ### Quick start
 
 ```bash
-# Batch benchmark (downloads LibriSpeech test-clean automatically)
+# Batch benchmark (auto-downloads LibriSpeech test-clean)
 python3 scripts/bench_batch.py --server http://localhost:8000
 
 # Streaming soak at 512 concurrent streams for 10 minutes
-python3 scripts/bench_stream_longlive.py \
+python3 scripts/bench_stream.py \
   --server ws://localhost:8001 \
   --concurrency 512 \
   --durations 600 \

@@ -50,7 +50,7 @@ Throughput peaks at c=256 (178x realtime). c=512 shows slight saturation (175x) 
 highperfasr serve --config labs/nemo-fastapi/configs/serving-batch.yaml
 
 # Benchmark
-python3 bench_batch.py \
+python3 benchmarks/scripts/bench_batch.py \
   --server http://localhost:8000 \
   --concurrency 1,8,32,64,128,256,512
 ```
