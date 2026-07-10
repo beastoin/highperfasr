@@ -116,15 +116,30 @@ benchmarks/          # benchmark reports and results
 
 ## Q&A
 
-| Feature | Batch | Streaming |
-|---------|:-----:|:---------:|
-| Punctuation & capitalization | Yes | Yes |
-| Word timestamps | Yes | — |
-| Partial transcripts | — | Yes |
-| Multilingual | — | Yes |
-| Long audio (>10 min) | Yes | — |
-| Diarization | Roadmap | Roadmap |
-| ITN | Roadmap | Roadmap |
+**What languages are supported?**
+Batch (Parakeet TDT 0.6B): 25 European languages with auto-detection — English,
+French, German, Spanish, Italian, Portuguese, Dutch, Polish, Russian, Ukrainian,
+and 15 more. Streaming (Nemotron 3.5 ASR 0.6B): 36 languages across 40 locales
+including Arabic, Japanese, Korean, Mandarin, Hindi, Thai, and all European
+languages. Language is set via `target_lang` in the streaming config.
+
+**Does it support punctuation and capitalization?**
+Yes, both batch and streaming models output punctuated, capitalized text.
+
+**Can I get word-level timestamps?**
+Batch mode returns word timestamps. Streaming mode returns partial transcripts
+in real time instead.
+
+**How long can audio files be?**
+Batch mode handles files up to 24 minutes (full attention) or 3 hours (local
+attention mode). Streaming mode runs indefinitely over persistent WebSocket
+connections.
+
+**Is diarization supported?**
+Not yet. Speaker diarization is on the roadmap for both modes.
+
+**Is inverse text normalization (ITN) available?**
+On the roadmap. Currently outputs normalized text without ITN post-processing.
 
 ## Users & Sponsors
 
