@@ -32,8 +32,22 @@ curl -F "file=@audio.wav" http://localhost:8000/v1/transcriptions
 
 ## Performance
 
-The published L4 streaming benchmark runs 512 persistent WebSocket streams for a
-10-minute real-time soak across all 2,620 files in LibriSpeech test-clean.
+### RTFx Scaling
+
+![RTFx Scaling](benchmarks/results/2026-l4-nemo-512-streams/rtfx-scaling.png)
+
+### Throughput Scaling
+
+![Throughput Scaling](benchmarks/results/2026-l4-nemo-512-streams/throughput-scaling.png)
+
+### Cost Efficiency
+
+![Cost Efficiency](benchmarks/results/2026-l4-nemo-512-streams/cost-efficiency.png)
+
+### Benchmark Details
+
+512 persistent WebSocket streams, 10-minute real-time soak, all 2,620 LibriSpeech
+test-clean files.
 
 | Metric | Value |
 |--------|-------|
@@ -45,13 +59,12 @@ The published L4 streaming benchmark runs 512 persistent WebSocket streams for a
 | Realtime factor | 38.69x |
 | VRAM | 8672 MB (38%) |
 
-Quality rubric: high quality means real speech corpus, standard WER normalization,
-sustained concurrent load, and reproducible artifacts. This run uses LibriSpeech
-test-clean (2,620 files, 5.4 hours, CC-BY-4.0), Whisper EnglishTextNormalizer,
-`nvidia/nemotron-3.5-asr-streaming-0.6b`, and a 512-stream realtime-paced 10-minute soak.
-Verify [result.json](benchmarks/results/2026-l4-nemo-512-streams/result.json),
+Quality rubric: real speech corpus, standard WER normalization (Whisper
+EnglishTextNormalizer), sustained concurrent load, reproducible artifacts.
+Model: `nvidia/nemotron-3.5-asr-streaming-0.6b`.
+Verify: [result.json](benchmarks/results/2026-l4-nemo-512-streams/result.json),
 [c=32..512 sweep](benchmarks/results/2026-l4-nemo-512-streams/concurrency-sweep.json),
-and [report schema](benchmarks/report-schema.json).
+[report schema](benchmarks/report-schema.json).
 
 Full report: [benchmarks/results/2026-l4-nemo-512-streams/](benchmarks/results/2026-l4-nemo-512-streams/)
 
