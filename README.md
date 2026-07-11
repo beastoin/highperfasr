@@ -24,8 +24,9 @@ Measured on one GKE L4 GPU with model quality preserved:
 | Cost | About $0.70/hr on GKE L4 |
 
 ```bash
-git clone https://github.com/beastoin/highperfasr
-cd highperfasr
+mkdir highperfasr && cd highperfasr
+curl -fsSLO https://raw.githubusercontent.com/beastoin/highperfasr/main/compose.yaml
+docker compose pull stream
 docker compose up -d
 curl http://localhost:8001/health
 ```
@@ -75,13 +76,13 @@ first run downloads the ASR models and caches them in Docker volumes.
 
 | Command | What |
 |---------|------|
-| `docker compose up -d` | Start streaming only (:8001) — default for 1 GPU |
-| `docker compose --profile full up -d` | Start batch (:8000) + streaming (:8001) — requires 2 GPUs |
-| `docker compose up -d batch` | Start batch only (:8000) |
-| `HPFASR_STREAM_IMAGE=highperfasr-stream:dev docker compose up -d --build` | Build and run a local stream image |
-| `HPFASR_STREAM_IMAGE=ghcr.io/beastoin/highperfasr-stream:latest docker compose up -d` | Use a published stream image after GHCR packages are available |
-| `make health` | Check server readiness |
-| `make smoke` | Verify the default streaming service and Prometheus metrics |
+| `docker compose pull stream && docker compose up -d` | Pull and start the prebuilt GHCR streaming image (:8001) — default for 1 GPU |
+| `docker compose --profile full pull && docker compose --profile full up -d` | Pull and start batch (:8000) + streaming (:8001) — requires 2 GPUs |
+| `docker compose --profile full up -d batch` | Start batch only (:8000) |
+| `HPFASR_STREAM_IMAGE=highperfasr-stream:dev docker compose up -d --build` | Build and run a local stream image from a cloned repo |
+| `HPFASR_BATCH_IMAGE=highperfasr-batch:dev docker compose --profile full up -d batch --build` | Build and run a local batch image from a cloned repo |
+| `make health` | Check server readiness from a cloned repo |
+| `make smoke` | Verify the default streaming service and Prometheus metrics from a cloned repo |
 | `curl http://localhost:8001/metrics/prometheus` | Prometheus metrics |
 | `docker compose logs -f` | Tail server logs |
 

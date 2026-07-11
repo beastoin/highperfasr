@@ -1,8 +1,9 @@
 # HighPerfASR — one-command GPU ASR serving.
 #
-# Default (1 GPU):   docker compose up -d            (stream only, :8001)
-# Both (2 GPUs):     docker compose --profile full up -d  (batch :8000 + stream :8001)
-# Batch only:        docker compose up -d batch
+# Default (1 GPU):   docker compose up -d                 (pulls GHCR stream image, :8001)
+# Both (2 GPUs):     docker compose --profile full up -d   (batch :8000 + stream :8001)
+# Batch only:        docker compose --profile full up -d batch
+# Local build:       HPFASR_STREAM_IMAGE=highperfasr-stream:dev docker compose up -d --build
 # Logs:              docker compose logs -f
 # Stop:              docker compose down
 #
@@ -15,7 +16,7 @@ services:
     build:
       context: .
       target: batch
-    image: ${HPFASR_BATCH_IMAGE:-highperfasr-batch:latest}
+    image: ${HPFASR_BATCH_IMAGE:-ghcr.io/beastoin/highperfasr-batch:latest}
     pull_policy: missing
     container_name: highperfasr-batch
     restart: unless-stopped
@@ -44,7 +45,7 @@ services:
     build:
       context: .
       target: stream
-    image: ${HPFASR_STREAM_IMAGE:-highperfasr-stream:latest}
+    image: ${HPFASR_STREAM_IMAGE:-ghcr.io/beastoin/highperfasr-stream:latest}
     pull_policy: missing
     container_name: highperfasr-stream
     restart: unless-stopped
