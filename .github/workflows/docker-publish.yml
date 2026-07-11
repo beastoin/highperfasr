@@ -2,8 +2,11 @@ name: Publish Docker images to GHCR
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -33,7 +36,8 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
 
       - uses: docker/build-push-action@v5
         with:

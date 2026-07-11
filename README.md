@@ -31,6 +31,15 @@ docker compose up -d
 curl http://localhost:8001/health
 ```
 
+The GHCR images are published by GitHub Actions on `main` pushes and `v*` tags.
+If the first publish has not completed yet, build locally from a clone:
+
+```bash
+git clone https://github.com/beastoin/highperfasr
+cd highperfasr
+HPFASR_STREAM_IMAGE=highperfasr-stream:dev docker compose up -d --build
+```
+
 ## Performance
 
 ### Streaming (Nemotron 3.5 ASR 0.6B)
@@ -76,8 +85,8 @@ first run downloads the ASR models and caches them in Docker volumes.
 
 | Command | What |
 |---------|------|
-| `docker compose pull stream && docker compose up -d` | Pull and start the prebuilt GHCR streaming image (:8001) — default for 1 GPU |
-| `docker compose --profile full pull && docker compose --profile full up -d` | Pull and start batch (:8000) + streaming (:8001) — requires 2 GPUs |
+| `docker compose pull stream && docker compose up -d` | Pull and start the prebuilt GHCR streaming image after publish (:8001) — default for 1 GPU |
+| `docker compose --profile full pull && docker compose --profile full up -d` | Pull and start prebuilt batch (:8000) + streaming (:8001) images after publish — requires 2 GPUs |
 | `docker compose --profile full up -d batch` | Start batch only (:8000) |
 | `HPFASR_STREAM_IMAGE=highperfasr-stream:dev docker compose up -d --build` | Build and run a local stream image from a cloned repo |
 | `HPFASR_BATCH_IMAGE=highperfasr-batch:dev docker compose --profile full up -d batch --build` | Build and run a local batch image from a cloned repo |
