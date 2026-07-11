@@ -1,10 +1,11 @@
 # HighPerfASR — one-command GPU ASR serving.
 #
-# Both:           docker compose up -d
-# Streaming only: docker compose up -d stream
-# Batch only:     docker compose up -d batch
-# Logs:           docker compose logs -f
-# Stop:           docker compose down
+# Quick start (pre-built):  docker compose up -d
+# Build from source:        docker compose up -d --build
+# Streaming only:           docker compose up -d stream
+# Batch only:               docker compose up -d batch
+# Logs:                     docker compose logs -f
+# Stop:                     docker compose down
 #
 # Prerequisites: Docker + NVIDIA Container Toolkit + GPU (>= 12 GB VRAM)
 # First run downloads models from HuggingFace (~2 GB each). Cached in named volumes.
@@ -14,7 +15,7 @@ services:
     build:
       context: .
       target: batch
-    image: highperfasr-batch:latest
+    image: ghcr.io/beastoin/highperfasr-batch:latest
     container_name: highperfasr-batch
     restart: unless-stopped
     ports:
@@ -42,7 +43,7 @@ services:
     build:
       context: .
       target: stream
-    image: highperfasr-stream:latest
+    image: ghcr.io/beastoin/highperfasr-stream:latest
     container_name: highperfasr-stream
     restart: unless-stopped
     ports:

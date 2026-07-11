@@ -24,6 +24,13 @@ Measured on one GKE L4 GPU with model quality preserved:
 | Cost | About $0.70/hr on GKE L4 |
 
 ```bash
+docker pull ghcr.io/beastoin/highperfasr-stream:latest
+docker run --gpus all -p 8001:8000 ghcr.io/beastoin/highperfasr-stream:latest
+```
+
+Or with Docker Compose (batch + streaming):
+
+```bash
 git clone https://github.com/beastoin/highperfasr
 cd highperfasr
 docker compose up -d
@@ -85,6 +92,10 @@ first run downloads the ASR models and caches them in Docker volumes.
 ### GKE L4
 
 ```bash
+# Use pre-built GHCR image (recommended)
+kubectl apply -f gke-l4.yaml
+
+# Or build and push your own
 docker build --target stream -t $REGISTRY/highperfasr-stream:v0.1.0 .
 docker push $REGISTRY/highperfasr-stream:v0.1.0
 kubectl apply -f gke-l4.yaml
