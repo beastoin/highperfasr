@@ -82,30 +82,6 @@ first run downloads the ASR models and caches them in Docker volumes.
 | `make smoke` | Run a quick transcription test |
 | `docker compose logs -f` | Tail server logs |
 
-### Model Caching
-
-The first start downloads ASR models from HuggingFace (~2.3 GB per model).
-Subsequent starts are instant because models are cached in Docker named volumes.
-
-| Setup | Cache Location | Persist Across Restarts |
-|-------|---------------|------------------------|
-| Docker Compose | Named volumes `model-cache-batch`, `model-cache-stream` | Yes (survives `docker compose down`, cleared by `docker compose down -v`) |
-| Plain Docker | Mount a volume to `/app/.cache/huggingface` | Yes, if volume is reused |
-| GKE | PersistentVolumeClaim (5 Gi, standard-rwo) | Yes, managed by Kubernetes |
-
-To pre-download models without starting the server:
-
-```bash
-docker compose run --rm stream python -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/canary-1b-flash')"
-```
-
-For plain Docker:
-
-```bash
-docker run --rm -v hf-cache:/app/.cache/huggingface highperfasr-stream:latest \
-  python -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/canary-1b-flash')"
-```
-
 ### GKE L4
 
 ```bash
@@ -113,6 +89,72 @@ docker build --target stream -t $REGISTRY/highperfasr-stream:v0.1.0 .
 docker push $REGISTRY/highperfasr-stream:v0.1.0
 kubectl apply -f gke-l4.yaml
 ```
+
+## Model Caching
+
+The first start downloads ASR models from HuggingFace (~2.3 GB per model).
+Subsequent starts are instant because models are cached in persistent volumes.
+
+The `HF_HOME` environment variable controls the cache directory inside the
+container (default: `/app/.cache/huggingface`). Both `compose.yaml` and
+`gke-l4.yaml` set this automatically.
+
+### Cache locations
+
+| Setup | Cache Location | Survives Restart |
+|-------|---------------|------------------|
+| Docker Compose | Named volumes `model-cache-batch`, `model-cache-stream` | Yes (`docker compose down`). Cleared by `docker compose down -v`. |
+| GKE | PVCs `highperfasr-batch-model-cache`, `highperfasr-stream-model-cache` (5 Gi, standard-rwo) | Yes, managed by Kubernetes. |
+| Plain Docker | Mount any volume to the `HF_HOME` path | Yes, if the same volume is reused. |
+
+### Pre-fetch models
+
+Download models before the first real request so cold start is handled during
+deployment, not when traffic arrives:
+
+```bash
+# Batch model (Parakeet TDT 0.6B v3)
+docker compose run --rm batch python -c \
+  "from nemo.collections.asr.models import EncDecRNNTBPEModel; EncDecRNNTBPEModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v3')"
+
+# Streaming model (Nemotron 3.5 ASR 0.6B)
+docker compose run --rm stream python -c \
+  "from nemo.collections.asr.models import EncDecRNNTBPEModel; EncDecRNNTBPEModel.from_pretrained('nvidia/nemotron-3.5-asr-streaming-0.6b')"
+```
+
+Or use the Makefile shortcut:
+
+```bash
+make prefetch
+```
+
+### Air-gapped deployment
+
+For environments without internet access, populate the cache volume on a
+connected machine and copy it to the target:
+
+```bash
+# 1. Pre-fetch on a connected machine
+docker compose up -d && docker compose down
+
+# 2. Export the cache volumes
+docker run --rm -v model-cache-batch:/data -v $(pwd):/backup alpine \
+  tar czf /backup/model-cache-batch.tar.gz -C /data .
+docker run --rm -v model-cache-stream:/data -v $(pwd):/backup alpine \
+  tar czf /backup/model-cache-stream.tar.gz -C /data .
+
+# 3. Transfer archives to the air-gapped machine, then import
+docker volume create model-cache-batch
+docker volume create model-cache-stream
+docker run --rm -v model-cache-batch:/data -v $(pwd):/backup alpine \
+  tar xzf /backup/model-cache-batch.tar.gz -C /data
+docker run --rm -v model-cache-stream:/data -v $(pwd):/backup alpine \
+  tar xzf /backup/model-cache-stream.tar.gz -C /data
+```
+
+For GKE air-gapped clusters, build a custom image with models baked in or use
+an init container that copies from a GCS bucket into the PVC before the main
+container starts.
 
 ## Protocol (v1alpha1, draft)
 

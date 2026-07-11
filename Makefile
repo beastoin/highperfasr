@@ -3,6 +3,7 @@
 # make health   check endpoints
 # make smoke    quick test
 # make logs     tail output
+# make prefetch download models before first request
 
 .PHONY: up down health smoke logs prefetch
 
@@ -25,4 +26,7 @@ smoke:
 	@rm -f /tmp/_smoke.wav
 
 prefetch:
-	docker compose run --rm stream python -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/canary-1b-flash')"
+	docker compose run --rm batch python -c \
+	  "from nemo.collections.asr.models import EncDecRNNTBPEModel; EncDecRNNTBPEModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v3')"
+	docker compose run --rm stream python -c \
+	  "from nemo.collections.asr.models import EncDecRNNTBPEModel; EncDecRNNTBPEModel.from_pretrained('nvidia/nemotron-3.5-asr-streaming-0.6b')"
