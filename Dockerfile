@@ -18,6 +18,11 @@ FROM pytorch/pytorch:2.6.0-cuda12.6-cudnn9-runtime AS base
 
 WORKDIR /app
 
+# Build tools needed for numba JIT compilation at first inference
+RUN apt-get update -qq \
+    && apt-get install -y --no-install-recommends gcc g++ libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install NeMo from fork (includes thread-safety + streaming patches)
 COPY --from=nemo-fork /nemo-fork/ /tmp/nemo-fork/
 RUN pip install --no-cache-dir \

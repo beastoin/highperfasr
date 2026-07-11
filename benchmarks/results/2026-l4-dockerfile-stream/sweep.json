@@ -1,0 +1,94 @@
+{
+  "benchmark": "Streaming ASR Benchmark",
+  "timestamp": "2026-07-11T02:31:08Z",
+  "server": "ws://localhost:8000",
+  "chunk_ms": 160,
+  "samples": 200,
+  "dataset": "LibriSpeech test-clean",
+  "smart_mode": false,
+  "wer": {
+    "corpus_wer_pct": 3.21,
+    "samples_evaluated": 200,
+    "normalization": "whisper_english"
+  },
+  "concurrency_sweep": [
+    {
+      "concurrency": 1,
+      "total": 200,
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 1735.91,
+      "sess_per_min": 6.9,
+      "rtfx": 0.9,
+      "p50_s": 7.066,
+      "p99_s": 29.385
+    },
+    {
+      "concurrency": 32,
+      "total": 200,
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 137.36,
+      "sess_per_min": 87.4,
+      "rtfx": 11.38,
+      "p50_s": 17.57,
+      "p99_s": 63.987
+    },
+    {
+      "concurrency": 64,
+      "total": 200,
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 120.63,
+      "sess_per_min": 99.5,
+      "rtfx": 12.96,
+      "p50_s": 30.906,
+      "p99_s": 64.973
+    },
+    {
+      "concurrency": 128,
+      "total": 200,
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 90.51,
+      "sess_per_min": 132.6,
+      "rtfx": 17.27,
+      "p50_s": 39.84,
+      "p99_s": 63.992
+    },
+    {
+      "concurrency": 256,
+      "total": 200,
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 50.34,
+      "sess_per_min": 238.4,
+      "rtfx": 31.06,
+      "p50_s": 43.556,
+      "p99_s": 45.205
+    },
+    {
+      "concurrency": 512,
+      "total": 200,
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 47.55,
+      "sess_per_min": 252.4,
+      "rtfx": 32.88,
+      "p50_s": 13.285,
+      "p99_s": 36.958
+    }
+  ],
+  "sustained_load": {
+    "concurrency": 64,
+    "total": 800,
+    "ok": 800,
+    "failures": 0,
+    "wall_s": 486.87,
+    "sess_per_min": 98.6,
+    "rtfx": 12.85,
+    "p50_s": 37.136,
+    "p99_s": 64.861,
+    "rounds": 4
+  }
+}
