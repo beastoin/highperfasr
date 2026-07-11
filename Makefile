@@ -1,7 +1,7 @@
-# make up       start servers
+# make up       start stream (1 GPU default)
 # make down     stop
 # make health   check endpoints
-# make smoke    quick test
+# make smoke    quick test (needs batch: docker compose up -d batch)
 # make logs     tail output
 
 .PHONY: up down health smoke logs

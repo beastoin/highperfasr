@@ -26,8 +26,8 @@ Measured on one GKE L4 GPU with model quality preserved:
 ```bash
 git clone https://github.com/beastoin/highperfasr
 cd highperfasr
-docker compose up -d
-curl -F "file=@audio.wav" http://localhost:8000/v1/transcriptions
+docker compose up -d          # streaming on :8001 (1 GPU)
+curl http://localhost:8001/health
 ```
 
 ## Performance
@@ -75,9 +75,9 @@ first run downloads the ASR models and caches them in Docker volumes.
 
 | Command | What |
 |---------|------|
-| `docker compose up -d` | Start batch (:8000) + streaming (:8001) |
-| `docker compose up -d stream` | Start streaming only |
-| `docker compose up -d batch` | Start batch only |
+| `docker compose up -d` | Start streaming (:8001) -- 1 GPU |
+| `docker compose --profile full up -d` | Start batch (:8000) + streaming (:8001) -- 2 GPUs |
+| `docker compose up -d batch` | Start batch only (:8000) -- 1 GPU |
 | `make health` | Check server readiness |
 | `make smoke` | Run a quick transcription test |
 | `docker compose logs -f` | Tail server logs |

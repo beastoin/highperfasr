@@ -1,16 +1,17 @@
-# HighPerfASR — one-command GPU ASR serving.
+# HighPerfASR — one-command GPU ASR serving (single-GPU default).
 #
-# Both:           docker compose up -d
-# Streaming only: docker compose up -d stream
-# Batch only:     docker compose up -d batch
-# Logs:           docker compose logs -f
-# Stop:           docker compose down
+# Stream only (1 GPU):  docker compose up -d
+# Both (2 GPUs):        docker compose --profile full up -d
+# Batch only (1 GPU):   docker compose up -d batch
+# Logs:                 docker compose logs -f
+# Stop:                 docker compose down
 #
 # Prerequisites: Docker + NVIDIA Container Toolkit + GPU (>= 12 GB VRAM)
 # First run downloads models from HuggingFace (~2 GB each). Cached in named volumes.
 
 services:
   batch:
+    profiles: ["full"]
     build:
       context: .
       target: batch
