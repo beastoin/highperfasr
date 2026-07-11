@@ -90,6 +90,35 @@ docker push $REGISTRY/highperfasr-stream:v0.1.0
 kubectl apply -f gke-l4.yaml
 ```
 
+## Model Caching
+
+Both ASR models (~2 GB each) download from HuggingFace on first startup. After
+that, they are cached and subsequent starts are fast.
+
+| Environment | Cache location | Persistence |
+|-------------|---------------|-------------|
+| Docker Compose | Named volumes `model-cache-batch`, `model-cache-stream` | Survives `docker compose down`; removed by `down -v` |
+| GKE | PersistentVolumeClaim per deployment (see `gke-l4.yaml`) | Survives pod restarts and redeployments |
+
+The `HF_HOME` environment variable controls the cache directory inside the
+container (default: `/app/.cache/huggingface`).
+
+### Pre-fetch models (optional)
+
+Download models before the first real request so startup is instant:
+
+```bash
+docker compose run --rm batch python -c \
+  "from nemo.collections.asr.models import EncDecRNNTBPEModel; EncDecRNNTBPEModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v3')"
+docker compose run --rm stream python -c \
+  "from nemo.collections.asr.models import EncDecRNNTBPEModel; EncDecRNNTBPEModel.from_pretrained('nvidia/nemotron-3.5-asr-streaming-0.6b')"
+```
+
+### Air-gapped deployment
+
+Copy a populated cache volume to the target host, then point `HF_HOME` at it.
+Docker: `docker volume create model-cache-batch && docker run --rm -v model-cache-batch:/dst -v /path/to/cache:/src alpine cp -a /src/. /dst/`.
+
 ## Protocol (v1alpha1, draft)
 
 highperfasr uses a framework-agnostic protocol: REST for files, WebSocket for
