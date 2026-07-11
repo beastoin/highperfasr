@@ -19,7 +19,7 @@ from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from highperfasr.batch_engine import BatchEngine, QueueFullError
 from highperfasr.compat import apply_compat
@@ -181,6 +181,82 @@ async def metrics():
     if stream_engine is not None:
         result["stream"] = stream_engine.metrics
     return result
+
+
+def _prom_line(name: str, kind: str, help_text: str, value, labels: str = "") -> str:
+    """Format a single metric in Prometheus text exposition format."""
+    label_part = "{" + labels + "}" if labels else ""
+    return (
+        f"# HELP {name} {help_text}\n"
+        f"# TYPE {name} {kind}\n"
+        f"{name}{label_part} {value}\n"
+    )
+
+
+@app.get("/metrics/prometheus")
+async def metrics_prometheus():
+    lines: list[str] = []
+
+    # --- Uptime ---
+    uptime = round(time.monotonic() - start_time, 1)
+    lines.append(_prom_line(
+        "highperfasr_uptime_seconds", "gauge",
+        "Server uptime in seconds", uptime,
+    ))
+
+    # --- Streaming metrics ---
+    if stream_engine is not None:
+        sm = stream_engine.metrics
+        lines.append(_prom_line(
+            "highperfasr_active_streams", "gauge",
+            "Current active streaming sessions", sm["active_streams"],
+        ))
+        lines.append(_prom_line(
+            "highperfasr_total_streams", "counter",
+            "Total streams opened", sm["total_streams_opened"],
+        ))
+        lines.append(_prom_line(
+            "highperfasr_stream_chunks_processed_total", "counter",
+            "Total audio chunks processed via streaming", sm["total_chunks_processed"],
+        ))
+
+    # --- Batch metrics ---
+    if batch_engine is not None:
+        bm = batch_engine.metrics
+        lines.append(_prom_line(
+            "highperfasr_batch_requests_total", "counter",
+            "Total batch transcription requests", bm["total_requests"],
+        ))
+        lines.append(_prom_line(
+            "highperfasr_batch_pending", "gauge",
+            "Pending batch requests in queue", bm["pending_requests"],
+        ))
+        lines.append(
+            "# HELP highperfasr_rejected_total Rejected or limited requests\n"
+            "# TYPE highperfasr_rejected_total counter\n"
+            f'highperfasr_rejected_total{{reason="queue_full"}} {bm["rejected_requests"]}\n'
+            f'highperfasr_rejected_total{{reason="vram_limited"}} {bm["vram_limited_batches"]}\n'
+        )
+
+    # --- VRAM metrics ---
+    if gpu_worker is not None:
+        vram = gpu_worker.vram_info
+        total_bytes = int(vram["total_mb"] * 1024 * 1024)
+        used_bytes = int(vram["baseline_mb"] * 1024 * 1024)
+        lines.append(_prom_line(
+            "highperfasr_vram_total_bytes", "gauge",
+            "Total GPU VRAM in bytes", total_bytes,
+        ))
+        lines.append(_prom_line(
+            "highperfasr_vram_used_bytes", "gauge",
+            "GPU VRAM used by loaded models in bytes", used_bytes,
+        ))
+
+    body = "\n".join(lines) + "\n"
+    return Response(
+        content=body,
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 @app.get("/admin/config")
