@@ -3,24 +3,39 @@
 # Batch:   docker build --target batch -t highperfasr-batch .
 # Stream:  docker build --target stream -t highperfasr-stream .
 # Both:    docker compose up -d
+#
+# Includes NeMo fork patches (github.com/beastoin/NeMo) for thread-safety
+# and streaming fixes not yet merged upstream.
 
-FROM pytorch/pytorch:2.6.0-cuda12.8-cudnn9-runtime AS base
+# --- Stage: clone NeMo fork patches ---
+FROM alpine/git:latest AS nemo-fork
+ARG NEMO_FORK_REF=main
+RUN git clone --depth=1 --branch ${NEMO_FORK_REF} \
+    https://github.com/beastoin/NeMo.git /nemo-fork
+
+# --- Stage: base image ---
+FROM pytorch/pytorch:2.6.0-cuda12.6-cudnn9-runtime AS base
 
 WORKDIR /app
 
-COPY labs/nemo-fastapi/pyproject.toml ./pyproject.toml
-COPY labs/nemo-fastapi/src/ ./src/
-COPY labs/nemo-fastapi/configs/ ./configs/
-COPY LICENSE ./
-
+# Install NeMo from fork (includes thread-safety + streaming patches)
+COPY --from=nemo-fork /nemo-fork/ /tmp/nemo-fork/
 RUN pip install --no-cache-dir \
-    "nemo-toolkit[asr]>=2.5,<2.7" \
+    "/tmp/nemo-fork[asr]" \
     "fastapi>=0.115" \
     "uvicorn[standard]>=0.30" \
     "python-multipart>=0.0.9" \
     "pyyaml>=6.0" \
     "numpy>=1.24" \
-    && pip install --no-cache-dir --no-deps -e . \
+    && rm -rf /tmp/nemo-fork \
+    && pip cache purge
+
+# Install highperfasr
+COPY labs/nemo-fastapi/pyproject.toml ./pyproject.toml
+COPY labs/nemo-fastapi/src/ ./src/
+COPY labs/nemo-fastapi/configs/ ./configs/
+COPY LICENSE ./
+RUN pip install --no-cache-dir --no-deps -e . \
     && pip cache purge
 
 ENV NVIDIA_VISIBLE_DEVICES=all \
