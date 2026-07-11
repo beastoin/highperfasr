@@ -8,10 +8,12 @@
 # and streaming fixes not yet merged upstream.
 
 # --- Stage: clone NeMo fork patches ---
+# Pin to a specific commit for reproducible builds. Update NEMO_FORK_REF when
+# pulling new patches from github.com/beastoin/NeMo.
 FROM alpine/git:latest AS nemo-fork
-ARG NEMO_FORK_REF=main
-RUN git clone --depth=1 --branch ${NEMO_FORK_REF} \
-    https://github.com/beastoin/NeMo.git /nemo-fork
+ARG NEMO_FORK_REF=3c736deb8b3b5fec7029e88af9c59e84a48b4294
+RUN git clone --branch main https://github.com/beastoin/NeMo.git /nemo-fork \
+    && cd /nemo-fork && git checkout ${NEMO_FORK_REF}
 
 # --- Stage: base image ---
 FROM pytorch/pytorch:2.6.0-cuda12.6-cudnn9-runtime AS base

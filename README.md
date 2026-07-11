@@ -115,6 +115,27 @@ benchmarks/scripts/  # reproducible benchmark scripts (batch, streaming, WER)
 benchmarks/results/  # published benchmark reports (JSON + markdown)
 ```
 
+## NeMo Fork
+
+highperfasr uses a [fork of NeMo](https://github.com/beastoin/NeMo) with
+serving-specific patches not yet merged upstream. The Dockerfile pins to a
+specific commit SHA for reproducible builds.
+
+Patches in the fork:
+
+| PR | Description |
+|----|-------------|
+| [#2](https://github.com/beastoin/NeMo/pull/2) | Thread-safe ASR inference (freeze/unfreeze race, pinned-memory GC) |
+| [#4](https://github.com/beastoin/NeMo/pull/4) | Nemotron 3.5 ASR streaming + multilingual RNNT fixes |
+| [#8](https://github.com/beastoin/NeMo/pull/8) | EOU detection + configurable attention mode for long audio |
+| [#11](https://github.com/beastoin/NeMo/pull/11) | VRAM-aware dynamic batching with auto attention switching |
+| [#13](https://github.com/beastoin/NeMo/pull/13) | Batch=1 throughput collapse + 8 gpu_worker lifecycle bugs |
+| [#14](https://github.com/beastoin/NeMo/pull/14) | GPU worker hardening + soak/chaos benchmark modes |
+| [#17](https://github.com/beastoin/NeMo/pull/17) | Explicit serving mode (batch/stream/both) + config DX |
+
+To update the pin, change `NEMO_FORK_REF` in the Dockerfile to the new commit
+SHA and rebuild.
+
 ## Q&A
 
 | Question | Batch (Parakeet TDT 0.6B v3) | Streaming (Nemotron 3.5 ASR 0.6B) |
