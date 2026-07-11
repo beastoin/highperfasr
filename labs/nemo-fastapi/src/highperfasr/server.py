@@ -19,7 +19,7 @@ from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from highperfasr.batch_engine import BatchEngine, QueueFullError
 from highperfasr.compat import apply_compat
@@ -181,6 +181,61 @@ async def metrics():
     if stream_engine is not None:
         result["stream"] = stream_engine.metrics
     return result
+
+
+@app.get("/metrics/prometheus")
+async def metrics_prometheus():
+    lines: list[str] = []
+
+    uptime = round(time.monotonic() - start_time, 1)
+    lines.append("# HELP highperfasr_uptime_seconds Server uptime in seconds")
+    lines.append("# TYPE highperfasr_uptime_seconds gauge")
+    lines.append(f"highperfasr_uptime_seconds {uptime}")
+
+    if stream_engine is not None:
+        sm = stream_engine.metrics
+        lines.append("# HELP highperfasr_active_streams Number of currently active streams")
+        lines.append("# TYPE highperfasr_active_streams gauge")
+        lines.append(f"highperfasr_active_streams {sm['active_streams']}")
+        lines.append("# HELP highperfasr_streams_opened_total Total streams opened")
+        lines.append("# TYPE highperfasr_streams_opened_total counter")
+        lines.append(f"highperfasr_streams_opened_total {sm['total_streams_opened']}")
+        lines.append("# HELP highperfasr_streams_closed_total Total streams closed")
+        lines.append("# TYPE highperfasr_streams_closed_total counter")
+        lines.append(f"highperfasr_streams_closed_total {sm['total_streams_closed']}")
+        lines.append("# HELP highperfasr_chunks_processed_total Total audio chunks processed")
+        lines.append("# TYPE highperfasr_chunks_processed_total counter")
+        lines.append(f"highperfasr_chunks_processed_total {sm['total_chunks_processed']}")
+        lines.append("# HELP highperfasr_streams_reaped_total Total idle streams reaped")
+        lines.append("# TYPE highperfasr_streams_reaped_total counter")
+        lines.append(f"highperfasr_streams_reaped_total {sm['total_streams_reaped']}")
+
+    if batch_engine is not None:
+        bm = batch_engine.metrics
+        lines.append("# HELP highperfasr_batch_requests_total Total batch requests received")
+        lines.append("# TYPE highperfasr_batch_requests_total counter")
+        lines.append(f"highperfasr_batch_requests_total {bm['total_requests']}")
+        lines.append("# HELP highperfasr_batch_batches_total Total batches dispatched")
+        lines.append("# TYPE highperfasr_batch_batches_total counter")
+        lines.append(f"highperfasr_batch_batches_total {bm['total_batches']}")
+        lines.append("# HELP highperfasr_batch_files_total Total files transcribed")
+        lines.append("# TYPE highperfasr_batch_files_total counter")
+        lines.append(f"highperfasr_batch_files_total {bm['total_files']}")
+        lines.append("# HELP highperfasr_batch_rejected_total Total requests rejected due to queue full")
+        lines.append("# TYPE highperfasr_batch_rejected_total counter")
+        lines.append(f"highperfasr_batch_rejected_total {bm['rejected_requests']}")
+        lines.append("# HELP highperfasr_batch_vram_limited_total Total batches limited by VRAM")
+        lines.append("# TYPE highperfasr_batch_vram_limited_total counter")
+        lines.append(f"highperfasr_batch_vram_limited_total {bm['vram_limited_batches']}")
+        lines.append("# HELP highperfasr_batch_pending Number of pending requests in queue")
+        lines.append("# TYPE highperfasr_batch_pending gauge")
+        lines.append(f"highperfasr_batch_pending {bm['pending_requests']}")
+
+    body = "\n".join(lines) + "\n"
+    return PlainTextResponse(
+        content=body,
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 @app.get("/admin/config")
