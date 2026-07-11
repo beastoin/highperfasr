@@ -19,7 +19,7 @@ from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from highperfasr.batch_engine import BatchEngine, QueueFullError
 from highperfasr.compat import apply_compat
@@ -181,6 +181,41 @@ async def metrics():
     if stream_engine is not None:
         result["stream"] = stream_engine.metrics
     return result
+
+
+@app.get("/metrics/prometheus")
+async def metrics_prometheus():
+    lines = []
+    lines.append("# HELP highperfasr_up Server is running")
+    lines.append("# TYPE highperfasr_up gauge")
+    lines.append("highperfasr_up 1")
+    lines.append(f"# HELP highperfasr_uptime_seconds Seconds since server start")
+    lines.append("# TYPE highperfasr_uptime_seconds gauge")
+    lines.append(f"highperfasr_uptime_seconds {round(time.monotonic() - start_time, 1)}")
+    if batch_engine is not None:
+        m = batch_engine.metrics
+        for key in ("total_requests", "total_batches", "total_files", "rejected_requests", "vram_limited_batches"):
+            prom_type = "counter"
+            lines.append(f"# HELP highperfasr_batch_{key} Batch engine {key.replace('_', ' ')}")
+            lines.append(f"# TYPE highperfasr_batch_{key} {prom_type}")
+            lines.append(f"highperfasr_batch_{key} {m.get(key, 0)}")
+        lines.append("# HELP highperfasr_batch_pending_requests Current pending batch requests")
+        lines.append("# TYPE highperfasr_batch_pending_requests gauge")
+        lines.append(f"highperfasr_batch_pending_requests {m.get('pending_requests', 0)}")
+    if stream_engine is not None:
+        m = stream_engine.metrics
+        for key in ("total_streams_opened", "total_streams_closed", "total_chunks_processed", "total_streams_reaped"):
+            lines.append(f"# HELP highperfasr_stream_{key} Stream engine {key.replace('_', ' ')}")
+            lines.append(f"# TYPE highperfasr_stream_{key} counter")
+            lines.append(f"highperfasr_stream_{key} {m.get(key, 0)}")
+        lines.append("# HELP highperfasr_stream_active_streams Current active WebSocket streams")
+        lines.append("# TYPE highperfasr_stream_active_streams gauge")
+        lines.append(f"highperfasr_stream_active_streams {m.get('active_streams', 0)}")
+    lines.append("")
+    return PlainTextResponse(
+        "\n".join(lines),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 @app.get("/admin/config")

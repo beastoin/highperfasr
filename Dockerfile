@@ -9,7 +9,7 @@
 
 # --- Stage: clone NeMo fork patches ---
 FROM alpine/git:latest AS nemo-fork
-ARG NEMO_FORK_REF=main
+ARG NEMO_FORK_REF=3c736deb8b3b5fec7029e88af9c59e84a48b4294
 RUN git clone --depth=1 --branch ${NEMO_FORK_REF} \
     https://github.com/beastoin/NeMo.git /nemo-fork
 

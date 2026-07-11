@@ -75,12 +75,33 @@ first run downloads the ASR models and caches them in Docker volumes.
 
 | Command | What |
 |---------|------|
-| `docker compose up -d` | Start batch (:8000) + streaming (:8001) |
-| `docker compose up -d stream` | Start streaming only |
-| `docker compose up -d batch` | Start batch only |
+| `docker compose up -d` | Start streaming only (:8001) — default for 1 GPU |
+| `docker compose --profile full up -d` | Start batch (:8000) + streaming (:8001) — requires 2 GPUs |
+| `docker compose up -d batch` | Start batch only (:8000) |
 | `make health` | Check server readiness |
 | `make smoke` | Run a quick transcription test |
+| `curl http://localhost:8001/metrics/prometheus` | Prometheus metrics |
 | `docker compose logs -f` | Tail server logs |
+
+### Model Caching
+
+Models download from HuggingFace on first run (~2 GB each). They are cached in
+named Docker volumes (`model-cache-batch`, `model-cache-stream`) which persist
+across `docker compose down` but not `docker compose down -v`.
+
+Pre-fetch models without starting the server:
+
+```bash
+docker compose run --rm stream python -c \
+  "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v2')"
+```
+
+The `HF_HOME` environment variable controls the cache location (default:
+`/app/.cache/huggingface` inside the container). For air-gapped deployments,
+copy a populated cache volume to the target host.
+
+GKE: PersistentVolumeClaims are already configured in `gke-l4.yaml`. First pod
+startup takes 2-3 minutes for the download; subsequent starts use the cached model.
 
 ### GKE L4
 
@@ -89,6 +110,10 @@ docker build --target stream -t $REGISTRY/highperfasr-stream:v0.1.0 .
 docker push $REGISTRY/highperfasr-stream:v0.1.0
 kubectl apply -f gke-l4.yaml
 ```
+
+### Client Examples
+
+See [examples/](examples/) for Python and Node.js integration examples.
 
 ## Protocol (v1alpha1, draft)
 
@@ -110,10 +135,27 @@ Dockerfile           # multi-target image: batch + stream
 compose.yaml         # docker compose up -d
 gke-l4.yaml          # GKE L4 GPU deployment
 labs/nemo-fastapi/   # NeMo serving + framework patches (fork: github.com/beastoin/NeMo)
+examples/            # Python + Node.js client examples
 spec/                # REST + WebSocket protocol
 benchmarks/scripts/  # reproducible benchmark scripts (batch, streaming, WER)
 benchmarks/results/  # published benchmark reports (JSON + markdown)
 ```
+
+## NeMo Fork
+
+The Dockerfile builds from [beastoin/NeMo](https://github.com/beastoin/NeMo),
+pinned to a specific commit SHA for reproducible builds. The fork carries
+patches not yet merged upstream:
+
+1. Thread-safety fix for `freeze()`/`unfreeze()` race in multi-threaded serving
+2. Pinned-memory cross-thread GC segfault fix
+3. Cache-aware streaming RNNT pipeline support
+4. `num_slots` pipeline parameter for concurrent stream limits
+5. `max_stream_drain` limit to prevent VRAM explosion
+
+To update the pin: check the fork's HEAD with
+`git ls-remote https://github.com/beastoin/NeMo.git refs/heads/main`,
+then update `NEMO_FORK_REF` in the Dockerfile.
 
 ## Q&A
 
