@@ -82,6 +82,30 @@ first run downloads the ASR models and caches them in Docker volumes.
 | `make smoke` | Run a quick transcription test |
 | `docker compose logs -f` | Tail server logs |
 
+### Model Caching
+
+The first start downloads ASR models from HuggingFace (~2.3 GB per model).
+Subsequent starts are instant because models are cached in Docker named volumes.
+
+| Setup | Cache Location | Persist Across Restarts |
+|-------|---------------|------------------------|
+| Docker Compose | Named volumes `model-cache-batch`, `model-cache-stream` | Yes (survives `docker compose down`, cleared by `docker compose down -v`) |
+| Plain Docker | Mount a volume to `/app/.cache/huggingface` | Yes, if volume is reused |
+| GKE | PersistentVolumeClaim (5 Gi, standard-rwo) | Yes, managed by Kubernetes |
+
+To pre-download models without starting the server:
+
+```bash
+docker compose run --rm stream python -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/canary-1b-flash')"
+```
+
+For plain Docker:
+
+```bash
+docker run --rm -v hf-cache:/app/.cache/huggingface highperfasr-stream:latest \
+  python -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/canary-1b-flash')"
+```
+
 ### GKE L4
 
 ```bash

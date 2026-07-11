@@ -4,7 +4,7 @@
 # make smoke    quick test
 # make logs     tail output
 
-.PHONY: up down health smoke logs
+.PHONY: up down health smoke logs prefetch
 
 up:
 	docker compose up -d
@@ -23,3 +23,6 @@ smoke:
 	@python3 -c "import struct,wave;f=wave.open('/tmp/_smoke.wav','wb');f.setnchannels(1);f.setsampwidth(2);f.setframerate(16000);f.writeframes(struct.pack('<'+'h'*16000,*([1000]*16000)));f.close()"
 	@curl -sf -F "file=@/tmp/_smoke.wav" http://localhost:8000/v1/transcriptions && echo "" || echo "batch not available"
 	@rm -f /tmp/_smoke.wav
+
+prefetch:
+	docker compose run --rm stream python -c "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/canary-1b-flash')"
