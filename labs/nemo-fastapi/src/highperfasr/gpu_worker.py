@@ -87,6 +87,15 @@ class GPUWorker:
             "auto_threshold_sec": self._attn_auto_threshold_sec,
         }
 
+    @property
+    def vram_used_bytes(self) -> int:
+        try:
+            if torch.cuda.is_available():
+                return int(torch.cuda.memory_reserved())
+        except Exception:
+            pass
+        return int(self._vram_baseline_mb * 1024 * 1024)
+
     def start(self, batch_cfg: Optional[dict] = None, stream_cfg: Optional[dict] = None) -> None:
         self._batch_cfg = batch_cfg or {}
         self._stream_cfg = stream_cfg or {}

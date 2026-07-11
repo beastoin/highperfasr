@@ -51,8 +51,10 @@ class StreamEngine:
         self._metrics = {
             "total_streams_opened": 0,
             "total_streams_closed": 0,
+            "total_stream_duration_seconds": 0.0,
             "total_chunks_processed": 0,
             "total_streams_reaped": 0,
+            "rejected_streams": 0,
         }
 
     async def start(self) -> None:
@@ -95,6 +97,7 @@ class StreamEngine:
         stream_id = str(uuid.uuid4())
 
         if len(self._sessions) >= self._max_concurrent:
+            self._metrics["rejected_streams"] += 1
             raise TooManyStreamsError(f"Active streams {len(self._sessions)} at limit {self._max_concurrent}")
         self._sessions[stream_id] = StreamSession(stream_id=stream_id)
 
@@ -162,6 +165,7 @@ class StreamEngine:
             return {"stream_id": stream_id, "status": "close_failed", "error": str(exc)}
 
         self._metrics["total_streams_closed"] += 1
+        self._metrics["total_stream_duration_seconds"] += session.total_audio_seconds
         log.info(
             f"Closed stream {stream_id} "
             f"(chunks={session.chunks_processed}, audio={session.total_audio_seconds:.1f}s)"

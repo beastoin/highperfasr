@@ -68,6 +68,8 @@ class BatchEngine:
             "total_files": 0,
             "rejected_requests": 0,
             "vram_limited_batches": 0,
+            "completed_requests": 0,
+            "total_request_latency_seconds": 0.0,
         }
 
     async def start(self) -> None:
@@ -331,6 +333,17 @@ class BatchEngine:
             if req.owns_file:
                 self._unlink_safe(req.audio_path)
 
+    def _record_completed_request_latencies(self, batch: list[PendingRequest]) -> None:
+        now = time.monotonic()
+        completed = 0
+        total_latency = 0.0
+        for req in batch:
+            if req.future.done():
+                completed += 1
+                total_latency += max(0.0, now - req.submitted_at)
+        self._metrics["completed_requests"] += completed
+        self._metrics["total_request_latency_seconds"] += total_latency
+
     async def _run_sub_batch(self, batch: list[PendingRequest], timestamps: bool) -> None:
         audio_paths = [r.audio_path for r in batch]
         durations = [self._effective_duration(r) for r in batch]
@@ -373,6 +386,7 @@ class BatchEngine:
                 if not req.future.done():
                     req.future.set_exception(exc)
         finally:
+            self._record_completed_request_latencies(batch)
             self._cleanup_owned_files(batch)
 
     @property
