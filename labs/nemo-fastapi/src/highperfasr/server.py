@@ -189,9 +189,14 @@ async def metrics_prometheus():
     lines.append("# HELP highperfasr_up Server is running")
     lines.append("# TYPE highperfasr_up gauge")
     lines.append("highperfasr_up 1")
-    lines.append(f"# HELP highperfasr_uptime_seconds Seconds since server start")
+    lines.append("# HELP highperfasr_uptime_seconds Seconds since server start")
     lines.append("# TYPE highperfasr_uptime_seconds gauge")
     lines.append(f"highperfasr_uptime_seconds {round(time.monotonic() - start_time, 1)}")
+    lines.append("# HELP highperfasr_vram_used_bytes GPU VRAM currently reserved by the server process")
+    lines.append("# TYPE highperfasr_vram_used_bytes gauge")
+    lines.append(f"highperfasr_vram_used_bytes {gpu_worker.vram_used_bytes if gpu_worker is not None else 0}")
+    lines.append("# HELP highperfasr_rejected_total Requests rejected by reason")
+    lines.append("# TYPE highperfasr_rejected_total counter")
     if batch_engine is not None:
         m = batch_engine.metrics
         for key in ("total_requests", "total_batches", "total_files", "rejected_requests", "vram_limited_batches"):
@@ -202,15 +207,43 @@ async def metrics_prometheus():
         lines.append("# HELP highperfasr_batch_pending_requests Current pending batch requests")
         lines.append("# TYPE highperfasr_batch_pending_requests gauge")
         lines.append(f"highperfasr_batch_pending_requests {m.get('pending_requests', 0)}")
+        lines.append("# HELP highperfasr_batch_latency_seconds Total batch request latency seconds")
+        lines.append("# TYPE highperfasr_batch_latency_seconds counter")
+        lines.append(f"highperfasr_batch_latency_seconds {m.get('total_request_latency_seconds', 0.0):.6f}")
+        lines.append(f'highperfasr_rejected_total{{reason="batch_queue_full"}} {m.get("rejected_requests", 0)}')
+    else:
+        lines.append('highperfasr_rejected_total{reason="batch_queue_full"} 0')
     if stream_engine is not None:
         m = stream_engine.metrics
         for key in ("total_streams_opened", "total_streams_closed", "total_chunks_processed", "total_streams_reaped"):
             lines.append(f"# HELP highperfasr_stream_{key} Stream engine {key.replace('_', ' ')}")
             lines.append(f"# TYPE highperfasr_stream_{key} counter")
             lines.append(f"highperfasr_stream_{key} {m.get(key, 0)}")
-        lines.append("# HELP highperfasr_stream_active_streams Current active WebSocket streams")
-        lines.append("# TYPE highperfasr_stream_active_streams gauge")
-        lines.append(f"highperfasr_stream_active_streams {m.get('active_streams', 0)}")
+        lines.append("# HELP highperfasr_active_streams Current active WebSocket streams")
+        lines.append("# TYPE highperfasr_active_streams gauge")
+        lines.append(f"highperfasr_active_streams {m.get('active_streams', 0)}")
+        lines.append("# HELP highperfasr_total_streams Total opened WebSocket streams")
+        lines.append("# TYPE highperfasr_total_streams counter")
+        lines.append(f"highperfasr_total_streams {m.get('total_streams_opened', 0)}")
+        lines.append("# HELP highperfasr_stream_duration_seconds Total processed stream audio duration seconds")
+        lines.append("# TYPE highperfasr_stream_duration_seconds counter")
+        lines.append(f"highperfasr_stream_duration_seconds {m.get('total_stream_duration_seconds', 0.0):.6f}")
+        lines.append(f'highperfasr_rejected_total{{reason="stream_limit"}} {m.get("rejected_streams", 0)}')
+    else:
+        lines.append("# HELP highperfasr_active_streams Current active WebSocket streams")
+        lines.append("# TYPE highperfasr_active_streams gauge")
+        lines.append("highperfasr_active_streams 0")
+        lines.append("# HELP highperfasr_total_streams Total opened WebSocket streams")
+        lines.append("# TYPE highperfasr_total_streams counter")
+        lines.append("highperfasr_total_streams 0")
+        lines.append("# HELP highperfasr_stream_duration_seconds Total processed stream audio duration seconds")
+        lines.append("# TYPE highperfasr_stream_duration_seconds counter")
+        lines.append("highperfasr_stream_duration_seconds 0")
+        lines.append('highperfasr_rejected_total{reason="stream_limit"} 0')
+    if batch_engine is None:
+        lines.append("# HELP highperfasr_batch_latency_seconds Total batch request latency seconds")
+        lines.append("# TYPE highperfasr_batch_latency_seconds counter")
+        lines.append("highperfasr_batch_latency_seconds 0")
     lines.append("")
     return PlainTextResponse(
         "\n".join(lines),

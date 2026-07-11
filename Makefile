@@ -20,6 +20,5 @@ health:
 	@echo "Stream :8001 — $$(curl -sf http://localhost:8001/health 2>/dev/null || echo 'not running')"
 
 smoke:
-	@python3 -c "import struct,wave;f=wave.open('/tmp/_smoke.wav','wb');f.setnchannels(1);f.setsampwidth(2);f.setframerate(16000);f.writeframes(struct.pack('<'+'h'*16000,*([1000]*16000)));f.close()"
-	@curl -sf -F "file=@/tmp/_smoke.wav" http://localhost:8000/v1/transcriptions && echo "" || echo "batch not available"
-	@rm -f /tmp/_smoke.wav
+	@python3 -c "import json,urllib.request; data=json.load(urllib.request.urlopen('http://localhost:8001/health', timeout=5)); assert data.get('ready'), data; assert data.get('stream_model'), data; print('stream health ok')"
+	@curl -sf http://localhost:8001/metrics/prometheus | grep -q '^highperfasr_active_streams ' && echo "stream metrics ok"

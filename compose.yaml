@@ -15,7 +15,8 @@ services:
     build:
       context: .
       target: batch
-    image: highperfasr-batch:latest
+    image: ${HPFASR_BATCH_IMAGE:-ghcr.io/beastoin/highperfasr-batch:latest}
+    pull_policy: missing
     container_name: highperfasr-batch
     restart: unless-stopped
     ports:
@@ -43,7 +44,8 @@ services:
     build:
       context: .
       target: stream
-    image: highperfasr-stream:latest
+    image: ${HPFASR_STREAM_IMAGE:-ghcr.io/beastoin/highperfasr-stream:latest}
+    pull_policy: missing
     container_name: highperfasr-stream
     restart: unless-stopped
     ports:
