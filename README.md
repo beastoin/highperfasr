@@ -24,7 +24,6 @@ Measured on one GKE L4 GPU with model quality preserved:
 | Cost | About $0.70/hr on GKE L4 |
 
 ```bash
-docker pull ghcr.io/beastoin/highperfasr-stream:latest
 git clone https://github.com/beastoin/highperfasr
 cd highperfasr
 docker compose up -d
@@ -80,6 +79,7 @@ first run downloads the ASR models and caches them in Docker volumes.
 | `docker compose --profile full up -d` | Start batch (:8000) + streaming (:8001) — requires 2 GPUs |
 | `docker compose up -d batch` | Start batch only (:8000) |
 | `HPFASR_STREAM_IMAGE=highperfasr-stream:dev docker compose up -d --build` | Build and run a local stream image |
+| `HPFASR_STREAM_IMAGE=ghcr.io/beastoin/highperfasr-stream:latest docker compose up -d` | Use a published stream image after GHCR packages are available |
 | `make health` | Check server readiness |
 | `make smoke` | Verify the default streaming service and Prometheus metrics |
 | `curl http://localhost:8001/metrics/prometheus` | Prometheus metrics |
@@ -94,10 +94,10 @@ across `docker compose down` but not `docker compose down -v`.
 Pre-fetch models without starting the server:
 
 ```bash
-docker compose run --rm stream python -c \
+docker compose run --rm --entrypoint python stream -c \
   "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/nemotron-3.5-asr-streaming-0.6b')"
 
-docker compose --profile full run --rm batch python -c \
+docker compose --profile full run --rm --entrypoint python batch -c \
   "from nemo.collections.asr.models import ASRModel; ASRModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v3')"
 ```
 
