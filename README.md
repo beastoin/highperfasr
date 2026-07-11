@@ -23,12 +23,14 @@ Measured on one GKE L4 GPU with model quality preserved:
 | Batch quality | 1.57% WER on LibriSpeech test-clean |
 | Cost | About $0.70/hr on GKE L4 |
 
+Pre-built images (available after first tagged release):
+
 ```bash
 docker pull ghcr.io/beastoin/highperfasr-stream:latest
 docker run --gpus all -p 8001:8000 ghcr.io/beastoin/highperfasr-stream:latest
 ```
 
-Or with Docker Compose (batch + streaming):
+Or build from source with Docker Compose (batch + streaming):
 
 ```bash
 git clone https://github.com/beastoin/highperfasr

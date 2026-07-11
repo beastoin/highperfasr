@@ -31,7 +31,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: highperfasr-stream
-          image: highperfasr-stream:v0.1.0  # <-- replace with your registry
+          image: ghcr.io/beastoin/highperfasr-stream:latest
           imagePullPolicy: IfNotPresent
           args: ["serve", "--config", "/app/configs/serving-stream.yaml"]
           ports:
@@ -134,7 +134,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: highperfasr-batch
-          image: highperfasr-batch:v0.1.0  # <-- replace with your registry
+          image: ghcr.io/beastoin/highperfasr-batch:latest
           imagePullPolicy: IfNotPresent
           args: ["serve", "--config", "/app/configs/serving-batch.yaml"]
           ports:
