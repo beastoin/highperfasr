@@ -19,7 +19,7 @@ from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from highperfasr.batch_engine import BatchEngine, QueueFullError
 from highperfasr.compat import apply_compat
@@ -181,6 +181,38 @@ async def metrics():
     if stream_engine is not None:
         result["stream"] = stream_engine.metrics
     return result
+
+
+@app.get("/metrics/prometheus")
+async def metrics_prometheus():
+    lines = [
+        "# HELP highperfasr_up Server is running",
+        "# TYPE highperfasr_up gauge",
+        "highperfasr_up 1",
+        "# HELP highperfasr_uptime_seconds Seconds since server start",
+        "# TYPE highperfasr_uptime_seconds gauge",
+        f"highperfasr_uptime_seconds {time.monotonic() - start_time:.1f}",
+    ]
+    if batch_engine is not None:
+        bm = batch_engine.metrics
+        for key in ("total_requests", "total_batches", "total_files", "rejected_requests", "vram_limited_batches"):
+            lines.append(f"# TYPE highperfasr_batch_{key} counter")
+            lines.append(f"highperfasr_batch_{key} {bm[key]}")
+        lines.append("# TYPE highperfasr_batch_pending_requests gauge")
+        lines.append(f"highperfasr_batch_pending_requests {bm['pending_requests']}")
+    if stream_engine is not None:
+        sm = stream_engine.metrics
+        for key in ("total_streams_opened", "total_streams_closed", "total_chunks_processed", "total_streams_reaped"):
+            lines.append(f"# TYPE highperfasr_stream_{key} counter")
+            lines.append(f"highperfasr_stream_{key} {sm[key]}")
+        lines.append("# TYPE highperfasr_stream_active_streams gauge")
+        lines.append(f"highperfasr_stream_active_streams {sm['active_streams']}")
+    return PlainTextResponse(
+        "
+".join(lines) + "
+",
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 @app.get("/admin/config")

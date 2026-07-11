@@ -80,6 +80,7 @@ first run downloads the ASR models and caches them in Docker volumes.
 | `docker compose up -d batch` | Start batch only |
 | `make health` | Check server readiness |
 | `make smoke` | Run a quick transcription test |
+| `curl http://localhost:8000/metrics/prometheus` | Prometheus-format metrics |
 | `docker compose logs -f` | Tail server logs |
 
 ### GKE L4
