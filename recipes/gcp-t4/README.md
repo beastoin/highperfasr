@@ -49,11 +49,23 @@ curl http://localhost:8001/health
 | Spot | ~$0.11/hr |
 | Storage class | standard-rwo |
 
+## Streaming Limitations
+
+T4's 16 GB VRAM severely limits concurrent streaming. Benchmark results:
+
+| Concurrency | RTFx | sess/min | Failures | Viable |
+|-------------|------|----------|----------|--------|
+| 1 | 0.78 | 5.2 | 0 | Yes |
+| 32 | 10.97 | 77.6 | 103/200 | No |
+| 64+ | 0.0 | 0.0 | 200/200 | No |
+
+**Recommendation:** Use T4 for **batch** workloads (65x RTFx, WER 1.86%). For streaming, use L4 (supports 512 concurrent streams). T4 streaming is viable only for single-stream or very low concurrency use cases.
+
 ## Notes
 
-- T4 has 16 GB VRAM (vs 24 GB on L4) — expect lower max concurrency for streaming
-- `torch.compile` is not supported on T4 (Turing architecture, compute capability 7.5) — the server disables it automatically
-- T4 is the most cost-effective GPU on GCP for inference workloads
+- T4 has 16 GB VRAM (vs 24 GB on L4) — batch-first GPU, streaming limited to low concurrency
+- `torch.compile` and CUDA graphs crash on T4 (Turing architecture, compute capability 7.5) — the recipe's ConfigMap override disables both
+- T4 is the most cost-effective GPU on GCP for batch inference workloads
 - Spot/preemptible T4 instances available at ~70% discount — suitable for batch workloads
 - First pod startup downloads models from HuggingFace (~2 GB each, 2-3 min)
 - Subsequent starts use the PVC-cached model

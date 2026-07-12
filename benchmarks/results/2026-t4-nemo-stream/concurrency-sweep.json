@@ -1,0 +1,75 @@
+{
+  "benchmark": "Streaming ASR Benchmark",
+  "timestamp": "2026-07-12T13:27:30Z",
+  "server": "ws://localhost:10322",
+  "chunk_ms": 160,
+  "samples": 200,
+  "dataset": "LibriSpeech test-clean",
+  "smart_mode": false,
+  "wer": {
+    "corpus_wer_pct": 2.76,
+    "samples_evaluated": 200,
+    "normalization": "whisper_english"
+  },
+  "concurrency_sweep": [
+    {
+      "concurrency": 1,
+      "total": 200,
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 2317.37,
+      "sess_per_min": 5.2,
+      "rtfx": 0.78,
+      "p50_s": 8.78,
+      "p99_s": 27.89
+    },
+    {
+      "concurrency": 32,
+      "total": 200,
+      "ok": 97,
+      "failures": 103,
+      "wall_s": 74.99,
+      "sess_per_min": 77.6,
+      "rtfx": 10.97,
+      "p50_s": 19.864,
+      "p99_s": 53.448
+    },
+    {
+      "concurrency": 64,
+      "total": 200,
+      "ok": 0,
+      "failures": 200,
+      "wall_s": 0.06,
+      "sess_per_min": 0.0,
+      "rtfx": 0.0
+    },
+    {
+      "concurrency": 128,
+      "total": 200,
+      "ok": 0,
+      "failures": 200,
+      "wall_s": 0.06,
+      "sess_per_min": 0.0,
+      "rtfx": 0.0
+    },
+    {
+      "concurrency": 256,
+      "total": 200,
+      "ok": 0,
+      "failures": 200,
+      "wall_s": 0.04,
+      "sess_per_min": 0.0,
+      "rtfx": 0.0
+    }
+  ],
+  "sustained_load": {
+    "concurrency": 32,
+    "total": 800,
+    "ok": 0,
+    "failures": 800,
+    "wall_s": 0.15,
+    "sess_per_min": 0.0,
+    "rtfx": 0.0,
+    "rounds": 4
+  }
+}
