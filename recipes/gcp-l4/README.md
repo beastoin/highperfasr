@@ -5,6 +5,7 @@ Deploy highperfasr on GKE with L4 GPU nodes.
 ## Prerequisites
 
 - GKE cluster with an L4 GPU node pool (`nvidia-l4` accelerator type)
+- Two schedulable L4 GPUs for the full batch + streaming overlay
 - NVIDIA GPU device plugin installed (included by default on GKE)
 - `kubectl` configured for your cluster
 
@@ -17,6 +18,14 @@ kubectl get nodes -l cloud.google.com/gke-accelerator=nvidia-l4 --no-headers
 
 ```bash
 kubectl apply -k recipes/gcp-l4
+```
+
+The overlay starts both services. On a one-GPU cluster, keep only one workload
+running:
+
+```bash
+kubectl scale deployment/highperfasr-batch --replicas=0   # streaming only
+kubectl scale deployment/highperfasr-stream --replicas=0  # batch only
 ```
 
 ## Verify
@@ -33,6 +42,7 @@ curl http://localhost:8001/health
 |-------|-------|
 | Instance | g2-standard-4 |
 | GPU | 1x NVIDIA L4 (24 GB) |
+| Nodes for full overlay | 2 |
 | vCPU | 4 |
 | RAM | 16 GB |
 | On-demand | ~$0.70/hr |
@@ -42,5 +52,5 @@ curl http://localhost:8001/health
 
 - First pod startup downloads models from HuggingFace (~2 GB each, 2-3 min)
 - Subsequent starts use the PVC-cached model
-- HPA is included for the batch deployment (CPU-based, 1-4 replicas)
+- No HPA is included because the shared ReadWriteOnce model-cache PVC is not safe for multi-node horizontal scaling
 - Stream deployment uses Recreate strategy (single GPU, no rolling update)

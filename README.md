@@ -138,6 +138,9 @@ kubectl apply -k recipes/aws-g6-l4   # EKS
 kubectl apply -k recipes/azure-a10   # AKS
 ```
 
+Each recipe deploys batch and streaming services. The full overlay requires two
+one-GPU nodes; scale one deployment to zero when running on a single-GPU cluster.
+
 See [recipes/](recipes/) for full setup instructions per provider.
 
 ### Client Examples

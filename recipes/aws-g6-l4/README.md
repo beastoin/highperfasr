@@ -5,6 +5,7 @@ Deploy highperfasr on EKS with G6 instances (NVIDIA L4 GPU).
 ## Prerequisites
 
 - EKS cluster with a G6 managed node group
+- Two schedulable L4 GPUs for the full batch + streaming overlay
 - NVIDIA device plugin installed (`kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.17.0/deployments/static/nvidia-device-plugin.yml`)
 - EKS Auto Mode includes the device plugin automatically
 - `kubectl` configured for your cluster
@@ -18,6 +19,14 @@ kubectl get nodes -l node.kubernetes.io/instance-type=g6.xlarge --no-headers
 
 ```bash
 kubectl apply -k recipes/aws-g6-l4
+```
+
+The overlay starts both services. On a one-GPU cluster, keep only one workload
+running:
+
+```bash
+kubectl scale deployment/highperfasr-batch --replicas=0   # streaming only
+kubectl scale deployment/highperfasr-stream --replicas=0  # batch only
 ```
 
 ## Verify
@@ -34,6 +43,7 @@ curl http://localhost:8001/health
 |-------|-------|
 | Instance | g6.xlarge |
 | GPU | 1x NVIDIA L4 (24 GB) |
+| Nodes for full overlay | 2 |
 | vCPU | 4 |
 | RAM | 16 GB |
 | On-demand | ~$0.80/hr |

@@ -1,5 +1,5 @@
 {
-  "schema_version": "v1alpha1",
+  "schema_version": "v1alpha2",
   "report_id": "2026-l4-nemo-batch",
   "generated_at": "2026-07-10T00:00:00Z",
   "protocol_version": "v1alpha1",
@@ -63,6 +63,22 @@
     "command": "python3 benchmarks/scripts/bench_batch.py --server http://localhost:8000 --concurrency 1,8,32,64,128,256,512",
     "config_file": "labs/nemo-fastapi/configs/serving-batch.yaml",
     "notes": "Run inside NGC nemo:26.02 container on GKE with L4 GPU. Parakeet TDT 0.6B with VRAM-aware batch sizing."
+  },
+  "environment": {
+    "provider": "gcp",
+    "region": "us-central1",
+    "kubernetes_distribution": "gke",
+    "instance_type": "g2-standard-4",
+    "capacity_type": "on-demand",
+    "recipe": "recipes/gcp-l4"
+  },
+  "cost": {
+    "currency": "USD",
+    "pricing_model": "on-demand",
+    "price_source": "GCP g2-standard-4 on-demand reference price used in README",
+    "price_as_of": "2026-07-10",
+    "node_usd_per_hour": 0.70,
+    "usd_per_audio_hour": 0.0039
   },
   "artifacts": [
     {"name": "concurrency_sweep", "path": "concurrency-sweep.json", "description": "Full concurrency sweep results (c=1 to c=512)"}

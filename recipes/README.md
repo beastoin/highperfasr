@@ -1,6 +1,6 @@
 # Deployment Recipes
 
-Kustomize-based deployment recipes for running highperfasr on different cloud GPU instances. Each recipe is a kustomize overlay that adds provider-specific GPU scheduling, storage classes, and optional autoscaling to a shared base.
+Kustomize-based deployment recipes for running highperfasr on different cloud GPU instances. Each recipe is a kustomize overlay that adds provider-specific GPU scheduling and storage classes to a shared base.
 
 ## Quick Start
 
@@ -15,13 +15,18 @@ kubectl apply -k recipes/aws-g6-l4
 kubectl apply -k recipes/azure-a10
 ```
 
+Each provider overlay deploys both streaming and batch services. Because each
+service requests one GPU, the full overlay requires two one-GPU nodes or one node
+with at least two schedulable GPUs. For a single-GPU cluster, scale one workload
+to zero after applying the overlay.
+
 ## Available Recipes
 
-| Recipe | GPU | Instance | VRAM | ~$/hr | Status |
-|--------|-----|----------|------|-------|--------|
-| [gcp-l4](gcp-l4/) | NVIDIA L4 | g2-standard-4 | 24 GB | $0.70 | Benchmarked |
-| [aws-g6-l4](aws-g6-l4/) | NVIDIA L4 | g6.xlarge | 24 GB | $0.80 | Recipe ready |
-| [azure-a10](azure-a10/) | NVIDIA A10 | Standard_NV36ads_A10_v5 | 24 GB | $0.91 | Recipe ready |
+| Recipe | GPU | Instance | Nodes for Full Overlay | ~$/hr per Node | Status |
+|--------|-----|----------|------------------------|----------------|--------|
+| [gcp-l4](gcp-l4/) | NVIDIA L4 | g2-standard-4 | 2 | $0.70 | Benchmarked |
+| [aws-g6-l4](aws-g6-l4/) | NVIDIA L4 | g6.xlarge | 2 | $0.80 | Recipe ready |
+| [azure-a10](azure-a10/) | NVIDIA A10 | Standard_NV36ads_A10_v5 | 2 | $0.91 | Recipe ready |
 
 ## Structure
 
@@ -33,7 +38,7 @@ recipes/
     deployment-batch.yaml
     service.yaml
     pvc.yaml
-  gcp-l4/            # GCP overlay + HPA
+  gcp-l4/            # GCP overlay
   aws-g6-l4/         # AWS overlay
   azure-a10/         # Azure overlay
 ```
@@ -41,7 +46,6 @@ recipes/
 Each overlay patches the base with:
 - **GPU scheduling** — nodeSelector, tolerations, and node affinity for the target GPU
 - **Storage class** — provider-specific PVC storage class
-- **Autoscaling** — optional HPA (provider-specific, not in base)
 
 ## Adding a Recipe
 
@@ -57,9 +61,9 @@ Each overlay patches the base with:
 # Preview what will be applied
 kubectl kustomize recipes/gcp-l4
 
-# Deploy stream-only (delete batch resources after apply)
+# Run on a one-GPU cluster by disabling one workload after apply
 kubectl apply -k recipes/gcp-l4
-kubectl delete deployment highperfasr-batch
+kubectl scale deployment/highperfasr-batch --replicas=0
 
 # Check GPU allocation
 kubectl describe node -l <gpu-label> | grep -A5 "Allocated resources"
