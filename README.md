@@ -23,6 +23,10 @@ Measured on one GKE L4 GPU with model quality preserved:
 | Batch quality | 1.57% WER on LibriSpeech test-clean |
 | Cost | About $0.70/hr on GKE L4 |
 
+> "We use the highperfasr recipe for the Omi batch sync engine. It helped reduce cost from $7,830 to $614 — 12.7x savings — and there is still a lot of headroom in that $614 L4 GPU."
+>
+> — Thinh Nguyen, CTO at [Omi](https://omi.me)
+
 ```bash
 mkdir highperfasr && cd highperfasr
 curl -fsSLO https://raw.githubusercontent.com/beastoin/highperfasr/main/compose.yaml
