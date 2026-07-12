@@ -128,12 +128,14 @@ Deploy to any cloud with GPU nodes using kustomize overlays:
 
 | Recipe | GPU | Instance | ~$/hr |
 |--------|-----|----------|-------|
+| [gcp-t4](recipes/gcp-t4/) | NVIDIA T4 | n1-standard-4 | $0.35 |
 | [gcp-l4](recipes/gcp-l4/) | NVIDIA L4 | g2-standard-4 | $0.70 |
 | [aws-g6-l4](recipes/aws-g6-l4/) | NVIDIA L4 | g6.xlarge | $0.80 |
 | [azure-a10](recipes/azure-a10/) | NVIDIA A10 | Standard_NV36ads_A10_v5 | $0.91 |
 
 ```bash
-kubectl apply -k recipes/gcp-l4      # GKE
+kubectl apply -k recipes/gcp-t4      # GKE T4 (budget)
+kubectl apply -k recipes/gcp-l4      # GKE L4
 kubectl apply -k recipes/aws-g6-l4   # EKS
 kubectl apply -k recipes/azure-a10   # AKS
 ```

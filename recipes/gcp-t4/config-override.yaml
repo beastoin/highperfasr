@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: highperfasr-batch
+spec:
+  template:
+    spec:
+      containers:
+        - name: highperfasr-batch
+          volumeMounts:
+            - name: t4-config
+              mountPath: /app/configs/serving-batch.yaml
+              subPath: serving-batch.yaml
+      volumes:
+        - name: t4-config
+          configMap:
+            name: highperfasr-t4-configs
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: highperfasr-stream
+spec:
+  template:
+    spec:
+      containers:
+        - name: highperfasr-stream
+          volumeMounts:
+            - name: t4-config
+              mountPath: /app/configs/serving-stream.yaml
+              subPath: serving-stream.yaml
+      volumes:
+        - name: t4-config
+          configMap:
+            name: highperfasr-t4-configs

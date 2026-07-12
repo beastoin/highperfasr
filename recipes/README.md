@@ -8,6 +8,9 @@ Kustomize-based deployment recipes for running highperfasr on different cloud GP
 # GCP GKE with L4 GPU
 kubectl apply -k recipes/gcp-l4
 
+# GCP GKE with T4 GPU (lowest cost)
+kubectl apply -k recipes/gcp-t4
+
 # AWS EKS with G6/L4 GPU
 kubectl apply -k recipes/aws-g6-l4
 
@@ -24,6 +27,7 @@ to zero after applying the overlay.
 
 | Recipe | GPU | Instance | Nodes for Full Overlay | ~$/hr per Node | Status |
 |--------|-----|----------|------------------------|----------------|--------|
+| [gcp-t4](gcp-t4/) | NVIDIA T4 | n1-standard-4 | 2 | $0.35 | Benchmarking |
 | [gcp-l4](gcp-l4/) | NVIDIA L4 | g2-standard-4 | 2 | $0.70 | Benchmarked |
 | [aws-g6-l4](aws-g6-l4/) | NVIDIA L4 | g6.xlarge | 2 | $0.80 | Recipe ready |
 | [azure-a10](azure-a10/) | NVIDIA A10 | Standard_NV36ads_A10_v5 | 2 | $0.91 | Recipe ready |
@@ -38,7 +42,8 @@ recipes/
     deployment-batch.yaml
     service.yaml
     pvc.yaml
-  gcp-l4/            # GCP overlay
+  gcp-t4/            # GCP T4 overlay (budget)
+  gcp-l4/            # GCP L4 overlay
   aws-g6-l4/         # AWS overlay
   azure-a10/         # Azure overlay
 ```
