@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: highperfasr-stream
+  labels:
+    app: highperfasr-stream
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: highperfasr-stream
+  template:
+    metadata:
+      labels:
+        app: highperfasr-stream
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: highperfasr-stream
+          image: ghcr.io/beastoin/highperfasr-stream:latest
+          imagePullPolicy: IfNotPresent
+          args: ["serve", "--config", "/app/configs/serving-stream.yaml"]
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: HF_HOME
+              value: "/model-cache"
+            - name: NUMBA_CACHE_DIR
+              value: "/tmp/numba_cache"
+          resources:
+            requests:
+              cpu: "2"
+              memory: "4Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: "8Gi"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: model-cache
+              mountPath: /model-cache
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 180
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 5
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+      volumes:
+        - name: model-cache
+          persistentVolumeClaim:
+            claimName: highperfasr-stream-model-cache
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule

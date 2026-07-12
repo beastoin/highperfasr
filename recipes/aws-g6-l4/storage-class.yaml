@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: highperfasr-stream-model-cache
+spec:
+  storageClassName: gp3
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: highperfasr-batch-model-cache
+spec:
+  storageClassName: gp3

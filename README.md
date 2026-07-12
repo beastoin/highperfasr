@@ -119,16 +119,26 @@ The `HF_HOME` environment variable controls the cache location (default:
 `/app/.cache/huggingface` inside the container). For air-gapped deployments,
 copy a populated cache volume to the target host.
 
-GKE: PersistentVolumeClaims are already configured in `gke-l4.yaml`. First pod
+Kubernetes: PersistentVolumeClaims are configured in all recipes. First pod
 startup takes 2-3 minutes for the download; subsequent starts use the cached model.
 
-### GKE L4
+### Kubernetes Recipes
+
+Deploy to any cloud with GPU nodes using kustomize overlays:
+
+| Recipe | GPU | Instance | ~$/hr |
+|--------|-----|----------|-------|
+| [gcp-l4](recipes/gcp-l4/) | NVIDIA L4 | g2-standard-4 | $0.70 |
+| [aws-g6-l4](recipes/aws-g6-l4/) | NVIDIA L4 | g6.xlarge | $0.80 |
+| [azure-a10](recipes/azure-a10/) | NVIDIA A10 | Standard_NV36ads_A10_v5 | $0.91 |
 
 ```bash
-docker build --target stream -t $REGISTRY/highperfasr-stream:v0.1.0 .
-docker push $REGISTRY/highperfasr-stream:v0.1.0
-kubectl apply -f gke-l4.yaml
+kubectl apply -k recipes/gcp-l4      # GKE
+kubectl apply -k recipes/aws-g6-l4   # EKS
+kubectl apply -k recipes/azure-a10   # AKS
 ```
+
+See [recipes/](recipes/) for full setup instructions per provider.
 
 ### Client Examples
 
