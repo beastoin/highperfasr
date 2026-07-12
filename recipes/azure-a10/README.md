@@ -55,5 +55,5 @@ curl http://localhost:8001/health
 - Smaller NVads sizes (NV6/12/18) use GPU partitions with less VRAM — not recommended
 - Use `managed-csi-premium` storage class (modern CSI driver, not legacy `managed-premium`)
 - First pod startup downloads models from HuggingFace (~2 GB each, 2-3 min)
-- No HPA included — add your own scaling policy based on workload
+- No HPA is included; use per-replica cache storage or RWX storage before horizontal scaling
 - AKS managed GPU node pools are preview; use standard GPU node pools for production

@@ -55,5 +55,5 @@ curl http://localhost:8001/health
 - If using GPU Operator on EKS accelerated AMIs, disable driver/toolkit install to avoid conflicts
 - The `gp3` storage class requires the EBS CSI driver add-on
 - First pod startup downloads models from HuggingFace (~2 GB each, 2-3 min)
-- No HPA included — add your own scaling policy based on workload
+- No HPA is included; use per-replica cache storage or RWX storage before horizontal scaling
 - For spot instances (batch workloads), create a separate node group with `capacity-type: SPOT`
