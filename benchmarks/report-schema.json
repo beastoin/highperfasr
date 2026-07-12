@@ -130,6 +130,7 @@
     "environment": {
       "type": "object",
       "description": "Cloud/infrastructure environment where the benchmark ran",
+      "required": ["provider", "region", "kubernetes_distribution", "instance_type", "capacity_type", "recipe"],
       "properties": {
         "provider": { "type": "string", "enum": ["gcp", "aws", "azure", "onprem", "other"] },
         "region": { "type": "string" },
@@ -144,6 +145,7 @@
     "cost": {
       "type": "object",
       "description": "Cost normalization for cross-provider comparison",
+      "required": ["currency", "pricing_model", "price_source", "price_as_of", "node_usd_per_hour", "usd_per_audio_hour"],
       "properties": {
         "currency": { "type": "string", "default": "USD" },
         "pricing_model": { "type": "string", "enum": ["on-demand", "spot", "preemptible", "reserved", "unknown"] },
