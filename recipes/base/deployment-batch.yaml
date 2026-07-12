@@ -23,7 +23,7 @@ spec:
       containers:
         - name: highperfasr-batch
           image: ghcr.io/beastoin/highperfasr-batch:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           args: ["serve", "--config", "/app/configs/serving-batch.yaml"]
           ports:
             - name: http

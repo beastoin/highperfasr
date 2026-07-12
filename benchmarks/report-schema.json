@@ -3,7 +3,7 @@
   "title": "HighPerfASR Benchmark Report",
   "version": "v1alpha2",
   "type": "object",
-  "required": ["schema_version", "report_id", "generated_at", "protocol_version", "sut", "hardware", "software", "dataset", "scenario", "quality", "performance", "reliability", "resources", "reproduction"],
+  "required": ["schema_version", "report_id", "generated_at", "protocol_version", "sut", "hardware", "software", "dataset", "scenario", "quality", "performance", "reliability", "resources", "reproduction", "environment", "cost"],
   "properties": {
     "schema_version": {
       "type": "string",

@@ -20,7 +20,7 @@ spec:
       containers:
         - name: highperfasr-stream
           image: ghcr.io/beastoin/highperfasr-stream:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           args: ["serve", "--config", "/app/configs/serving-stream.yaml"]
           ports:
             - name: http
