@@ -1,12 +1,12 @@
 {
   "schema_version": "v1alpha2",
   "report_id": "2026-t4-nemo-stream",
-  "generated_at": "2026-07-12T14:47:08Z",
+  "generated_at": "2026-07-13T09:52:38Z",
   "protocol_version": "v1alpha1",
   "sut": {
     "name": "NeMo FastAPI Server (streaming mode)",
     "implementation": "labs/nemo-fastapi",
-    "git_sha": "d3870dc",
+    "git_sha": "dcc4eee",
     "model_name": "nvidia/nemotron-3.5-asr-streaming-0.6b",
     "model_params": "0.6B"
   },
@@ -35,39 +35,40 @@
   "scenario": {
     "name": "streaming-concurrency-sweep",
     "mode": "online",
-    "concurrency": 1,
-    "description": "WebSocket streaming concurrency sweep c=1..256 on T4 GPU. T4 16GB VRAM limits max viable concurrency to ~1-16 streams; c=32+ causes VRAM exhaustion failures."
+    "concurrency": 256,
+    "description": "WebSocket streaming concurrency sweep c=1..256 on T4 GPU with stream ID recycling fix. Sustained load at c=32 for 4 rounds."
   },
   "quality": {
-    "wer": 2.76,
+    "wer": 3.19,
     "normalization": "Whisper EnglishTextNormalizer (lowercase, expand contractions, strip punctuation)"
   },
   "performance": {
-    "rtfx": 0.78,
-    "sessions_per_min": 5.2,
-    "max_concurrent_streams": 1,
-    "notes": "T4 16GB VRAM constrains streaming to low concurrency. c=1 is the only level with 0 failures. c=32 had 51.5% failure rate. c=64+ had 100% failure. Peak throughput at c=32 was 10.97x RTFx / 77.6 sess/min but with 103 failures — not production-viable."
+    "rtfx": 22.17,
+    "sessions_per_min": 170.2,
+    "max_concurrent_streams": 256,
+    "p50_s": 45.05,
+    "p99_s": 65.207
   },
   "reliability": {
     "total_requests": 1000,
-    "successful": 297,
-    "failed": 703,
-    "failure_rate": 0.703,
+    "successful": 1000,
+    "failed": 0,
+    "failure_rate": 0.0,
     "by_concurrency": [
       {"concurrency": 1, "total": 200, "ok": 200, "failures": 0},
-      {"concurrency": 32, "total": 200, "ok": 97, "failures": 103},
-      {"concurrency": 64, "total": 200, "ok": 0, "failures": 200},
-      {"concurrency": 128, "total": 200, "ok": 0, "failures": 200},
-      {"concurrency": 256, "total": 200, "ok": 0, "failures": 200}
+      {"concurrency": 32, "total": 200, "ok": 200, "failures": 0},
+      {"concurrency": 64, "total": 200, "ok": 200, "failures": 0},
+      {"concurrency": 128, "total": 200, "ok": 200, "failures": 0},
+      {"concurrency": 256, "total": 200, "ok": 200, "failures": 0}
     ]
   },
   "resources": {
     "vram_total_mb": 16384
   },
   "reproduction": {
-    "command": "python3 benchmarks/scripts/bench_stream.py --server ws://localhost:10322 --endpoint /v1/stream --concurrency 1,32,64,128,256 --sustained-rounds 4 --output /tmp/bench_t4_stream_report.json",
+    "command": "python3 benchmarks/scripts/bench_stream.py --server ws://localhost:8000 --endpoint /v1/stream --concurrency 1,32,64,128,256 --sustained-rounds 4 --output /tmp/bench_t4_stream_report.json",
     "config_file": "recipes/gcp-t4/serving-stream-t4.yaml",
-    "notes": "T4 Turing architecture: torch.compile and CUDA graphs disabled via ConfigMap. max_concurrent_streams=256 in config but actual viable concurrency is ~1-16 due to 16GB VRAM. T4 is recommended for batch workloads; use L4 for high-concurrency streaming."
+    "notes": "Run inside the GPU pod to avoid port-forward drops. torch.compile and CUDA graphs disabled for Turing architecture. Includes stream ID recycling fix (gpu_worker.py)."
   },
   "environment": {
     "provider": "gcp",
@@ -81,10 +82,9 @@
     "currency": "USD",
     "pricing_model": "on-demand",
     "price_source": "GCP n1-standard-4 + T4 GPU on-demand reference price",
-    "price_as_of": "2026-07-12",
+    "price_as_of": "2026-07-13",
     "node_usd_per_hour": 0.35,
-    "usd_per_audio_hour": null,
-    "notes": "Cost per audio hour not meaningful at c=1 (sub-realtime RTFx 0.78). T4 streaming is viable for low-volume single-stream use cases only. For cost-effective streaming, use L4."
+    "usd_per_audio_hour": 0.0158
   },
   "artifacts": [
     {

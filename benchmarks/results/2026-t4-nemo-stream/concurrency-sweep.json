@@ -1,13 +1,13 @@
 {
   "benchmark": "Streaming ASR Benchmark",
-  "timestamp": "2026-07-12T13:27:30Z",
-  "server": "ws://localhost:10322",
+  "timestamp": "2026-07-13T08:34:46Z",
+  "server": "ws://localhost:8000",
   "chunk_ms": 160,
   "samples": 200,
   "dataset": "LibriSpeech test-clean",
   "smart_mode": false,
   "wer": {
-    "corpus_wer_pct": 2.76,
+    "corpus_wer_pct": 3.19,
     "samples_evaluated": 200,
     "normalization": "whisper_english"
   },
@@ -17,59 +17,67 @@
       "total": 200,
       "ok": 200,
       "failures": 0,
-      "wall_s": 2317.37,
-      "sess_per_min": 5.2,
-      "rtfx": 0.78,
-      "p50_s": 8.78,
-      "p99_s": 27.89
+      "wall_s": 1749.62,
+      "sess_per_min": 6.9,
+      "rtfx": 0.89,
+      "p50_s": 7.27,
+      "p99_s": 29.456
     },
     {
       "concurrency": 32,
       "total": 200,
-      "ok": 97,
-      "failures": 103,
-      "wall_s": 74.99,
-      "sess_per_min": 77.6,
-      "rtfx": 10.97,
-      "p50_s": 19.864,
-      "p99_s": 53.448
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 174.66,
+      "sess_per_min": 68.7,
+      "rtfx": 8.95,
+      "p50_s": 22.669,
+      "p99_s": 72.393
     },
     {
       "concurrency": 64,
       "total": 200,
-      "ok": 0,
-      "failures": 200,
-      "wall_s": 0.06,
-      "sess_per_min": 0.0,
-      "rtfx": 0.0
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 138.88,
+      "sess_per_min": 86.4,
+      "rtfx": 11.26,
+      "p50_s": 39.427,
+      "p99_s": 64.622
     },
     {
       "concurrency": 128,
       "total": 200,
-      "ok": 0,
-      "failures": 200,
-      "wall_s": 0.06,
-      "sess_per_min": 0.0,
-      "rtfx": 0.0
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 92.83,
+      "sess_per_min": 129.3,
+      "rtfx": 16.84,
+      "p50_s": 39.375,
+      "p99_s": 63.89
     },
     {
       "concurrency": 256,
       "total": 200,
-      "ok": 0,
-      "failures": 200,
-      "wall_s": 0.04,
-      "sess_per_min": 0.0,
-      "rtfx": 0.0
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 70.51,
+      "sess_per_min": 170.2,
+      "rtfx": 22.17,
+      "p50_s": 45.05,
+      "p99_s": 65.207
     }
   ],
   "sustained_load": {
     "concurrency": 32,
     "total": 800,
-    "ok": 0,
-    "failures": 800,
-    "wall_s": 0.15,
-    "sess_per_min": 0.0,
-    "rtfx": 0.0,
+    "ok": 800,
+    "failures": 0,
+    "wall_s": 664.84,
+    "sess_per_min": 72.2,
+    "rtfx": 9.41,
+    "p50_s": 22.162,
+    "p99_s": 64.475,
     "rounds": 4
   }
 }

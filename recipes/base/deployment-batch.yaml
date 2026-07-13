@@ -80,7 +80,7 @@ spec:
             claimName: highperfasr-batch-model-cache
         - name: tmp
           emptyDir:
-            sizeLimit: 2Gi
+            sizeLimit: 5Gi
       tolerations:
         - key: nvidia.com/gpu
           operator: Exists

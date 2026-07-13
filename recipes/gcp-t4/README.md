@@ -49,21 +49,25 @@ curl http://localhost:8001/health
 | Spot | ~$0.11/hr |
 | Storage class | standard-rwo |
 
-## Streaming Limitations
+## Streaming Performance
 
-T4's 16 GB VRAM severely limits concurrent streaming. Benchmark results:
+T4 handles up to 256 concurrent streams with zero failures:
 
-| Concurrency | RTFx | sess/min | Failures | Viable |
-|-------------|------|----------|----------|--------|
-| 1 | 0.78 | 5.2 | 0 | Yes |
-| 32 | 10.97 | 77.6 | 103/200 | No |
-| 64+ | 0.0 | 0.0 | 200/200 | No |
+| Concurrency | RTFx | sess/min | p50 | p99 | Failures |
+|-------------|------|----------|-----|-----|----------|
+| 1 | 0.89 | 6.9 | 7.3s | 29.5s | 0 |
+| 32 | 8.95 | 68.7 | 22.7s | 72.4s | 0 |
+| 64 | 11.26 | 86.4 | 39.4s | 64.6s | 0 |
+| 128 | 16.84 | 129.3 | 39.4s | 63.9s | 0 |
+| 256 | 22.17 | 170.2 | 45.1s | 65.2s | 0 |
 
-**Recommendation:** Use T4 for **batch** workloads (65x RTFx, WER 1.86%). For streaming, use L4 (supports 512 concurrent streams). T4 streaming is viable only for single-stream or very low concurrency use cases.
+Sustained load (c=32, 4 rounds): 9.41x RTFx, 72.2 sess/min, 0 failures.
+
+WER: 3.19% (LibriSpeech test-clean, Whisper English normalization).
 
 ## Notes
 
-- T4 has 16 GB VRAM (vs 24 GB on L4) — batch-first GPU, streaming limited to low concurrency
+- T4 has 16 GB VRAM (vs 24 GB on L4) — lower peak throughput but viable for both batch and streaming
 - `torch.compile` and CUDA graphs crash on T4 (Turing architecture, compute capability 7.5) — the recipe's ConfigMap override disables both
 - T4 is the most cost-effective GPU on GCP for batch inference workloads
 - Spot/preemptible T4 instances available at ~70% discount — suitable for batch workloads

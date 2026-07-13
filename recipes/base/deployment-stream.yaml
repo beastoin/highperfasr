@@ -77,7 +77,7 @@ spec:
             claimName: highperfasr-stream-model-cache
         - name: tmp
           emptyDir:
-            sizeLimit: 1Gi
+            sizeLimit: 5Gi
       tolerations:
         - key: nvidia.com/gpu
           operator: Exists

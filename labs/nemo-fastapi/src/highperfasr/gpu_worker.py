@@ -57,6 +57,7 @@ class GPUWorker:
         self._prefetch_queue: Optional[queue.Queue] = None
         self._stream_pipeline = None
         self._stream_sessions: dict[str, dict] = {}
+        self._free_stream_ids: list[int] = []
         self._next_stream_int_id = 1
         self._source_language = "English"
         self._stream_chunk_samples = 5120
@@ -927,8 +928,11 @@ class GPUWorker:
             raise RuntimeError("Streaming pipeline not available")
 
         stream_id = payload["stream_id"]
-        stream_int_id = self._next_stream_int_id
-        self._next_stream_int_id += 1
+        if self._free_stream_ids:
+            stream_int_id = self._free_stream_ids.pop()
+        else:
+            stream_int_id = self._next_stream_int_id
+            self._next_stream_int_id += 1
 
         self._stream_sessions[stream_id] = {
             "int_id": stream_int_id,
@@ -1020,6 +1024,8 @@ class GPUWorker:
 
         if session is None:
             return {"stream_id": stream_id, "status": "not_found"}
+
+        self._free_stream_ids.append(session["int_id"])
 
         final_text = session.get("committed_text", "").strip()
         last_partial = session.get("last_partial", "").strip()
