@@ -1,0 +1,96 @@
+{
+  "schema_version": "v1alpha2",
+  "report_id": "2026-t4-nemo-stream",
+  "generated_at": "2026-07-13T09:52:38Z",
+  "protocol_version": "v1alpha1",
+  "sut": {
+    "name": "NeMo FastAPI Server (streaming mode)",
+    "implementation": "labs/nemo-fastapi",
+    "git_sha": "dcc4eee",
+    "model_name": "nvidia/nemotron-3.5-asr-streaming-0.6b",
+    "model_params": "0.6B"
+  },
+  "hardware": {
+    "gpu": "NVIDIA T4",
+    "gpu_count": 1,
+    "gpu_memory_gb": 16,
+    "cpu": "GKE n1-standard-4",
+    "ram_gb": 15
+  },
+  "software": {
+    "cuda_version": "12.8",
+    "driver_version": "570.86.15",
+    "pytorch_version": "2.6.0",
+    "framework_version": "NeMo 2.5",
+    "python_version": "3.11",
+    "container_image": "nvcr.io/nvidia/nemo:26.02"
+  },
+  "dataset": {
+    "name": "LibriSpeech",
+    "split": "test-clean",
+    "num_files": 200,
+    "total_audio_hours": 0.41,
+    "license": "CC-BY-4.0"
+  },
+  "scenario": {
+    "name": "streaming-concurrency-sweep",
+    "mode": "online",
+    "concurrency": 256,
+    "description": "WebSocket streaming concurrency sweep c=1..256 on T4 GPU with stream ID recycling fix. Sustained load at c=32 for 4 rounds."
+  },
+  "quality": {
+    "wer": 3.19,
+    "normalization": "Whisper EnglishTextNormalizer (lowercase, expand contractions, strip punctuation)"
+  },
+  "performance": {
+    "rtfx": 22.17,
+    "sessions_per_min": 170.2,
+    "max_concurrent_streams": 256,
+    "p50_s": 45.05,
+    "p99_s": 65.207
+  },
+  "reliability": {
+    "total_requests": 1000,
+    "successful": 1000,
+    "failed": 0,
+    "failure_rate": 0.0,
+    "by_concurrency": [
+      {"concurrency": 1, "total": 200, "ok": 200, "failures": 0},
+      {"concurrency": 32, "total": 200, "ok": 200, "failures": 0},
+      {"concurrency": 64, "total": 200, "ok": 200, "failures": 0},
+      {"concurrency": 128, "total": 200, "ok": 200, "failures": 0},
+      {"concurrency": 256, "total": 200, "ok": 200, "failures": 0}
+    ]
+  },
+  "resources": {
+    "vram_total_mb": 16384
+  },
+  "reproduction": {
+    "command": "python3 benchmarks/scripts/bench_stream.py --server ws://localhost:8000 --endpoint /v1/stream --concurrency 1,32,64,128,256 --sustained-rounds 4 --output /tmp/bench_t4_stream_report.json",
+    "config_file": "recipes/gcp-t4/serving-stream-t4.yaml",
+    "notes": "Run inside the GPU pod to avoid port-forward drops. torch.compile and CUDA graphs disabled for Turing architecture. Includes stream ID recycling fix (gpu_worker.py)."
+  },
+  "environment": {
+    "provider": "gcp",
+    "region": "us-central1",
+    "kubernetes_distribution": "gke",
+    "instance_type": "n1-standard-4",
+    "capacity_type": "on-demand",
+    "recipe": "recipes/gcp-t4"
+  },
+  "cost": {
+    "currency": "USD",
+    "pricing_model": "on-demand",
+    "price_source": "GCP n1-standard-4 + T4 GPU on-demand reference price",
+    "price_as_of": "2026-07-13",
+    "node_usd_per_hour": 0.35,
+    "usd_per_audio_hour": 0.0158
+  },
+  "artifacts": [
+    {
+      "name": "concurrency_sweep",
+      "path": "concurrency-sweep.json",
+      "description": "Full concurrency sweep results (c=1 to c=256)"
+    }
+  ]
+}

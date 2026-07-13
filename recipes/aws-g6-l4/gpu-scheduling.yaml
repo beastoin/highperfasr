@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: highperfasr-stream
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node.kubernetes.io/instance-type: g6.xlarge
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: highperfasr-batch
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node.kubernetes.io/instance-type: g6.xlarge

@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: highperfasr-stream
+spec:
+  template:
+    spec:
+      nodeSelector:
+        accelerator: nvidia
+      tolerations:
+        - key: sku
+          operator: Equal
+          value: gpu
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node.kubernetes.io/instance-type
+                    operator: In
+                    values:
+                      - Standard_NV36ads_A10_v5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: highperfasr-batch
+spec:
+  template:
+    spec:
+      nodeSelector:
+        accelerator: nvidia
+      tolerations:
+        - key: sku
+          operator: Equal
+          value: gpu
+          effect: NoSchedule
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node.kubernetes.io/instance-type
+                    operator: In
+                    values:
+                      - Standard_NV36ads_A10_v5

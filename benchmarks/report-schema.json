@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "HighPerfASR Benchmark Report",
-  "version": "v1alpha1",
+  "version": "v1alpha2",
   "type": "object",
-  "required": ["schema_version", "report_id", "generated_at", "protocol_version", "sut", "hardware", "software", "dataset", "scenario", "quality", "performance", "reliability", "resources", "reproduction"],
+  "required": ["schema_version", "report_id", "generated_at", "protocol_version", "sut", "hardware", "software", "dataset", "scenario", "quality", "performance", "reliability", "resources", "reproduction", "environment", "cost"],
   "properties": {
     "schema_version": {
       "type": "string",
@@ -125,6 +125,35 @@
         "command": { "type": "string", "description": "Exact command to reproduce" },
         "config_file": { "type": "string" },
         "notes": { "type": "string" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "description": "Cloud/infrastructure environment where the benchmark ran",
+      "required": ["provider", "region", "kubernetes_distribution", "instance_type", "capacity_type", "recipe"],
+      "properties": {
+        "provider": { "type": "string", "enum": ["gcp", "aws", "azure", "onprem", "other"] },
+        "region": { "type": "string" },
+        "zone": { "type": "string" },
+        "kubernetes_distribution": { "type": "string", "enum": ["gke", "eks", "aks", "self-managed", "other"] },
+        "kubernetes_version": { "type": "string" },
+        "instance_type": { "type": "string", "description": "Cloud SKU: g2-standard-4, g6.xlarge, Standard_NV36ads_A10_v5" },
+        "capacity_type": { "type": "string", "enum": ["on-demand", "spot", "preemptible", "reserved", "unknown"] },
+        "recipe": { "type": "string", "description": "Kustomize recipe path used for deployment" }
+      }
+    },
+    "cost": {
+      "type": "object",
+      "description": "Cost normalization for cross-provider comparison",
+      "required": ["currency", "pricing_model", "price_source", "price_as_of", "node_usd_per_hour", "usd_per_audio_hour"],
+      "properties": {
+        "currency": { "type": "string", "default": "USD" },
+        "pricing_model": { "type": "string", "enum": ["on-demand", "spot", "preemptible", "reserved", "unknown"] },
+        "price_source": { "type": "string", "description": "Where the price was looked up" },
+        "price_as_of": { "type": "string", "format": "date", "description": "Date pricing was checked" },
+        "node_usd_per_hour": { "type": "number" },
+        "wall_clock_seconds": { "type": "number" },
+        "usd_per_audio_hour": { "type": "number", "description": "instance_price / processed_audio_hours_per_wall_hour" }
       }
     },
     "artifacts": {

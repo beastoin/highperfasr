@@ -1,5 +1,5 @@
 {
-  "schema_version": "v1alpha1",
+  "schema_version": "v1alpha2",
   "report_id": "2026-l4-nemo-512-streams",
   "generated_at": "2026-07-05T00:00:00Z",
   "protocol_version": "v1alpha1",
@@ -64,6 +64,22 @@
     "command": "python3 benchmarks/scripts/bench_stream_soak.py --server ws://localhost:8000 --concurrency 512 --durations 600 --persistent --max-samples 0 --vram-interval 10",
     "config_file": "labs/nemo-fastapi/configs/serving-stream.yaml",
     "notes": "Run inside NGC nemo:26.02 container on GKE with L4 GPU. num_slots auto-set to 512 from max_concurrent_streams config."
+  },
+  "environment": {
+    "provider": "gcp",
+    "region": "us-central1",
+    "kubernetes_distribution": "gke",
+    "instance_type": "g2-standard-4",
+    "capacity_type": "on-demand",
+    "recipe": "recipes/gcp-l4"
+  },
+  "cost": {
+    "currency": "USD",
+    "pricing_model": "on-demand",
+    "price_source": "GCP g2-standard-4 on-demand reference price used in README",
+    "price_as_of": "2026-07-05",
+    "node_usd_per_hour": 0.70,
+    "usd_per_audio_hour": 0.0181
   },
   "artifacts": [
     {"name": "summary", "path": "summary.md", "description": "Human-readable report summary"},
