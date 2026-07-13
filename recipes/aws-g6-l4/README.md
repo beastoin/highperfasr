@@ -1,5 +1,7 @@
 # AWS EKS — NVIDIA L4 (G6)
 
+> **Status: Not yet benchmarked or tuned.** This recipe provides deployment manifests only — no GPU-specific config tuning or benchmark data yet. If you have access to AWS G6 instances and want to help benchmark/tune, please open an issue or reach out. Sponsors welcome!
+
 Deploy highperfasr on EKS with G6 instances (NVIDIA L4 GPU).
 
 ## Prerequisites

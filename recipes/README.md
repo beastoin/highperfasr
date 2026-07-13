@@ -27,10 +27,10 @@ to zero after applying the overlay.
 
 | Recipe | GPU | Instance | Nodes for Full Overlay | ~$/hr per Node | Status |
 |--------|-----|----------|------------------------|----------------|--------|
-| [gcp-t4](gcp-t4/) | NVIDIA T4 | n1-standard-4 | 2 | $0.35 | Benchmarking |
+| [gcp-t4](gcp-t4/) | NVIDIA T4 | n1-standard-4 | 2 | $0.35 | Benchmarked |
 | [gcp-l4](gcp-l4/) | NVIDIA L4 | g2-standard-4 | 2 | $0.70 | Benchmarked |
-| [aws-g6-l4](aws-g6-l4/) | NVIDIA L4 | g6.xlarge | 2 | $0.80 | Recipe ready |
-| [azure-a10](azure-a10/) | NVIDIA A10 | Standard_NV36ads_A10_v5 | 2 | $0.91 | Recipe ready |
+| [aws-g6-l4](aws-g6-l4/) | NVIDIA L4 | g6.xlarge | 2 | $0.80 | Not yet tuned — [help wanted](#contributing-benchmarks) |
+| [azure-a10](azure-a10/) | NVIDIA A10 | Standard_NV36ads_A10_v5 | 2 | $0.91 | Not yet tuned — [help wanted](#contributing-benchmarks) |
 
 ## Structure
 
@@ -77,6 +77,16 @@ kubectl describe node -l <gpu-label> | grep -A5 "Allocated resources"
 kubectl port-forward svc/highperfasr-stream 8001:8000
 kubectl port-forward svc/highperfasr-batch 8000:8000
 ```
+
+## Contributing Benchmarks
+
+AWS and Azure recipes have deployment manifests but no GPU-specific tuning or benchmark data yet. If you have access to these instances and want to help:
+
+1. Deploy using the recipe (`kubectl apply -k recipes/<provider>`)
+2. Run the benchmark suite from `benchmarks/scripts/`
+3. Open a PR with your `benchmarks/results/` data and any config tuning
+
+See [issue #16](https://github.com/beastoin/highperfasr/issues/16) for the full GPU tuning methodology.
 
 ## Docker Compose
 

@@ -1,5 +1,7 @@
 # Azure AKS — NVIDIA A10
 
+> **Status: Not yet benchmarked or tuned.** This recipe provides deployment manifests only — no GPU-specific config tuning or benchmark data yet. If you have access to Azure A10 instances and want to help benchmark/tune, please open an issue or reach out. Sponsors welcome!
+
 Deploy highperfasr on AKS with NVads A10 v5 instances (NVIDIA A10 GPU, 24 GB).
 
 ## Prerequisites
