@@ -24,11 +24,13 @@ CORPORA = {
         "url": "https://www.openslr.org/resources/12/test-clean.tar.gz",
         "description": "LibriSpeech test-clean — 2620 files, 5.4h, baseline WER reference",
         "format": "librispeech",
+        "expected_files": 2620,
     },
     "librispeech-test-other": {
         "url": "https://www.openslr.org/resources/12/test-other.tar.gz",
         "description": "LibriSpeech test-other — 2939 files, 5.3h, harder speakers/accents",
         "format": "librispeech",
+        "expected_files": 2939,
     },
 }
 
@@ -103,6 +105,13 @@ def _download_file(url: str, dest: Path) -> Path:
     urllib.request.urlretrieve(url, dest)
     log.info(f"Downloaded {dest.stat().st_size / 1e6:.0f}MB")
     return dest
+
+
+def _target_file_count(info: dict, max_samples: int) -> int:
+    """Return the minimum cached WAV count needed for this request."""
+    if max_samples > 0:
+        return max_samples
+    return int(info.get("expected_files", 0))
 
 
 def _get_wav_duration(wav_path: Path) -> float:
@@ -180,9 +189,9 @@ def load_dataset(
     manifest_file = corpus_dir / "manifest.json"
 
     existing_wavs = len(list(wav_dir.glob("*.wav"))) if wav_dir.exists() else 0
-    target = max_samples if max_samples > 0 else 999999
+    target = _target_file_count(info, max_samples)
 
-    if existing_wavs >= min(target, 100) and ref_file.exists():
+    if target > 0 and existing_wavs >= target and ref_file.exists():
         log.info(f"{name}: {existing_wavs} WAV files cached")
     else:
         archive_path = corpus_dir / Path(info["url"]).name

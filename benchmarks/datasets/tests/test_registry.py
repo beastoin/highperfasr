@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from benchmarks.datasets.registry import CORPORA, _build_manifest, _get_wav_duration
+from benchmarks.datasets.registry import CORPORA, _build_manifest, _get_wav_duration, load_dataset
 
 
 def _make_wav(path: Path, duration_s: float = 1.0, sr: int = 16000):
@@ -75,3 +75,64 @@ class TestBuildManifest:
         ref_file.write_text("")
         manifest = _build_manifest(wav_dir, ref_file, "test")
         assert manifest == []
+
+
+class TestLoadDatasetCache:
+    def _seed_cache(self, tmp_path, corpus_name: str, wav_count: int):
+        corpus_dir = tmp_path / corpus_name
+        wav_dir = corpus_dir / "wav"
+        wav_dir.mkdir(parents=True)
+        for i in range(wav_count):
+            (wav_dir / f"utt{i}.wav").touch()
+        (corpus_dir / "references.tsv").write_text("utt0\thello\n")
+
+    def test_full_dataset_requires_expected_file_count(self, tmp_path):
+        self._seed_cache(tmp_path, "tiny", wav_count=2)
+        corpus = {
+            "url": "https://example.com/tiny.tar.gz",
+            "description": "Tiny test corpus",
+            "format": "librispeech",
+            "expected_files": 3,
+        }
+
+        with patch.dict(CORPORA, {"tiny": corpus}), \
+             patch("benchmarks.datasets.registry._download_file"), \
+             patch("benchmarks.datasets.registry._extract_librispeech") as extract, \
+             patch("benchmarks.datasets.registry._build_manifest", return_value=[]):
+            load_dataset("tiny", cache_dir=tmp_path)
+
+        extract.assert_called_once()
+
+    def test_limited_dataset_reuses_cache_when_limit_is_satisfied(self, tmp_path):
+        self._seed_cache(tmp_path, "tiny", wav_count=2)
+        corpus = {
+            "url": "https://example.com/tiny.tar.gz",
+            "description": "Tiny test corpus",
+            "format": "librispeech",
+            "expected_files": 3,
+        }
+
+        with patch.dict(CORPORA, {"tiny": corpus}), \
+             patch("benchmarks.datasets.registry._download_file"), \
+             patch("benchmarks.datasets.registry._extract_librispeech") as extract, \
+             patch("benchmarks.datasets.registry._build_manifest", return_value=[]):
+            load_dataset("tiny", cache_dir=tmp_path, max_samples=2)
+
+        extract.assert_not_called()
+
+    def test_limited_dataset_expands_partial_cache_when_limit_increases(self, tmp_path):
+        self._seed_cache(tmp_path, "tiny", wav_count=2)
+        corpus = {
+            "url": "https://example.com/tiny.tar.gz",
+            "description": "Tiny test corpus",
+            "format": "librispeech",
+            "expected_files": 4,
+        }
+
+        with patch.dict(CORPORA, {"tiny": corpus}), \
+             patch("benchmarks.datasets.registry._download_file"), \
+             patch("benchmarks.datasets.registry._extract_librispeech") as extract, \
+             patch("benchmarks.datasets.registry._build_manifest", return_value=[]):
+            load_dataset("tiny", cache_dir=tmp_path, max_samples=3)
+
+        extract.assert_called_once()
