@@ -93,9 +93,15 @@ class TestRoundRobinLoader:
 
     def test_pool_refills_after_exhaustion(self, manifest_10):
         loader = RoundRobinLoader(manifest_10)
-        loader.next_round(concurrency=8)
+        first = loader.next_round(concurrency=8)
+        remainder_ids = {e["utt_id"] for e in loader._pool}
         batch = loader.next_round(concurrency=8)
+        batch_ids = [e["utt_id"] for e in batch]
         assert len(batch) == 8
+        assert len(set(batch_ids)) == 8
+        assert remainder_ids
+        assert remainder_ids.issubset(batch_ids)
+        assert len({e["utt_id"] for e in first} | set(batch_ids)) == 10
 
     def test_empty_manifest_raises(self):
         with pytest.raises(ValueError, match="Empty manifest"):

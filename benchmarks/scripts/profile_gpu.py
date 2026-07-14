@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -216,15 +217,21 @@ async def run_batch_load(server: str, wav_files: list[str], concurrency: int, du
     sem = asyncio.Semaphore(concurrency)
     results = []
     stop_time = time.monotonic() + duration_s
-    idx = 0
+    pool: list[str] = []
+    rng = random.Random(42)
+
+    def next_wav() -> str:
+        nonlocal pool
+        if not pool:
+            pool = list(wav_files)
+            rng.shuffle(pool)
+        return pool.pop()
 
     async def send_one():
-        nonlocal idx
         async with sem:
             if time.monotonic() > stop_time:
                 return
-            wav = wav_files[idx % len(wav_files)]
-            idx += 1
+            wav = next_wav()
             try:
                 data = aiohttp.FormData()
                 data.add_field("file", open(wav, "rb"), filename=os.path.basename(wav), content_type="audio/wav")
@@ -251,15 +258,21 @@ async def run_stream_load(server: str, wav_files: list[str], concurrency: int, d
     sem = asyncio.Semaphore(concurrency)
     results = []
     stop_time = time.monotonic() + duration_s
-    idx = 0
+    pool: list[str] = []
+    rng = random.Random(42)
+
+    def next_wav() -> str:
+        nonlocal pool
+        if not pool:
+            pool = list(wav_files)
+            rng.shuffle(pool)
+        return pool.pop()
 
     async def stream_one():
-        nonlocal idx
         async with sem:
             if time.monotonic() > stop_time:
                 return
-            wav = wav_files[idx % len(wav_files)]
-            idx += 1
+            wav = next_wav()
             try:
                 with open(wav, "rb") as f:
                     f.read(44)
@@ -351,6 +364,8 @@ async def main():
     parser.add_argument("--duration", type=float, default=30, help="Duration per level in seconds (default: 30)")
     parser.add_argument("--sample-interval", type=float, default=1.0, help="GPU sampling interval (default: 1.0)")
     parser.add_argument("--output", default="/tmp/gpu_profile.json", help="Output JSON path")
+    parser.add_argument("--dataset", default="librispeech-test-clean", help="Benchmark dataset for load generation")
+    parser.add_argument("--max-samples", type=int, default=0, help="Max dataset samples (0=full dataset)")
     parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
     args = parser.parse_args()
 
@@ -360,7 +375,7 @@ async def main():
     from benchmarks.datasets.registry import load_dataset
 
     log.info("Loading dataset...")
-    manifest = load_dataset("librispeech-test-clean", cache_dir=args.dataset_dir, max_samples=200)
+    manifest = load_dataset(args.dataset, cache_dir=args.dataset_dir, max_samples=args.max_samples)
     wav_files = [e["wav_path"] for e in manifest]
     log.info(f"Using {len(wav_files)} WAV files for load generation")
 

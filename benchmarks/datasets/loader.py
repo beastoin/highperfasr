@@ -57,6 +57,10 @@ class RoundRobinLoader:
         self._pool = list(self._manifest)
         self._rng.shuffle(self._pool)
 
+    @staticmethod
+    def _entry_key(entry: dict) -> str:
+        return str(entry.get("utt_id") or entry.get("wav_path") or id(entry))
+
     def next_round(self, concurrency: int) -> list[dict]:
         """Get the next round of unique files for the given concurrency.
 
@@ -75,11 +79,20 @@ class RoundRobinLoader:
                 f"Add more corpora or reduce concurrency."
             )
 
-        if len(self._pool) < concurrency:
-            self._refill_pool()
+        batch = []
+        used = set()
+        while len(batch) < concurrency:
+            if not self._pool:
+                self._refill_pool()
+                if used:
+                    self._pool = [e for e in self._pool if self._entry_key(e) not in used]
 
-        batch = self._pool[:concurrency]
-        self._pool = self._pool[concurrency:]
+            needed = concurrency - len(batch)
+            take = self._pool[:needed]
+            self._pool = self._pool[needed:]
+            batch.extend(take)
+            used.update(self._entry_key(e) for e in take)
+
         self._round += 1
         return batch
 

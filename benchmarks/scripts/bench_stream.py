@@ -7,9 +7,9 @@ computes WER using wer_utils (Whisper normalization), runs concurrency sweep and
 sustained load, and outputs a structured JSON report.
 
 Usage:
-    python3 bench_stream.py --server ws://localhost:8000
-    python3 bench_stream.py --server ws://localhost:8000 --chunk-ms 480
-    python3 bench_stream.py --server ws://localhost:8000 --concurrency 1,4,8,16,32
+    python3 bench_stream.py --server ws://localhost:8001
+    python3 bench_stream.py --server ws://localhost:8001 --chunk-ms 480
+    python3 bench_stream.py --server ws://localhost:8001 --concurrency 1,4,8,16,32
 """
 
 import argparse
@@ -183,7 +183,7 @@ def check_regression(current, baseline_level, metric="rtfx", threshold=0.20):
 
 async def main():
     parser = argparse.ArgumentParser(description="Deterministic streaming ASR benchmark with WER")
-    parser.add_argument("--server", default="ws://localhost:8000", help="Server WebSocket base URL")
+    parser.add_argument("--server", default="ws://localhost:8001", help="Server WebSocket base URL")
     parser.add_argument("--chunk-ms", type=int, default=160, help="Chunk duration in ms (default: 160)")
     parser.add_argument(
         "--concurrency",

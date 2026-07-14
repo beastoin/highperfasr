@@ -34,7 +34,14 @@ log = logging.getLogger("tune_gpu")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 
-def _run_bench_batch(server: str, concurrency: int, samples: int = 200, rounds: int = 2) -> dict:
+def _run_bench_batch(
+    server: str,
+    concurrency: int,
+    samples: int = 0,
+    rounds: int = 2,
+    dataset: str = "librispeech-test-clean",
+    dataset_dir: Path | None = None,
+) -> dict:
     """Run batch benchmark at one concurrency level. Returns parsed report."""
     import subprocess
 
@@ -48,7 +55,11 @@ def _run_bench_batch(server: str, concurrency: int, samples: int = 200, rounds: 
         "--sustained-concurrency", str(concurrency),
         "--output", output,
         "--skip-wer",
+        "--dataset", dataset,
+        "--max-samples", str(samples),
     ]
+    if dataset_dir is not None:
+        cmd.extend(["--dataset-dir", str(dataset_dir)])
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
         log.warning(f"Batch bench failed at c={concurrency}: {result.stderr[-200:]}")
@@ -59,7 +70,10 @@ def _run_bench_batch(server: str, concurrency: int, samples: int = 200, rounds: 
 
 
 async def _run_bench_stream(server: str, concurrency: int, endpoint: str = "/v1/stream",
-                            chunk_ms: int = 160, rounds: int = 2) -> dict:
+                            chunk_ms: int = 160, rounds: int = 2,
+                            dataset: str = "librispeech-test-clean",
+                            dataset_dir: Path | None = None,
+                            samples: int = 0) -> dict:
     """Run streaming benchmark at one concurrency level. Returns parsed report."""
     import subprocess
 
@@ -75,7 +89,11 @@ async def _run_bench_stream(server: str, concurrency: int, endpoint: str = "/v1/
         "--output", output,
         "--skip-wer",
         "--chunk-ms", str(chunk_ms),
+        "--dataset", dataset,
+        "--max-samples", str(samples),
     ]
+    if dataset_dir is not None:
+        cmd.extend(["--dataset-dir", str(dataset_dir)])
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     if result.returncode != 0:
         log.warning(f"Stream bench failed at c={concurrency}: {result.stderr[-200:]}")
@@ -90,7 +108,11 @@ def _get_failures(report: dict) -> int:
     if "error" in report:
         return 999
     sweep = report.get("concurrency_sweep", [])
-    return sum(s.get("failures", 0) for s in sweep)
+    sweep_failures = sum(s.get("failures", 0) for s in sweep)
+    sustained_failures = report.get("sustained_load", {}).get("failures", 0)
+    if sweep or "sustained_load" in report:
+        return sweep_failures + sustained_failures
+    return report.get("summary", {}).get("total_failures", 0)
 
 
 def _get_p99(report: dict) -> float:
@@ -114,6 +136,9 @@ async def binary_search_max_concurrency(
     search_range: tuple[int, int] = (1, 1024),
     endpoint: str = "/v1/stream",
     chunk_ms: int = 160,
+    dataset: str = "librispeech-test-clean",
+    dataset_dir: Path | None = None,
+    samples: int = 0,
 ) -> tuple[int, list[dict]]:
     """Binary search for max concurrency with 0 failures and p99 < threshold.
 
@@ -131,9 +156,17 @@ async def binary_search_max_concurrency(
         log.info(f"  Testing c={mid}...")
 
         if mode == "batch":
-            report = _run_bench_batch(server, mid)
+            report = _run_bench_batch(server, mid, samples=samples, dataset=dataset, dataset_dir=dataset_dir)
         else:
-            report = await _run_bench_stream(server, mid, endpoint=endpoint, chunk_ms=chunk_ms)
+            report = await _run_bench_stream(
+                server,
+                mid,
+                endpoint=endpoint,
+                chunk_ms=chunk_ms,
+                dataset=dataset,
+                dataset_dir=dataset_dir,
+                samples=samples,
+            )
 
         failures = _get_failures(report)
         p99 = _get_p99(report)
@@ -164,6 +197,9 @@ async def sweep_batch_params(
     server: str,
     optimal_concurrency: int,
     batch_sizes: list[int] | None = None,
+    dataset: str = "librispeech-test-clean",
+    dataset_dir: Path | None = None,
+    samples: int = 0,
 ) -> list[dict]:
     """Benchmark the currently running batch server config once.
 
@@ -177,7 +213,14 @@ async def sweep_batch_params(
             batch_sizes,
         )
 
-    report = _run_bench_batch(server, optimal_concurrency, rounds=2)
+    report = _run_bench_batch(
+        server,
+        optimal_concurrency,
+        rounds=2,
+        dataset=dataset,
+        dataset_dir=dataset_dir,
+        samples=samples,
+    )
     rtfx = _get_rtfx(report)
     failures = _get_failures(report)
     result = {
@@ -198,6 +241,9 @@ async def sweep_stream_params(
     chunk_durations: list[int] | None = None,
     latency_modes: list[str] | None = None,
     endpoint: str = "/v1/stream",
+    dataset: str = "librispeech-test-clean",
+    dataset_dir: Path | None = None,
+    samples: int = 0,
 ) -> list[dict]:
     """Sweep client streaming chunk sizes at optimal concurrency.
 
@@ -217,7 +263,14 @@ async def sweep_stream_params(
     for chunk_ms in chunk_durations:
         log.info(f"Sweep: client_chunk_ms={chunk_ms} at c={optimal_concurrency}")
         report = await _run_bench_stream(
-            server, optimal_concurrency, endpoint=endpoint, chunk_ms=chunk_ms, rounds=2
+            server,
+            optimal_concurrency,
+            endpoint=endpoint,
+            chunk_ms=chunk_ms,
+            rounds=2,
+            dataset=dataset,
+            dataset_dir=dataset_dir,
+            samples=samples,
         )
         rtfx = _get_rtfx(report)
         failures = _get_failures(report)
@@ -242,6 +295,9 @@ def generate_tuned_config(
     profile: dict | None = None,
 ) -> dict:
     """Generate a tuned config YAML structure."""
+    if max_concurrency < 1:
+        raise ValueError("max_concurrency must be >= 1")
+
     if mode == "batch":
         config = {
             "mode": "batch",
@@ -330,6 +386,9 @@ async def main():
     parser.add_argument("--quick", action="store_true", help="Quick mode: fewer sweep points, shorter durations")
     parser.add_argument("--skip-sweep", action="store_true", help="Skip parameter sweep, only find max concurrency")
     parser.add_argument("--skip-profile", action="store_true", help="Skip GPU profiling phase")
+    parser.add_argument("--dataset", default="librispeech-test-clean", help="Benchmark dataset for tuning runs")
+    parser.add_argument("--max-samples", type=int, default=0, help="Max dataset samples per run (0=full dataset)")
+    parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
     parser.add_argument(
         "--max-batch-size",
         type=int,
@@ -376,7 +435,12 @@ async def main():
             duration = 15 if args.quick else 30
             profile_result = await profile_at_concurrency(
                 args.server, args.mode,
-                [e["wav_path"] for e in __import__("benchmarks.datasets.registry", fromlist=["load_dataset"]).load_dataset("librispeech-test-clean", max_samples=200)],
+                [
+                    e["wav_path"]
+                    for e in __import__("benchmarks.datasets.registry", fromlist=["load_dataset"]).load_dataset(
+                        args.dataset, cache_dir=args.dataset_dir, max_samples=args.max_samples
+                    )
+                ],
                 profile_c, duration_s=duration,
             )
             report["profile"] = profile_result
@@ -394,7 +458,19 @@ async def main():
         search_range=(args.search_lo, args.search_hi),
         endpoint=args.endpoint,
         chunk_ms=args.chunk_ms,
+        dataset=args.dataset,
+        dataset_dir=args.dataset_dir,
+        samples=args.max_samples,
     )
+    if max_c < 1:
+        report["error"] = "no concurrency level passed"
+        report_path = args.output_dir / f"tuning-report-{args.mode}-{args.gpu_name}.json"
+        with open(report_path, "w") as f:
+            json.dump(report, f, indent=2)
+        raise SystemExit(
+            f"No concurrency level passed in range [{args.search_lo}, {args.search_hi}]; "
+            f"not writing tuned config. Report: {report_path}"
+        )
     report["max_concurrency"] = max_c
     report["binary_search_trials"] = trials
 
@@ -404,12 +480,25 @@ async def main():
         log.info("=== Phase 3: Parameter Sweep ===")
         if args.mode == "batch":
             sizes = [8, 16, 32, 64] if not args.quick else [16, 32]
-            sweep_results = await sweep_batch_params(args.server, max_c, batch_sizes=sizes)
+            sweep_results = await sweep_batch_params(
+                args.server,
+                max_c,
+                batch_sizes=sizes,
+                dataset=args.dataset,
+                dataset_dir=args.dataset_dir,
+                samples=args.max_samples,
+            )
             report["param_sweep"] = sweep_results
         else:
             chunks = [80, 160, 320, 480] if not args.quick else [160, 320]
             sweep_results = await sweep_stream_params(
-                args.server, max_c, chunk_durations=chunks, endpoint=args.endpoint
+                args.server,
+                max_c,
+                chunk_durations=chunks,
+                endpoint=args.endpoint,
+                dataset=args.dataset,
+                dataset_dir=args.dataset_dir,
+                samples=args.max_samples,
             )
             report["param_sweep"] = sweep_results
             best = max((r for r in sweep_results if r["failures"] == 0), key=lambda r: r["rtfx"], default=None)

@@ -2,6 +2,8 @@
 
 import asyncio
 import importlib.util
+import json
+import subprocess
 from pathlib import Path
 
 
@@ -16,7 +18,7 @@ def _load_tune_gpu():
 def test_binary_search_reports_zero_when_lowest_concurrency_fails(monkeypatch):
     tune_gpu = _load_tune_gpu()
 
-    def failing_batch(_server, concurrency, samples=200, rounds=2):
+    def failing_batch(_server, concurrency, **_kwargs):
         return {"concurrency_sweep": [{"concurrency": concurrency, "failures": 1, "p99_s": 999, "rtfx": 0}]}
 
     monkeypatch.setattr(tune_gpu, "_run_bench_batch", failing_batch)
@@ -36,7 +38,7 @@ def test_binary_search_reports_zero_when_lowest_concurrency_fails(monkeypatch):
 def test_batch_sweep_does_not_fake_server_side_batch_sizes(monkeypatch):
     tune_gpu = _load_tune_gpu()
 
-    def bench(_server, concurrency, samples=200, rounds=2):
+    def bench(_server, concurrency, **_kwargs):
         return {"concurrency_sweep": [{"concurrency": concurrency, "failures": 0, "p99_s": 1.0, "rtfx": 12.5}]}
 
     monkeypatch.setattr(tune_gpu, "_run_bench_batch", bench)
@@ -68,3 +70,93 @@ def test_stream_config_uses_external_stream_port():
     assert config["server"]["port"] == 8001
     assert config["stream"]["chunk_duration_ms"] == 160
     assert config["stream_model"]["latency_mode"] == "480ms"
+
+
+def test_config_rejects_zero_concurrency():
+    tune_gpu = _load_tune_gpu()
+
+    try:
+        tune_gpu.generate_tuned_config("stream", "l4", max_concurrency=0, best_params={})
+    except ValueError as exc:
+        assert "max_concurrency" in str(exc)
+    else:
+        raise AssertionError("generate_tuned_config should reject zero concurrency")
+
+
+def test_failures_include_sustained_load_failures():
+    tune_gpu = _load_tune_gpu()
+
+    report = {
+        "concurrency_sweep": [{"failures": 0}],
+        "sustained_load": {"failures": 2},
+    }
+
+    assert tune_gpu._get_failures(report) == 2
+
+
+def test_run_bench_batch_uses_full_dataset_by_default(monkeypatch, tmp_path):
+    tune_gpu = _load_tune_gpu()
+    output = Path("/tmp/tune_batch_c8.json")
+    output.write_text(json.dumps({"concurrency_sweep": []}))
+    captured = {}
+
+    def fake_run(cmd, **_kwargs):
+        captured["cmd"] = cmd
+
+        class Result:
+            returncode = 0
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    tune_gpu._run_bench_batch("http://localhost:8000", 8, dataset_dir=tmp_path)
+
+    cmd = captured["cmd"]
+    assert "--dataset" in cmd
+    assert cmd[cmd.index("--dataset") + 1] == "librispeech-test-clean"
+    assert "--max-samples" in cmd
+    assert cmd[cmd.index("--max-samples") + 1] == "0"
+    assert "--dataset-dir" in cmd
+    assert cmd[cmd.index("--dataset-dir") + 1] == str(tmp_path)
+
+
+def test_main_exits_without_config_when_no_concurrency_passes(monkeypatch, tmp_path):
+    tune_gpu = _load_tune_gpu()
+
+    async def failing_search(*_args, **_kwargs):
+        return 0, [{"concurrency": 1, "failures": 1, "p99_s": 999, "rtfx": 0, "passed": False}]
+
+    monkeypatch.setattr(tune_gpu, "binary_search_max_concurrency", failing_search)
+    monkeypatch.setattr(
+        tune_gpu.sys,
+        "argv",
+        [
+            "tune_gpu.py",
+            "--server",
+            "http://localhost:8000",
+            "--mode",
+            "batch",
+            "--gpu-name",
+            "l4",
+            "--skip-profile",
+            "--skip-sweep",
+            "--search-lo",
+            "1",
+            "--search-hi",
+            "1",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    try:
+        asyncio.run(tune_gpu.main())
+    except SystemExit as exc:
+        assert "No concurrency level passed" in str(exc)
+    else:
+        raise AssertionError("main() should exit when no concurrency level passes")
+
+    assert (tmp_path / "tuning-report-batch-l4.json").exists()
+    assert not (tmp_path / "tuned-serving-batch-l4.yaml").exists()
