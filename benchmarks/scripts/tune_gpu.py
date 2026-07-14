@@ -122,7 +122,7 @@ async def binary_search_max_concurrency(
     """
     lo, hi = search_range
     trials = []
-    best = lo
+    best = 0
 
     log.info(f"Binary search: range [{lo}, {hi}], p99 threshold {p99_threshold}s")
 
@@ -165,26 +165,31 @@ async def sweep_batch_params(
     optimal_concurrency: int,
     batch_sizes: list[int] | None = None,
 ) -> list[dict]:
-    """Sweep batch_size at optimal concurrency."""
-    if batch_sizes is None:
-        batch_sizes = [8, 16, 32, 64]
+    """Benchmark the currently running batch server config once.
 
-    results = []
-    for bs in batch_sizes:
-        log.info(f"Sweep: max_batch_size={bs} at c={optimal_concurrency}")
-        report = _run_bench_batch(server, optimal_concurrency, rounds=2)
-        rtfx = _get_rtfx(report)
-        failures = _get_failures(report)
-        results.append({
-            "param": "max_batch_size",
-            "value": bs,
-            "concurrency": optimal_concurrency,
-            "rtfx": rtfx,
-            "failures": failures,
-        })
-        log.info(f"  batch_size={bs}: rtfx={rtfx}x, failures={failures}")
+    max_batch_size is a server-side startup setting. This script talks to an
+    already running server, so it cannot honestly sweep candidate values unless
+    an external harness restarts the server per candidate.
+    """
+    if batch_sizes:
+        log.warning(
+            "Skipping max_batch_size candidates %s: live server config is unchanged by tune_gpu.py",
+            batch_sizes,
+        )
 
-    return results
+    report = _run_bench_batch(server, optimal_concurrency, rounds=2)
+    rtfx = _get_rtfx(report)
+    failures = _get_failures(report)
+    result = {
+        "param": "current_server_config",
+        "value": "unchanged",
+        "concurrency": optimal_concurrency,
+        "rtfx": rtfx,
+        "failures": failures,
+        "note": "max_batch_size requires restarting the server with a candidate config",
+    }
+    log.info(f"  current server config: rtfx={rtfx}x, failures={failures}")
+    return [result]
 
 
 async def sweep_stream_params(
@@ -194,29 +199,37 @@ async def sweep_stream_params(
     latency_modes: list[str] | None = None,
     endpoint: str = "/v1/stream",
 ) -> list[dict]:
-    """Sweep streaming parameters at optimal concurrency."""
+    """Sweep client streaming chunk sizes at optimal concurrency.
+
+    stream_model.latency_mode and stream.chunk_duration_ms are server-side
+    startup settings. The live benchmark can vary only the client chunk size.
+    """
     if chunk_durations is None:
         chunk_durations = [80, 160, 320, 480]
-    if latency_modes is None:
-        latency_modes = ["160ms", "320ms", "480ms"]
+    if latency_modes:
+        log.warning(
+            "Skipping latency_mode candidates %s: live server config is unchanged by tune_gpu.py",
+            latency_modes,
+        )
 
     results = []
 
     for chunk_ms in chunk_durations:
-        log.info(f"Sweep: chunk_duration_ms={chunk_ms} at c={optimal_concurrency}")
+        log.info(f"Sweep: client_chunk_ms={chunk_ms} at c={optimal_concurrency}")
         report = await _run_bench_stream(
             server, optimal_concurrency, endpoint=endpoint, chunk_ms=chunk_ms, rounds=2
         )
         rtfx = _get_rtfx(report)
         failures = _get_failures(report)
         results.append({
-            "param": "chunk_duration_ms",
+            "param": "client_chunk_ms",
             "value": chunk_ms,
             "concurrency": optimal_concurrency,
             "rtfx": rtfx,
             "failures": failures,
+            "note": "server stream.chunk_duration_ms and stream_model.latency_mode were unchanged",
         })
-        log.info(f"  chunk={chunk_ms}ms: rtfx={rtfx}x, failures={failures}")
+        log.info(f"  client_chunk={chunk_ms}ms: rtfx={rtfx}x, failures={failures}")
 
     return results
 
@@ -258,7 +271,7 @@ def generate_tuned_config(
     else:
         config = {
             "mode": "stream",
-            "server": {"host": "0.0.0.0", "port": 8000, "workers": 1},
+            "server": {"host": "0.0.0.0", "port": 8001, "workers": 1},
             "stream_model": {
                 "name": "nvidia/nemotron-3.5-asr-streaming-0.6b",
                 "device": "cuda:0",
@@ -317,6 +330,24 @@ async def main():
     parser.add_argument("--quick", action="store_true", help="Quick mode: fewer sweep points, shorter durations")
     parser.add_argument("--skip-sweep", action="store_true", help="Skip parameter sweep, only find max concurrency")
     parser.add_argument("--skip-profile", action="store_true", help="Skip GPU profiling phase")
+    parser.add_argument(
+        "--max-batch-size",
+        type=int,
+        default=None,
+        help="Externally validated batcher.max_batch_size to write into generated batch config",
+    )
+    parser.add_argument(
+        "--stream-chunk-ms",
+        type=int,
+        default=None,
+        help="Externally validated stream.chunk_duration_ms to write into generated stream config",
+    )
+    parser.add_argument(
+        "--latency-mode",
+        choices=["80ms", "160ms", "480ms", "1040ms"],
+        default=None,
+        help="Externally validated stream_model.latency_mode to write into generated stream config",
+    )
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -375,10 +406,6 @@ async def main():
             sizes = [8, 16, 32, 64] if not args.quick else [16, 32]
             sweep_results = await sweep_batch_params(args.server, max_c, batch_sizes=sizes)
             report["param_sweep"] = sweep_results
-            best = max((r for r in sweep_results if r["failures"] == 0), key=lambda r: r["rtfx"], default=None)
-            if best:
-                best_params["max_batch_size"] = best["value"]
-                log.info(f"Best batch_size: {best['value']} (rtfx={best['rtfx']}x)")
         else:
             chunks = [80, 160, 320, 480] if not args.quick else [160, 320]
             sweep_results = await sweep_stream_params(
@@ -387,8 +414,22 @@ async def main():
             report["param_sweep"] = sweep_results
             best = max((r for r in sweep_results if r["failures"] == 0), key=lambda r: r["rtfx"], default=None)
             if best:
-                best_params["chunk_duration_ms"] = best["value"]
-                log.info(f"Best chunk_duration: {best['value']}ms (rtfx={best['rtfx']}x)")
+                report["recommended_client_params"] = {"chunk_ms": best["value"]}
+                log.info(f"Best client chunk: {best['value']}ms (rtfx={best['rtfx']}x)")
+
+    explicit_config_params = {}
+    if args.mode == "batch" and args.max_batch_size is not None:
+        best_params["max_batch_size"] = args.max_batch_size
+        explicit_config_params["max_batch_size"] = args.max_batch_size
+    if args.mode == "stream":
+        if args.stream_chunk_ms is not None:
+            best_params["chunk_duration_ms"] = args.stream_chunk_ms
+            explicit_config_params["chunk_duration_ms"] = args.stream_chunk_ms
+        if args.latency_mode is not None:
+            best_params["latency_mode"] = args.latency_mode
+            explicit_config_params["latency_mode"] = args.latency_mode
+    if explicit_config_params:
+        report["explicit_config_params"] = explicit_config_params
 
     report["best_params"] = best_params
 

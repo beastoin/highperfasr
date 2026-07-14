@@ -68,6 +68,19 @@ class TestBuildManifest:
         assert manifest[2].get("reference") is None
         assert abs(manifest[0]["duration_s"] - 2.0) < 0.01
 
+    def test_build_manifest_respects_max_samples(self, tmp_path):
+        wav_dir = tmp_path / "wav"
+        wav_dir.mkdir()
+        for i in range(5):
+            _make_wav(wav_dir / f"utt{i}.wav", duration_s=1.0)
+
+        ref_file = tmp_path / "refs.tsv"
+        ref_file.write_text("\n".join(f"utt{i}\ttext {i}" for i in range(5)))
+
+        manifest = _build_manifest(wav_dir, ref_file, "test-corpus", max_samples=2)
+
+        assert [e["utt_id"] for e in manifest] == ["utt0", "utt1"]
+
     def test_empty_dir_returns_empty(self, tmp_path):
         wav_dir = tmp_path / "wav"
         wav_dir.mkdir()

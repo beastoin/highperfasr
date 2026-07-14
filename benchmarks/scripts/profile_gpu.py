@@ -382,14 +382,25 @@ async def main():
         )
         report["levels"].append(result)
         bn = result["bottleneck"]
-        log.info(
-            f"  c={c}: VRAM {result['gpu']['vram_mb']['max']}MB "
-            f"({result['gpu']['vram_mb']['highwater_pct']}%), "
-            f"GPU {result['gpu']['gpu_util_pct']['mean']}%, "
-            f"bottleneck={bn['bottleneck']} ({bn['confidence']:.0%})"
-        )
+        gpu = result["gpu"]
+        if "error" in gpu:
+            log.info(
+                f"  c={c}: GPU samples unavailable ({gpu['error']}), "
+                f"bottleneck={bn['bottleneck']} ({bn['confidence']:.0%})"
+            )
+        else:
+            log.info(
+                f"  c={c}: VRAM {gpu['vram_mb']['max']}MB "
+                f"({gpu['vram_mb']['highwater_pct']}%), "
+                f"GPU {gpu['gpu_util_pct']['mean']}%, "
+                f"bottleneck={bn['bottleneck']} ({bn['confidence']:.0%})"
+            )
 
-    final_bn = report["levels"][-1]["bottleneck"] if report["levels"] else {"bottleneck": "unknown"}
+    final_bn = (
+        report["levels"][-1]["bottleneck"]
+        if report["levels"]
+        else {"bottleneck": "unknown", "reasoning": "no concurrency levels were profiled"}
+    )
     report["overall_bottleneck"] = final_bn
 
     with open(args.output, "w") as f:
@@ -409,13 +420,16 @@ async def main():
     for level in report["levels"]:
         g = level["gpu"]
         bn = level["bottleneck"]["bottleneck"]
-        print(
-            f"| {level['concurrency']} | {g['vram_mb']['max']}MB | "
-            f"{g['vram_mb']['highwater_pct']}% | {g['gpu_util_pct']['mean']}% | "
-            f"{g['mem_bw_util_pct']['mean']}% | {bn} |"
-        )
+        if "error" in g:
+            print(f"| {level['concurrency']} | unavailable | unavailable | unavailable | unavailable | {bn} |")
+        else:
+            print(
+                f"| {level['concurrency']} | {g['vram_mb']['max']}MB | "
+                f"{g['vram_mb']['highwater_pct']}% | {g['gpu_util_pct']['mean']}% | "
+                f"{g['mem_bw_util_pct']['mean']}% | {bn} |"
+            )
     print()
-    print(f"**Overall bottleneck:** {final_bn['bottleneck']} — {final_bn['reasoning']}")
+    print(f"**Overall bottleneck:** {final_bn['bottleneck']} — {final_bn.get('reasoning', 'unknown')}")
 
 
 if __name__ == "__main__":

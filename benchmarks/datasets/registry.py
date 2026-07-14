@@ -129,7 +129,7 @@ def _get_wav_duration(wav_path: Path) -> float:
     return data_size / (sr * 2)
 
 
-def _build_manifest(wav_dir: Path, ref_file: Path, corpus_name: str) -> list[dict]:
+def _build_manifest(wav_dir: Path, ref_file: Path, corpus_name: str, max_samples: int = 0) -> list[dict]:
     """Build manifest entries from WAV dir + references TSV."""
     refs = {}
     if ref_file.exists():
@@ -140,7 +140,11 @@ def _build_manifest(wav_dir: Path, ref_file: Path, corpus_name: str) -> list[dic
                     refs[parts[0]] = parts[1]
 
     entries = []
-    for wav_path in sorted(wav_dir.glob("*.wav")):
+    wav_paths = sorted(wav_dir.glob("*.wav"))
+    if max_samples > 0:
+        wav_paths = wav_paths[:max_samples]
+
+    for wav_path in wav_paths:
         utt_id = wav_path.stem
         dur = _get_wav_duration(wav_path)
         entry = {
@@ -202,7 +206,7 @@ def load_dataset(
         else:
             raise ValueError(f"Unknown format: {info['format']}")
 
-    manifest = _build_manifest(wav_dir, ref_file, name)
+    manifest = _build_manifest(wav_dir, ref_file, name, max_samples=max_samples)
     log.info(f"{name}: {len(manifest)} entries, "
              f"{sum(e['duration_s'] for e in manifest) / 3600:.1f}h total")
     return manifest
