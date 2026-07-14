@@ -41,6 +41,7 @@ def _run_bench_batch(
     rounds: int = 2,
     dataset: str = "librispeech-test-clean",
     dataset_dir: Path | None = None,
+    skip_wer: bool = False,
 ) -> dict:
     """Run batch benchmark at one concurrency level. Returns parsed report."""
     import subprocess
@@ -54,10 +55,11 @@ def _run_bench_batch(
         "--sustained-rounds", str(rounds),
         "--sustained-concurrency", str(concurrency),
         "--output", output,
-        "--skip-wer",
         "--dataset", dataset,
         "--max-samples", str(samples),
     ]
+    if skip_wer:
+        cmd.append("--skip-wer")
     if dataset_dir is not None:
         cmd.extend(["--dataset-dir", str(dataset_dir)])
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
@@ -73,7 +75,8 @@ async def _run_bench_stream(server: str, concurrency: int, endpoint: str = "/v1/
                             chunk_ms: int = 160, rounds: int = 2,
                             dataset: str = "librispeech-test-clean",
                             dataset_dir: Path | None = None,
-                            samples: int = 0) -> dict:
+                            samples: int = 0,
+                            skip_wer: bool = False) -> dict:
     """Run streaming benchmark at one concurrency level. Returns parsed report."""
     import subprocess
 
@@ -87,11 +90,12 @@ async def _run_bench_stream(server: str, concurrency: int, endpoint: str = "/v1/
         "--sustained-rounds", str(rounds),
         "--sustained-concurrency", str(concurrency),
         "--output", output,
-        "--skip-wer",
         "--chunk-ms", str(chunk_ms),
         "--dataset", dataset,
         "--max-samples", str(samples),
     ]
+    if skip_wer:
+        cmd.append("--skip-wer")
     if dataset_dir is not None:
         cmd.extend(["--dataset-dir", str(dataset_dir)])
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
@@ -129,6 +133,23 @@ def _get_rtfx(report: dict) -> float:
     return max(rtfxs) if rtfxs else 0
 
 
+def _get_wer_pct(report: dict) -> float | None:
+    """Extract corpus WER percentage from a benchmark report."""
+    wer = report.get("wer")
+    if not isinstance(wer, dict):
+        return None
+    value = wer.get("corpus_wer_pct")
+    return float(value) if value is not None else None
+
+
+def _quality_passed(report: dict, wer_threshold_pct: float, skip_wer: bool = False) -> bool:
+    """Return whether report quality is acceptable for tuned config selection."""
+    if skip_wer:
+        return "error" not in report
+    wer_pct = _get_wer_pct(report)
+    return wer_pct is not None and wer_pct <= wer_threshold_pct
+
+
 async def binary_search_max_concurrency(
     server: str,
     mode: str,
@@ -139,6 +160,8 @@ async def binary_search_max_concurrency(
     dataset: str = "librispeech-test-clean",
     dataset_dir: Path | None = None,
     samples: int = 0,
+    wer_threshold_pct: float = 20.0,
+    skip_wer: bool = False,
 ) -> tuple[int, list[dict]]:
     """Binary search for max concurrency with 0 failures and p99 < threshold.
 
@@ -156,7 +179,14 @@ async def binary_search_max_concurrency(
         log.info(f"  Testing c={mid}...")
 
         if mode == "batch":
-            report = _run_bench_batch(server, mid, samples=samples, dataset=dataset, dataset_dir=dataset_dir)
+            report = _run_bench_batch(
+                server,
+                mid,
+                samples=samples,
+                dataset=dataset,
+                dataset_dir=dataset_dir,
+                skip_wer=skip_wer,
+            )
         else:
             report = await _run_bench_stream(
                 server,
@@ -166,28 +196,37 @@ async def binary_search_max_concurrency(
                 dataset=dataset,
                 dataset_dir=dataset_dir,
                 samples=samples,
+                skip_wer=skip_wer,
             )
 
         failures = _get_failures(report)
         p99 = _get_p99(report)
         rtfx = _get_rtfx(report)
+        wer_pct = _get_wer_pct(report)
+        quality_passed = _quality_passed(report, wer_threshold_pct, skip_wer=skip_wer)
 
         trial = {
             "concurrency": mid,
             "failures": failures,
             "p99_s": round(p99, 3),
             "rtfx": rtfx,
-            "passed": failures == 0 and p99 < p99_threshold,
+            "wer_pct": wer_pct,
+            "quality_passed": quality_passed,
+            "passed": failures == 0 and p99 < p99_threshold and quality_passed,
         }
         trials.append(trial)
 
         if trial["passed"]:
             best = mid
             lo = mid + 1
-            log.info(f"    PASS: failures={failures}, p99={p99:.3f}s, rtfx={rtfx}x → search higher")
+            quality = "skipped" if skip_wer else f"WER={wer_pct}%"
+            log.info(
+                f"    PASS: failures={failures}, p99={p99:.3f}s, rtfx={rtfx}x, {quality} → search higher"
+            )
         else:
             hi = mid - 1
-            log.info(f"    FAIL: failures={failures}, p99={p99:.3f}s → search lower")
+            quality = "skipped" if skip_wer else f"WER={wer_pct}%"
+            log.info(f"    FAIL: failures={failures}, p99={p99:.3f}s, {quality} → search lower")
 
     log.info(f"Max concurrency: {best}")
     return best, trials
@@ -200,6 +239,7 @@ async def sweep_batch_params(
     dataset: str = "librispeech-test-clean",
     dataset_dir: Path | None = None,
     samples: int = 0,
+    skip_wer: bool = False,
 ) -> list[dict]:
     """Benchmark the currently running batch server config once.
 
@@ -220,6 +260,7 @@ async def sweep_batch_params(
         dataset=dataset,
         dataset_dir=dataset_dir,
         samples=samples,
+        skip_wer=skip_wer,
     )
     rtfx = _get_rtfx(report)
     failures = _get_failures(report)
@@ -244,6 +285,7 @@ async def sweep_stream_params(
     dataset: str = "librispeech-test-clean",
     dataset_dir: Path | None = None,
     samples: int = 0,
+    skip_wer: bool = False,
 ) -> list[dict]:
     """Sweep client streaming chunk sizes at optimal concurrency.
 
@@ -271,6 +313,7 @@ async def sweep_stream_params(
             dataset=dataset,
             dataset_dir=dataset_dir,
             samples=samples,
+            skip_wer=skip_wer,
         )
         rtfx = _get_rtfx(report)
         failures = _get_failures(report)
@@ -386,6 +429,8 @@ async def main():
     parser.add_argument("--quick", action="store_true", help="Quick mode: fewer sweep points, shorter durations")
     parser.add_argument("--skip-sweep", action="store_true", help="Skip parameter sweep, only find max concurrency")
     parser.add_argument("--skip-profile", action="store_true", help="Skip GPU profiling phase")
+    parser.add_argument("--skip-wer", action="store_true", help="Skip WER quality gate for exploratory tuning only")
+    parser.add_argument("--wer-threshold", type=float, default=20.0, help="Max WER percent for tuned candidates")
     parser.add_argument("--dataset", default="librispeech-test-clean", help="Benchmark dataset for tuning runs")
     parser.add_argument("--max-samples", type=int, default=0, help="Max dataset samples per run (0=full dataset)")
     parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
@@ -461,6 +506,8 @@ async def main():
         dataset=args.dataset,
         dataset_dir=args.dataset_dir,
         samples=args.max_samples,
+        wer_threshold_pct=args.wer_threshold,
+        skip_wer=args.skip_wer,
     )
     if max_c < 1:
         report["error"] = "no concurrency level passed"
@@ -487,6 +534,7 @@ async def main():
                 dataset=args.dataset,
                 dataset_dir=args.dataset_dir,
                 samples=args.max_samples,
+                skip_wer=args.skip_wer,
             )
             report["param_sweep"] = sweep_results
         else:
@@ -499,6 +547,7 @@ async def main():
                 dataset=args.dataset,
                 dataset_dir=args.dataset_dir,
                 samples=args.max_samples,
+                skip_wer=args.skip_wer,
             )
             report["param_sweep"] = sweep_results
             best = max((r for r in sweep_results if r["failures"] == 0), key=lambda r: r["rtfx"], default=None)
@@ -554,11 +603,12 @@ async def main():
         print(f"**Bottleneck:** {bn['bottleneck']}")
     print()
     print("### Binary Search")
-    print("| Concurrency | Failures | p99 | RTFx | Result |")
-    print("|-------------|----------|-----|------|--------|")
+    print("| Concurrency | Failures | p99 | WER | RTFx | Result |")
+    print("|-------------|----------|-----|-----|------|--------|")
     for t in sorted(trials, key=lambda t: t["concurrency"]):
         result = "PASS" if t["passed"] else "FAIL"
-        print(f"| {t['concurrency']} | {t['failures']} | {t['p99_s']}s | {t['rtfx']}x | {result} |")
+        wer = "skipped" if args.skip_wer else (f"{t['wer_pct']}%" if t["wer_pct"] is not None else "missing")
+        print(f"| {t['concurrency']} | {t['failures']} | {t['p99_s']}s | {wer} | {t['rtfx']}x | {result} |")
 
     if report.get("param_sweep"):
         print()

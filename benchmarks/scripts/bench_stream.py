@@ -49,6 +49,31 @@ def compute_wer(references, hypotheses):
     return _compute(references, hypotheses)
 
 
+def manifest_from_wavs(wav_files, refs):
+    """Build manifest entries for the legacy LibriSpeech subset path."""
+    return [
+        {
+            "utt_id": Path(wav).stem,
+            "wav_path": str(wav),
+            "reference": refs.get(Path(wav).stem),
+        }
+        for wav in wav_files
+    ]
+
+
+def select_round_robin_entries(manifest, concurrency: int, target_count: int):
+    """Select benchmark work using RoundRobinLoader batches."""
+    parent = Path(__file__).resolve().parent.parent.parent
+    sys.path.insert(0, str(parent))
+    from benchmarks.datasets.loader import RoundRobinLoader
+
+    loader = RoundRobinLoader(manifest)
+    selected = []
+    while len(selected) < target_count:
+        selected.extend(loader.next_round(concurrency))
+    return selected[:target_count]
+
+
 async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
     """Stream one file via WebSocket, return transcript and timing."""
     import websockets
@@ -121,9 +146,11 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
             }
 
 
-async def run_sweep(ws_url, wav_files, concurrency, chunk_ms, repeat=1):
+async def run_sweep(ws_url, manifest, concurrency, chunk_ms, repeat=1, target_count=None):
     """Run one concurrency level for streaming."""
-    files = wav_files * repeat
+    if target_count is None:
+        target_count = len(manifest) * repeat
+    files = [Path(e["wav_path"]) for e in select_round_robin_entries(manifest, concurrency, target_count)]
     sem = asyncio.Semaphore(concurrency)
     t0 = time.monotonic()
     tasks = [stream_file(ws_url, f, chunk_ms, sem) for f in files]
@@ -232,33 +259,34 @@ async def main():
         sys.path.insert(0, str(parent))
         from benchmarks.datasets.registry import load_dataset
         manifest = load_dataset(args.dataset, cache_dir=args.dataset_dir, max_samples=args.max_samples)
-        wav_files = [_P(e["wav_path"]) for e in manifest]
         refs = {e["utt_id"]: e["reference"] for e in manifest if e.get("reference")}
     else:
         ensure_librispeech()
         refs = load_references()
         wav_dir = Path("/tmp/librispeech-test-clean/wav")
         wav_files = sorted(wav_dir.glob("*.wav"))[:200]
-    log.info(f"Using {len(wav_files)} WAV files")
+        manifest = manifest_from_wavs(wav_files, refs)
+    log.info(f"Using {len(manifest)} WAV files")
 
     report = {
         "benchmark": "Streaming ASR Benchmark",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "server": args.server,
         "chunk_ms": args.chunk_ms,
-        "samples": len(wav_files),
+        "samples": len(manifest),
         "dataset": args.dataset or "LibriSpeech test-clean (200 subset)",
         "smart_mode": args.smart,
     }
 
     # Warmup
-    log.info(f"Warmup: {args.warmup} streams...")
-    await run_sweep(ws_url, wav_files[: args.warmup], concurrency=4, chunk_ms=args.chunk_ms)
+    warmup_c = min(4, len(manifest), max(args.warmup, 1))
+    log.info(f"Warmup: {args.warmup} streams at c={warmup_c}...")
+    await run_sweep(ws_url, manifest, concurrency=warmup_c, chunk_ms=args.chunk_ms, target_count=args.warmup)
 
     # WER evaluation (c=1)
     if not args.skip_wer:
         log.info("WER evaluation: c=1...")
-        wer_results, _ = await run_sweep(ws_url, wav_files, concurrency=1, chunk_ms=args.chunk_ms)
+        wer_results, _ = await run_sweep(ws_url, manifest, concurrency=1, chunk_ms=args.chunk_ms, target_count=len(manifest))
         ok_results = [r for r in wer_results if r["status"] == "ok"]
 
         ref_texts, hyp_texts = [], []
@@ -287,7 +315,9 @@ async def main():
     consecutive_matches = 0
     for c in levels:
         log.info(f"  c={c}...")
-        results, wall = await run_sweep(ws_url, wav_files, concurrency=c, chunk_ms=args.chunk_ms)
+        results, wall = await run_sweep(
+            ws_url, manifest, concurrency=c, chunk_ms=args.chunk_ms, target_count=max(len(manifest), c)
+        )
         summary = summarize_sweep(results, wall, c)
         sweep_results.append(summary)
         log.info(f"    RTFx={summary['rtfx']}, sess/min={summary['sess_per_min']}, failures={summary['failures']}")
@@ -317,7 +347,7 @@ async def main():
     rounds = args.sustained_rounds
     log.info(f"Sustained load: c={sc}, {rounds} rounds...")
     sustained_results, sustained_wall = await run_sweep(
-        ws_url, wav_files, concurrency=sc, chunk_ms=args.chunk_ms, repeat=rounds
+        ws_url, manifest, concurrency=sc, chunk_ms=args.chunk_ms, repeat=rounds
     )
     sustained_summary = summarize_sweep(sustained_results, sustained_wall, sc)
     sustained_summary["rounds"] = rounds

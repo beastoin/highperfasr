@@ -32,7 +32,85 @@ def test_binary_search_reports_zero_when_lowest_concurrency_fails(monkeypatch):
     )
 
     assert max_c == 0
-    assert trials == [{"concurrency": 1, "failures": 1, "p99_s": 999, "rtfx": 0, "passed": False}]
+    assert trials == [
+        {
+            "concurrency": 1,
+            "failures": 1,
+            "p99_s": 999,
+            "rtfx": 0,
+            "wer_pct": None,
+            "quality_passed": False,
+            "passed": False,
+        }
+    ]
+
+
+def test_binary_search_requires_wer_by_default(monkeypatch):
+    tune_gpu = _load_tune_gpu()
+
+    def no_wer_batch(_server, concurrency, **_kwargs):
+        return {"concurrency_sweep": [{"concurrency": concurrency, "failures": 0, "p99_s": 1.0, "rtfx": 12.0}]}
+
+    monkeypatch.setattr(tune_gpu, "_run_bench_batch", no_wer_batch)
+
+    max_c, trials = asyncio.run(
+        tune_gpu.binary_search_max_concurrency(
+            "http://localhost:8000",
+            "batch",
+            search_range=(1, 1),
+        )
+    )
+
+    assert max_c == 0
+    assert trials[0]["quality_passed"] is False
+    assert trials[0]["passed"] is False
+
+
+def test_binary_search_can_explicitly_skip_wer(monkeypatch):
+    tune_gpu = _load_tune_gpu()
+
+    def no_wer_batch(_server, concurrency, **_kwargs):
+        return {"concurrency_sweep": [{"concurrency": concurrency, "failures": 0, "p99_s": 1.0, "rtfx": 12.0}]}
+
+    monkeypatch.setattr(tune_gpu, "_run_bench_batch", no_wer_batch)
+
+    max_c, trials = asyncio.run(
+        tune_gpu.binary_search_max_concurrency(
+            "http://localhost:8000",
+            "batch",
+            search_range=(1, 1),
+            skip_wer=True,
+        )
+    )
+
+    assert max_c == 1
+    assert trials[0]["quality_passed"] is True
+    assert trials[0]["passed"] is True
+
+
+def test_binary_search_rejects_high_wer(monkeypatch):
+    tune_gpu = _load_tune_gpu()
+
+    def high_wer_batch(_server, concurrency, **_kwargs):
+        return {
+            "wer": {"corpus_wer_pct": 25.0},
+            "concurrency_sweep": [{"concurrency": concurrency, "failures": 0, "p99_s": 1.0, "rtfx": 12.0}],
+        }
+
+    monkeypatch.setattr(tune_gpu, "_run_bench_batch", high_wer_batch)
+
+    max_c, trials = asyncio.run(
+        tune_gpu.binary_search_max_concurrency(
+            "http://localhost:8000",
+            "batch",
+            search_range=(1, 1),
+            wer_threshold_pct=20.0,
+        )
+    )
+
+    assert max_c == 0
+    assert trials[0]["wer_pct"] == 25.0
+    assert trials[0]["quality_passed"] is False
 
 
 def test_batch_sweep_does_not_fake_server_side_batch_sizes(monkeypatch):
@@ -120,6 +198,29 @@ def test_run_bench_batch_uses_full_dataset_by_default(monkeypatch, tmp_path):
     assert cmd[cmd.index("--max-samples") + 1] == "0"
     assert "--dataset-dir" in cmd
     assert cmd[cmd.index("--dataset-dir") + 1] == str(tmp_path)
+    assert "--skip-wer" not in cmd
+
+
+def test_run_bench_batch_only_skips_wer_when_requested(monkeypatch, tmp_path):
+    tune_gpu = _load_tune_gpu()
+    output = Path("/tmp/tune_batch_c8.json")
+    output.write_text(json.dumps({"concurrency_sweep": []}))
+    captured = {}
+
+    def fake_run(cmd, **_kwargs):
+        captured["cmd"] = cmd
+
+        class Result:
+            returncode = 0
+            stderr = ""
+
+        return Result()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    tune_gpu._run_bench_batch("http://localhost:8000", 8, dataset_dir=tmp_path, skip_wer=True)
+
+    assert "--skip-wer" in captured["cmd"]
 
 
 def test_main_exits_without_config_when_no_concurrency_passes(monkeypatch, tmp_path):

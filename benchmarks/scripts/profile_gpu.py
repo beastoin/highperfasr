@@ -190,30 +190,89 @@ class GPUProfiler:
         }
 
 
-def get_cpu_utilization() -> float | None:
-    """Get current system CPU utilization percentage."""
+def _read_cpu_times() -> tuple[int, int] | None:
+    """Read aggregate CPU idle and total jiffies from /proc/stat."""
     try:
         with open("/proc/stat") as f:
             line = f.readline()
         parts = line.split()
+        if not parts or parts[0] != "cpu":
+            return None
         idle = int(parts[4])
         total = sum(int(p) for p in parts[1:])
-        time.sleep(0.5)
-        with open("/proc/stat") as f:
-            line = f.readline()
-        parts2 = line.split()
-        idle2 = int(parts2[4])
-        total2 = sum(int(p) for p in parts2[1:])
-        return round((1 - (idle2 - idle) / max(total2 - total, 1)) * 100, 1)
-    except (FileNotFoundError, ValueError):
+        return idle, total
+    except (FileNotFoundError, ValueError, IndexError):
         return None
 
 
-async def run_batch_load(server: str, wav_files: list[str], concurrency: int, duration_s: float = 30):
+def _cpu_util_between(before: tuple[int, int], after: tuple[int, int]) -> float:
+    """Compute CPU utilization between two /proc/stat samples."""
+    idle, total = before
+    idle2, total2 = after
+    return round((1 - (idle2 - idle) / max(total2 - total, 1)) * 100, 1)
+
+
+def get_cpu_utilization() -> float | None:
+    """Get current system CPU utilization percentage."""
+    before = _read_cpu_times()
+    if before is None:
+        return None
+    time.sleep(0.5)
+    after = _read_cpu_times()
+    if after is None:
+        return None
+    return _cpu_util_between(before, after)
+
+
+class CPUProfiler:
+    """Background thread that samples host CPU utilization during load."""
+
+    def __init__(self, interval_s: float = 1.0):
+        self._interval = interval_s
+        self._samples: list[float] = []
+        self._running = False
+        self._thread: threading.Thread | None = None
+
+    def start(self):
+        self._samples = []
+        self._running = True
+        self._thread = threading.Thread(target=self._sample_loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> list[float]:
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=max(5, self._interval * 2))
+        return self._samples
+
+    def _sample_loop(self):
+        previous = _read_cpu_times()
+        while self._running:
+            time.sleep(self._interval)
+            current = _read_cpu_times()
+            if previous is not None and current is not None:
+                self._samples.append(_cpu_util_between(previous, current))
+            previous = current
+
+    @staticmethod
+    def summarize(samples: list[float]) -> dict:
+        """Compute summary statistics from CPU samples."""
+        if not samples:
+            return {"error": "no CPU samples collected"}
+        return {
+            "samples": len(samples),
+            "min": min(samples),
+            "max": max(samples),
+            "mean": round(sum(samples) / len(samples), 1),
+        }
+
+
+async def run_batch_load(server: str, wav_files: list[str], concurrency: int, duration_s: float = 30,
+                         endpoint: str = "/v1/transcriptions"):
     """Run batch load at given concurrency for duration."""
     import aiohttp
 
-    url = f"{server}/v1/transcriptions"
+    url = f"{server}{endpoint}"
     sem = asyncio.Semaphore(concurrency)
     results = []
     stop_time = time.monotonic() + duration_s
@@ -250,11 +309,12 @@ async def run_batch_load(server: str, wav_files: list[str], concurrency: int, du
     return results
 
 
-async def run_stream_load(server: str, wav_files: list[str], concurrency: int, duration_s: float = 30):
+async def run_stream_load(server: str, wav_files: list[str], concurrency: int, duration_s: float = 30,
+                          endpoint: str = "/v1/stream"):
     """Run streaming load at given concurrency for duration."""
     import websockets
 
-    endpoint = f"{server}/v1/stream"
+    endpoint = f"{server}{endpoint}"
     sem = asyncio.Semaphore(concurrency)
     results = []
     stop_time = time.monotonic() + duration_s
@@ -320,26 +380,31 @@ async def profile_at_concurrency(
     concurrency: int,
     duration_s: float = 30,
     sample_interval: float = 1.0,
+    endpoint: str | None = None,
 ) -> dict:
     """Profile GPU at one concurrency level."""
     log.info(f"Profiling c={concurrency} for {duration_s}s...")
 
     profiler = GPUProfiler(interval_s=sample_interval)
+    cpu_profiler = CPUProfiler(interval_s=sample_interval)
 
     baseline = parse_nvidia_smi()
-    cpu_before = get_cpu_utilization()
 
     profiler.start()
+    cpu_profiler.start()
 
     if mode == "batch":
-        results = await run_batch_load(server, wav_files, concurrency, duration_s)
+        kwargs = {"endpoint": endpoint} if endpoint else {}
+        results = await run_batch_load(server, wav_files, concurrency, duration_s, **kwargs)
     else:
-        results = await run_stream_load(server, wav_files, concurrency, duration_s)
+        kwargs = {"endpoint": endpoint} if endpoint else {}
+        results = await run_stream_load(server, wav_files, concurrency, duration_s, **kwargs)
 
     samples = profiler.stop()
-    cpu_after = get_cpu_utilization()
+    cpu_samples = cpu_profiler.stop()
 
     gpu_summary = GPUProfiler.summarize(samples)
+    cpu_summary = CPUProfiler.summarize(cpu_samples)
     bottleneck = GPUProfiler.classify_bottleneck(gpu_summary)
 
     ok = sum(1 for r in results if r)
@@ -350,7 +415,8 @@ async def profile_at_concurrency(
         "successes": ok,
         "failures": len(results) - ok,
         "gpu": gpu_summary,
-        "cpu_util_pct": cpu_after,
+        "cpu": cpu_summary,
+        "cpu_util_pct": cpu_summary.get("mean") if "error" not in cpu_summary else None,
         "baseline_vram_mb": baseline["vram_used_mb"] if baseline else None,
         "bottleneck": bottleneck,
     }
@@ -367,6 +433,7 @@ async def main():
     parser.add_argument("--dataset", default="librispeech-test-clean", help="Benchmark dataset for load generation")
     parser.add_argument("--max-samples", type=int, default=0, help="Max dataset samples (0=full dataset)")
     parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
+    parser.add_argument("--endpoint", default=None, help="Override endpoint path (e.g., /v1/transcribe for batch)")
     args = parser.parse_args()
 
     levels = [int(x) for x in args.concurrency.split(",")]
@@ -393,7 +460,8 @@ async def main():
 
     for c in levels:
         result = await profile_at_concurrency(
-            args.server, args.mode, wav_files, c, args.duration, args.sample_interval
+            args.server, args.mode, wav_files, c, args.duration, args.sample_interval,
+            endpoint=args.endpoint,
         )
         report["levels"].append(result)
         bn = result["bottleneck"]

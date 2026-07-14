@@ -36,16 +36,40 @@ MAX_SAMPLES = 200
 
 
 def load_dataset_manifest(dataset_name: str, max_samples: int = 0, cache_dir=None):
-    """Load dataset from the multi-corpus registry. Returns (wav_files, refs_dict)."""
+    """Load dataset from the multi-corpus registry. Returns (manifest, refs_dict)."""
     parent = Path(__file__).resolve().parent.parent.parent
     sys.path.insert(0, str(parent))
     from benchmarks.datasets.registry import load_dataset
 
     manifest = load_dataset(dataset_name, cache_dir=cache_dir, max_samples=max_samples)
-    wav_files = [Path(e["wav_path"]) for e in manifest]
     refs = {e["utt_id"]: e["reference"] for e in manifest if e.get("reference")}
-    log.info(f"Dataset '{dataset_name}': {len(wav_files)} files, {len(refs)} references")
-    return wav_files, refs
+    log.info(f"Dataset '{dataset_name}': {len(manifest)} files, {len(refs)} references")
+    return manifest, refs
+
+
+def manifest_from_wavs(wav_files, refs):
+    """Build manifest entries for the legacy LibriSpeech subset path."""
+    return [
+        {
+            "utt_id": Path(wav).stem,
+            "wav_path": str(wav),
+            "reference": refs.get(Path(wav).stem),
+        }
+        for wav in wav_files
+    ]
+
+
+def select_round_robin_entries(manifest, concurrency: int, target_count: int):
+    """Select benchmark work using RoundRobinLoader batches."""
+    parent = Path(__file__).resolve().parent.parent.parent
+    sys.path.insert(0, str(parent))
+    from benchmarks.datasets.loader import RoundRobinLoader
+
+    loader = RoundRobinLoader(manifest)
+    selected = []
+    while len(selected) < target_count:
+        selected.extend(loader.next_round(concurrency))
+    return selected[:target_count]
 
 
 def ensure_librispeech(max_samples=None):
@@ -194,7 +218,7 @@ def get_wav_duration(wav_path):
 
 
 async def transcribe_file(session, url, wav_path, semaphore):
-    """Send one file to /v1/transcriptions, return result dict."""
+    """Send one file to the batch transcription endpoint, return result dict."""
     async with semaphore:
         t0 = time.monotonic()
         audio_dur = get_wav_duration(wav_path)
@@ -234,9 +258,11 @@ async def transcribe_file(session, url, wav_path, semaphore):
             }
 
 
-async def run_sweep(url, wav_files, concurrency, repeat=1):
+async def run_sweep(url, manifest, concurrency, repeat=1, target_count=None):
     """Run one concurrency level, return results list."""
-    files = wav_files * repeat
+    if target_count is None:
+        target_count = len(manifest) * repeat
+    files = [Path(e["wav_path"]) for e in select_round_robin_entries(manifest, concurrency, target_count)]
     sem = asyncio.Semaphore(concurrency)
     t0 = time.monotonic()
     async with aiohttp.ClientSession() as session:
@@ -346,33 +372,35 @@ async def main():
 
     # Step 1: Load dataset
     if args.dataset:
-        wav_files, refs = load_dataset_manifest(
+        manifest, refs = load_dataset_manifest(
             args.dataset, max_samples=args.max_samples, cache_dir=args.dataset_dir
         )
     else:
         ensure_librispeech(max_samples=args.max_samples if args.max_samples > 0 else None)
         refs = load_references()
         wav_files = sorted(WAV_DIR.glob("*.wav"))[:MAX_SAMPLES]
-    log.info(f"Using {len(wav_files)} WAV files, {len(refs)} references")
+        manifest = manifest_from_wavs(wav_files, refs)
+    log.info(f"Using {len(manifest)} WAV files, {len(refs)} references")
 
     report = {
         "benchmark": "Batch ASR Benchmark",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "server": args.server,
-        "samples": len(wav_files),
+        "samples": len(manifest),
         "dataset": args.dataset or "LibriSpeech test-clean (200 subset)",
         "smart_mode": args.smart,
     }
 
     # Step 2: Warmup
-    log.info(f"Warmup: {args.warmup} requests at c=16...")
-    await run_sweep(url, wav_files, concurrency=16, repeat=1)
+    warmup_c = min(16, len(manifest), max(args.warmup, 1))
+    log.info(f"Warmup: {args.warmup} requests at c={warmup_c}...")
+    await run_sweep(url, manifest, concurrency=warmup_c, target_count=args.warmup)
     log.info("Warmup complete")
 
     # Step 3: WER evaluation (c=1 for deterministic ordering)
     if not args.skip_wer:
         log.info("WER evaluation: c=1, 200 samples...")
-        wer_results, _ = await run_sweep(url, wav_files, concurrency=1)
+        wer_results, _ = await run_sweep(url, manifest, concurrency=1, target_count=len(manifest))
 
         ok_results = [r for r in wer_results if r["status"] == "ok"]
         ref_texts = []
@@ -409,7 +437,7 @@ async def main():
     consecutive_matches = 0
     for c in levels:
         log.info(f"  c={c}...")
-        results, wall = await run_sweep(url, wav_files, concurrency=c)
+        results, wall = await run_sweep(url, manifest, concurrency=c, target_count=max(len(manifest), c))
         summary = summarize_sweep(results, wall, c)
         sweep_results.append(summary)
         log.info(
@@ -439,11 +467,11 @@ async def main():
     # Step 5: Sustained load
     sustained_c = args.sustained_concurrency
     rounds = args.sustained_rounds
-    log.info(f"Sustained load: c={sustained_c}, {rounds} rounds x {len(wav_files)} files...")
-    sustained_results, sustained_wall = await run_sweep(url, wav_files, concurrency=sustained_c, repeat=rounds)
+    log.info(f"Sustained load: c={sustained_c}, {rounds} rounds x {len(manifest)} files...")
+    sustained_results, sustained_wall = await run_sweep(url, manifest, concurrency=sustained_c, repeat=rounds)
     sustained_summary = summarize_sweep(sustained_results, sustained_wall, sustained_c)
     sustained_summary["rounds"] = rounds
-    sustained_summary["total_files"] = len(wav_files) * rounds
+    sustained_summary["total_files"] = len(manifest) * rounds
     report["sustained_load"] = sustained_summary
     log.info(
         f"  Sustained: {sustained_summary['rps']} RPS, "
