@@ -35,6 +35,19 @@ REF_FILE = DATA_DIR / "references.tsv"
 MAX_SAMPLES = 200
 
 
+def load_dataset_manifest(dataset_name: str, max_samples: int = 0, cache_dir=None):
+    """Load dataset from the multi-corpus registry. Returns (wav_files, refs_dict)."""
+    parent = Path(__file__).resolve().parent.parent.parent
+    sys.path.insert(0, str(parent))
+    from benchmarks.datasets.registry import load_dataset
+
+    manifest = load_dataset(dataset_name, cache_dir=cache_dir, max_samples=max_samples)
+    wav_files = [Path(e["wav_path"]) for e in manifest]
+    refs = {e["utt_id"]: e["reference"] for e in manifest if e.get("reference")}
+    log.info(f"Dataset '{dataset_name}': {len(wav_files)} files, {len(refs)} references")
+    return wav_files, refs
+
+
 def ensure_librispeech(max_samples=None):
     """Download and extract LibriSpeech test-clean if not cached.
 
@@ -305,6 +318,11 @@ async def main():
     parser.add_argument("--endpoint", default="/v1/transcriptions", help="Transcription endpoint path (default: /v1/transcriptions)")
     parser.add_argument("--smart", action="store_true", help="Smart mode: sweep high-to-low, early-stop on match")
     parser.add_argument("--baseline", default=None, help="Path to previous report JSON for smart comparison")
+    parser.add_argument("--dataset", default=None,
+                        help="Use multi-corpus dataset (e.g., 'librispeech-test-clean', 'all')")
+    parser.add_argument("--max-samples", type=int, default=0,
+                        help="Max samples from dataset (0=all, default uses MAX_SAMPLES for legacy mode)")
+    parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
     args = parser.parse_args()
 
     levels = [int(x) for x in args.concurrency.split(",")]
@@ -326,11 +344,15 @@ async def main():
     log.info(f"Server: {args.server}")
     log.info(f"Concurrency levels: {levels}")
 
-    # Step 1: Ensure LibriSpeech
-    ensure_librispeech()
-    refs = load_references()
-
-    wav_files = sorted(WAV_DIR.glob("*.wav"))[:MAX_SAMPLES]
+    # Step 1: Load dataset
+    if args.dataset:
+        wav_files, refs = load_dataset_manifest(
+            args.dataset, max_samples=args.max_samples, cache_dir=args.dataset_dir
+        )
+    else:
+        ensure_librispeech(max_samples=args.max_samples if args.max_samples > 0 else None)
+        refs = load_references()
+        wav_files = sorted(WAV_DIR.glob("*.wav"))[:MAX_SAMPLES]
     log.info(f"Using {len(wav_files)} WAV files, {len(refs)} references")
 
     report = {
@@ -338,7 +360,7 @@ async def main():
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "server": args.server,
         "samples": len(wav_files),
-        "dataset": "LibriSpeech test-clean",
+        "dataset": args.dataset or "LibriSpeech test-clean (200 subset)",
         "smart_mode": args.smart,
     }
 

@@ -200,6 +200,11 @@ async def main():
     parser.add_argument("--endpoint", default="/v1/stream", help="WebSocket endpoint path (default: /v1/stream)")
     parser.add_argument("--smart", action="store_true", help="Smart mode: sweep high-to-low, early-stop on match")
     parser.add_argument("--baseline", default=None, help="Path to previous report JSON for smart comparison")
+    parser.add_argument("--dataset", default=None,
+                        help="Use multi-corpus dataset (e.g., 'librispeech-test-clean', 'all')")
+    parser.add_argument("--max-samples", type=int, default=0,
+                        help="Max samples from dataset (0=all)")
+    parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
     args = parser.parse_args()
 
     levels = [int(x) for x in args.concurrency.split(",")]
@@ -221,11 +226,19 @@ async def main():
     log.info(f"Server: {args.server}")
     log.info(f"Chunk: {args.chunk_ms}ms, Concurrency levels: {levels}")
 
-    ensure_librispeech()
-    refs = load_references()
-
-    wav_dir = Path("/tmp/librispeech-test-clean/wav")
-    wav_files = sorted(wav_dir.glob("*.wav"))[:200]
+    if args.dataset:
+        from pathlib import Path as _P
+        parent = _P(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(parent))
+        from benchmarks.datasets.registry import load_dataset
+        manifest = load_dataset(args.dataset, cache_dir=args.dataset_dir, max_samples=args.max_samples)
+        wav_files = [_P(e["wav_path"]) for e in manifest]
+        refs = {e["utt_id"]: e["reference"] for e in manifest if e.get("reference")}
+    else:
+        ensure_librispeech()
+        refs = load_references()
+        wav_dir = Path("/tmp/librispeech-test-clean/wav")
+        wav_files = sorted(wav_dir.glob("*.wav"))[:200]
     log.info(f"Using {len(wav_files)} WAV files")
 
     report = {
@@ -234,7 +247,7 @@ async def main():
         "server": args.server,
         "chunk_ms": args.chunk_ms,
         "samples": len(wav_files),
-        "dataset": "LibriSpeech test-clean",
+        "dataset": args.dataset or "LibriSpeech test-clean (200 subset)",
         "smart_mode": args.smart,
     }
 
