@@ -112,6 +112,7 @@ class GPUWorker:
         self._gc_counter += 1
         if self._gc_counter >= self._gc_interval:
             gc.collect()
+            torch.cuda.empty_cache()
             self._gc_counter = 0
 
     def wait_ready(self, timeout: float = 600) -> None:
@@ -622,15 +623,21 @@ class GPUWorker:
 
     @torch.inference_mode()
     def _dispatch(self, item: WorkItem) -> Any:
-        if item.work_type == WorkType.BATCH_TRANSCRIBE:
-            return self._batch_transcribe(item.payload)
-        elif item.work_type == WorkType.STREAM_OPEN:
-            return self._stream_open(item.payload)
-        elif item.work_type == WorkType.STREAM_CHUNK:
-            return self._stream_chunk(item.payload)
-        elif item.work_type == WorkType.STREAM_CLOSE:
-            return self._stream_close(item.payload)
-        raise ValueError(f"Unknown work type: {item.work_type}")
+        try:
+            if item.work_type == WorkType.BATCH_TRANSCRIBE:
+                return self._batch_transcribe(item.payload)
+            elif item.work_type == WorkType.STREAM_OPEN:
+                return self._stream_open(item.payload)
+            elif item.work_type == WorkType.STREAM_CHUNK:
+                return self._stream_chunk(item.payload)
+            elif item.work_type == WorkType.STREAM_CLOSE:
+                return self._stream_close(item.payload)
+            raise ValueError(f"Unknown work type: {item.work_type}")
+        except torch.cuda.OutOfMemoryError:
+            torch.cuda.empty_cache()
+            gc.collect()
+            log.warning("CUDA OOM recovered — emptied cache and retrying")
+            raise
 
     def _load_one_model(self, nemo_asr, device, idx=0):
         tag = f" (pool #{idx})" if self._pool_size > 1 else ""
