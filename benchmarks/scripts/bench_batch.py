@@ -66,6 +66,7 @@ def select_round_robin_entries(manifest, concurrency: int, target_count: int):
     (high-c sweeps don't need per-round uniqueness).
     """
     if concurrency > len(manifest):
+        log.warning(f"concurrency {concurrency} > dataset size {len(manifest)}: audio reused within wave")
         return [manifest[i % len(manifest)] for i in range(target_count)]
 
     parent = Path(__file__).resolve().parent.parent.parent
@@ -102,6 +103,9 @@ def ensure_librispeech(max_samples=None):
     if not tar_path.exists():
         urllib.request.urlretrieve(LIBRISPEECH_URL, tar_path)
         log.info(f"Downloaded {tar_path.stat().st_size / 1e6:.0f}MB")
+        import hashlib
+        sha256 = hashlib.sha256(tar_path.read_bytes()).hexdigest()
+        log.info(f"SHA256: {sha256}")
 
     log.info("Extracting...")
     refs = {}
@@ -372,6 +376,8 @@ async def main():
     parser.add_argument("--max-samples", type=int, default=0,
                         help="Max samples from dataset (0=all, default uses MAX_SAMPLES for legacy mode)")
     parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
+    parser.add_argument("--trials", type=int, default=1,
+                        help="Number of trial runs for statistical rigor (default: 1)")
     args = parser.parse_args()
 
     levels = [int(x) for x in args.concurrency.split(",")]
@@ -570,6 +576,56 @@ async def main():
     print(f"| p50 / p99 | {sustained_summary.get('p50_s', '?')}s / {sustained_summary.get('p99_s', '?')}s |")
     print(f"| Failures | {sustained_summary['failures']} |")
 
+    # Multi-trial aggregation
+    if args.trials > 1:
+        parent = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(parent))
+        from benchmarks.scripts.stats import summarize_trials
+
+        all_peak_rps = [peak["rps"]]
+        all_peak_rtfx = [peak["rtfx"]]
+        all_sustained_rps = [sustained_summary["rps"]]
+        all_sustained_rtfx = [sustained_summary["rtfx"]]
+
+        for trial in range(2, args.trials + 1):
+            log.info(f"=== Trial {trial}/{args.trials} ===")
+            t_sweep = []
+            for c in levels:
+                results, wall = await run_sweep(url, manifest, concurrency=c, target_count=max(len(manifest), c))
+                t_sweep.append(summarize_sweep(results, wall, c))
+            t_peak = max(t_sweep, key=lambda x: x["rps"])
+            all_peak_rps.append(t_peak["rps"])
+            all_peak_rtfx.append(t_peak["rtfx"])
+
+            t_sus_results, t_sus_wall = await run_sweep(url, manifest, concurrency=sustained_c, repeat=rounds)
+            t_sus = summarize_sweep(t_sus_results, t_sus_wall, sustained_c)
+            all_sustained_rps.append(t_sus["rps"])
+            all_sustained_rtfx.append(t_sus["rtfx"])
+            log.info(f"  Trial {trial}: peak={t_peak['rps']} RPS, sustained={t_sus['rps']} RPS")
+
+        report["trials"] = {
+            "count": args.trials,
+            "peak_rps": summarize_trials(all_peak_rps),
+            "peak_rtfx": summarize_trials(all_peak_rtfx),
+            "sustained_rps": summarize_trials(all_sustained_rps),
+            "sustained_rtfx": summarize_trials(all_sustained_rtfx),
+        }
+        log.info(f"Trials summary: peak RPS={report['trials']['peak_rps']}")
+
+    # Quality gate evaluation
+    gates_path = Path(__file__).parent.parent / "config" / "quality-gates.json"
+    if gates_path.exists():
+        parent = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(parent))
+        from benchmarks.scripts.gates import load_gates, evaluate_gates, exit_code_for_gates
+
+        gates = load_gates(str(gates_path))
+        gate_result = evaluate_gates(report, gates)
+        report["quality_gates"] = gate_result
+        for g in gate_result["gates"]:
+            status = "PASS" if g["passed"] else "FAIL"
+            log.info(f"  Gate {status}: {g['gate']} — threshold={g['threshold']}, actual={g['actual']}")
+
     # Save report
     with open(args.output, "w") as f:
         json.dump(report, f, indent=2)
@@ -578,6 +634,11 @@ async def main():
     total_failures = report["summary"]["total_failures"]
     if total_failures > 0:
         log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
+        return 1
+
+    if "quality_gates" in report and not report["quality_gates"]["all_passed"]:
+        failed = [g for g in report["quality_gates"]["gates"] if not g["passed"]]
+        log.error(f"FAIL: {len(failed)} quality gate(s) failed")
         return 1
 
     if args.smart and baseline_sweep:

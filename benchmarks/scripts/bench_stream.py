@@ -74,6 +74,7 @@ def select_round_robin_entries(manifest, concurrency: int, target_count: int):
     Falls back to simple cycling when concurrency exceeds manifest size.
     """
     if concurrency > len(manifest):
+        log.warning(f"concurrency {concurrency} > dataset size {len(manifest)}: audio reused within wave")
         return [manifest[i % len(manifest)] for i in range(target_count)]
 
     parent = Path(__file__).resolve().parent.parent.parent
@@ -97,6 +98,7 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
 
     async with semaphore:
         t0 = time.monotonic()
+        ttfb = None
         try:
             with open(wav_path, "rb") as f:
                 f.read(44)  # skip WAV header
@@ -119,6 +121,8 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
                         while True:
                             msg = await asyncio.wait_for(ws.recv(), timeout=0.01)
                             resp = json.loads(msg)
+                            if ttfb is None and (resp.get("partial_transcript") or resp.get("final_transcript")):
+                                ttfb = time.monotonic() - t0
                             if resp.get("final_transcript"):
                                 final_parts.append(resp["final_transcript"])
                     except asyncio.TimeoutError:
@@ -130,6 +134,8 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
                     while True:
                         msg = await asyncio.wait_for(ws.recv(), timeout=5)
                         resp = json.loads(msg)
+                        if ttfb is None and (resp.get("partial_transcript") or resp.get("final_transcript")):
+                            ttfb = time.monotonic() - t0
                         if resp.get("final_transcript"):
                             final_parts.append(resp["final_transcript"])
                         if resp.get("final_text"):
@@ -148,6 +154,7 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
                     "elapsed": elapsed,
                     "audio_dur": audio_dur,
                     "rtfx": audio_dur / elapsed if elapsed > 0 else 0,
+                    "ttfb_s": round(ttfb, 4) if ttfb else None,
                     "status": "ok",
                 }
         except Exception as e:
@@ -200,6 +207,12 @@ def summarize_sweep(results, wall_time, concurrency):
         summary["mean_s"] = round(statistics.mean(latencies), 3)
         if len(latencies) > 1:
             summary["stddev_s"] = round(statistics.stdev(latencies), 3)
+
+    ttfbs = sorted(r["ttfb_s"] for r in ok if r.get("ttfb_s") is not None)
+    if ttfbs:
+        summary["ttfb_p50_s"] = round(ttfbs[len(ttfbs) // 2], 4)
+        summary["ttfb_p95_s"] = round(ttfbs[int(len(ttfbs) * 0.95)], 4)
+        summary["ttfb_p99_s"] = round(ttfbs[int(len(ttfbs) * 0.99)], 4)
 
     return summary
 
@@ -254,6 +267,8 @@ async def main():
     parser.add_argument("--max-samples", type=int, default=0,
                         help="Max samples from dataset (0=all)")
     parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
+    parser.add_argument("--trials", type=int, default=1,
+                        help="Number of trial runs for statistical rigor (default: 1)")
     args = parser.parse_args()
 
     levels = [int(x) for x in args.concurrency.split(",")]
@@ -417,6 +432,58 @@ async def main():
     print(f"| sess/min | {sustained_summary['sess_per_min']} |")
     print(f"| Failures | {sustained_summary['failures']} |")
 
+    # Multi-trial aggregation
+    if args.trials > 1:
+        parent = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(parent))
+        from benchmarks.scripts.stats import summarize_trials
+
+        peak = max(sweep_results, key=lambda x: x["rtfx"])
+        all_peak_rtfx = [peak["rtfx"]]
+        all_sustained_rtfx = [sustained_summary["rtfx"]]
+        all_sustained_sess = [sustained_summary["sess_per_min"]]
+
+        for trial in range(2, args.trials + 1):
+            log.info(f"=== Trial {trial}/{args.trials} ===")
+            t_sweep = []
+            for c in levels:
+                results, wall = await run_sweep(
+                    ws_url, manifest, concurrency=c, chunk_ms=args.chunk_ms, target_count=max(len(manifest), c)
+                )
+                t_sweep.append(summarize_sweep(results, wall, c))
+            t_peak = max(t_sweep, key=lambda x: x["rtfx"])
+            all_peak_rtfx.append(t_peak["rtfx"])
+
+            t_sus_results, t_sus_wall = await run_sweep(
+                ws_url, manifest, concurrency=sc, chunk_ms=args.chunk_ms, repeat=rounds
+            )
+            t_sus = summarize_sweep(t_sus_results, t_sus_wall, sc)
+            all_sustained_rtfx.append(t_sus["rtfx"])
+            all_sustained_sess.append(t_sus["sess_per_min"])
+            log.info(f"  Trial {trial}: peak RTFx={t_peak['rtfx']}, sustained={t_sus['rtfx']}")
+
+        report["trials"] = {
+            "count": args.trials,
+            "peak_rtfx": summarize_trials(all_peak_rtfx),
+            "sustained_rtfx": summarize_trials(all_sustained_rtfx),
+            "sustained_sess_per_min": summarize_trials(all_sustained_sess),
+        }
+        log.info(f"Trials summary: peak RTFx={report['trials']['peak_rtfx']}")
+
+    # Quality gate evaluation
+    gates_path = Path(__file__).parent.parent / "config" / "quality-gates.json"
+    if gates_path.exists():
+        parent = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(parent))
+        from benchmarks.scripts.gates import load_gates, evaluate_gates
+
+        gates = load_gates(str(gates_path))
+        gate_result = evaluate_gates(report, gates, scenario="streaming-realtime")
+        report["quality_gates"] = gate_result
+        for g in gate_result["gates"]:
+            status = "PASS" if g["passed"] else "FAIL"
+            log.info(f"  Gate {status}: {g['gate']} — threshold={g['threshold']}, actual={g['actual']}")
+
     with open(args.output, "w") as f:
         json.dump(report, f, indent=2)
     log.info(f"Report saved to {args.output}")
@@ -424,6 +491,11 @@ async def main():
     total_failures = sum(s["failures"] for s in sweep_results) + sustained_summary["failures"]
     if total_failures > 0:
         log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
+        return 1
+
+    if "quality_gates" in report and not report["quality_gates"]["all_passed"]:
+        failed = [g for g in report["quality_gates"]["gates"] if not g["passed"]]
+        log.error(f"FAIL: {len(failed)} quality gate(s) failed")
         return 1
 
     if args.smart and baseline_sweep:

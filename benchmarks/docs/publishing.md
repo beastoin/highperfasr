@@ -53,4 +53,13 @@ The `benchmark-validation` workflow runs on every PR that touches `benchmarks/`:
 
 ## Statistical Rigor
 
-For publishable results, use `--trials 3` (or more) to capture variance. The `stats` module computes mean, stddev, and 95% confidence intervals using Student's t-distribution.
+For publishable results, use `--trials 3` (or more) to capture variance:
+
+```bash
+python3 benchmarks/scripts/bench_batch.py \
+  --server http://localhost:8000 \
+  --trials 3 \
+  --output results/result.json
+```
+
+The `stats` module computes mean, stddev, and 95% confidence intervals using Student's t-distribution. Trial statistics are saved under the `trials` key in the report JSON.
