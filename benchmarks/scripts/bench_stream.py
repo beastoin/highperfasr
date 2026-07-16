@@ -303,12 +303,13 @@ async def main():
     log.info(f"Using {len(manifest)} WAV files")
 
     report = {
+        "schema_version": "v1alpha2-live",
         "benchmark": "Streaming ASR Benchmark",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "server": args.server,
         "chunk_ms": args.chunk_ms,
         "samples": len(manifest),
-        "dataset": args.dataset or "LibriSpeech test-clean (200 subset)",
+        "dataset": args.dataset or "librispeech-test-clean",
         "smart_mode": args.smart,
         "system": collect_system_info(),
         "command": " ".join(sys.argv),

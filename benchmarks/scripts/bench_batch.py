@@ -397,24 +397,21 @@ async def main():
     log.info(f"Server: {args.server}")
     log.info(f"Concurrency levels: {levels}")
 
-    # Step 1: Load dataset
-    if args.dataset:
-        manifest, refs = load_dataset_manifest(
-            args.dataset, max_samples=args.max_samples, cache_dir=args.dataset_dir
-        )
-    else:
-        ensure_librispeech(max_samples=args.max_samples if args.max_samples > 0 else None)
-        refs = load_references()
-        wav_files = sorted(WAV_DIR.glob("*.wav"))[:MAX_SAMPLES]
-        manifest = manifest_from_wavs(wav_files, refs)
+    # Step 1: Load dataset (always via registry)
+    dataset_name = args.dataset or "librispeech-test-clean"
+    max_samples = args.max_samples if args.max_samples > 0 else MAX_SAMPLES
+    manifest, refs = load_dataset_manifest(
+        dataset_name, max_samples=max_samples, cache_dir=args.dataset_dir
+    )
     log.info(f"Using {len(manifest)} WAV files, {len(refs)} references")
 
     report = {
+        "schema_version": "v1alpha2-live",
         "benchmark": "Batch ASR Benchmark",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "server": args.server,
         "samples": len(manifest),
-        "dataset": args.dataset or "LibriSpeech test-clean (200 subset)",
+        "dataset": dataset_name,
         "smart_mode": args.smart,
         "system": collect_system_info(),
         "command": " ".join(sys.argv),
