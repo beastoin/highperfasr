@@ -58,6 +58,21 @@ from bench_stream import summarize_sweep as summarize_stream
 SR = 16000
 
 
+def _has_result_failures(result):
+    return result.get("failures", 0) > 0
+
+
+def _has_combined_entry_failures(entry):
+    batch = entry.get("batch", {})
+    stream = entry.get("stream", {})
+    return (
+        _has_result_failures(batch)
+        or _has_result_failures(stream)
+        or entry.get("batch_failures", 0) > 0
+        or entry.get("stream_failures", 0) > 0
+    )
+
+
 def get_vram_mb():
     """Get current GPU VRAM usage in MB via nvidia-smi."""
     try:
@@ -890,8 +905,7 @@ async def main():
 
     has_failures = report.get("summary", {}).get("sustained_total_failures", 0) > 0
     for entry in report.get("combined_sweep", []):
-        has_failures = has_failures or entry.get("batch_failures", 0) > 0
-        has_failures = has_failures or entry.get("stream_failures", 0) > 0
+        has_failures = has_failures or _has_combined_entry_failures(entry)
     for bl in report.get("baselines", {}).get("batch", []):
         has_failures = has_failures or bl.get("failures", 0) > 0
     for bl in report.get("baselines", {}).get("stream", []):

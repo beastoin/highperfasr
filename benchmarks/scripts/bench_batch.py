@@ -372,7 +372,7 @@ async def main():
     parser.add_argument("--dataset", default=None,
                         help="Use multi-corpus dataset (e.g., 'librispeech-test-clean', 'all')")
     parser.add_argument("--max-samples", type=int, default=0,
-                        help="Max samples from dataset (0=all, default uses MAX_SAMPLES for legacy mode)")
+                        help="Max samples from dataset (0=all)")
     parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
     parser.add_argument("--trials", type=int, default=1,
                         help="Number of trial runs for statistical rigor (default: 1)")
@@ -399,7 +399,7 @@ async def main():
 
     # Step 1: Load dataset (always via registry)
     dataset_name = args.dataset or "librispeech-test-clean"
-    max_samples = args.max_samples if args.max_samples > 0 else MAX_SAMPLES
+    max_samples = args.max_samples
     manifest, refs = load_dataset_manifest(
         dataset_name, max_samples=max_samples, cache_dir=args.dataset_dir
     )

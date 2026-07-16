@@ -78,6 +78,10 @@ def check_regression(current_report, baseline_report, rules):
     return results
 
 
+def has_missing_metrics(results):
+    return any(r.get("status") == "skipped" for r in results)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Check benchmark regressions against baselines",
@@ -111,7 +115,8 @@ def main():
                 skipped = [r for r in results if r.get("status") == "skipped"]
                 if skipped:
                     names = ", ".join(r["metric"] for r in skipped)
-                    print(f"WARN: {baseline['id']} — metrics not extractable: {names}")
+                    print(f"FAIL: {baseline['id']} -- metrics not extractable: {names}")
+                    errors += 1
                 print(f"OK: {baseline['id']} ({path})")
             except Exception as e:
                 print(f"FAIL: {baseline['id']} -- {e}")
@@ -133,7 +138,7 @@ def main():
         base_report = load_report(base_path)
         results = check_regression(current, base_report, baseline["metrics"])
 
-        all_passed = all(r.get("passed", True) for r in results)
+        all_passed = not has_missing_metrics(results) and all(r.get("passed", True) for r in results)
         status = "PASS" if all_passed else "REGRESSION"
         print(f"\n{status}: vs {baseline['id']}")
         for r in results:

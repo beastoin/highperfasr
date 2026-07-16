@@ -444,7 +444,7 @@ async def run_duration_test(ws_url, wav_files, refs, concurrency, duration_s, ch
 
 async def main():
     parser = argparse.ArgumentParser(description="Long-lived streaming ASR benchmark")
-    parser.add_argument("--server", default="ws://localhost:8000", help="Server WebSocket base URL")
+    parser.add_argument("--server", default="ws://localhost:8001", help="Server WebSocket base URL")
     parser.add_argument("--chunk-ms", type=int, default=160, help="Chunk duration in ms (default: 160)")
     parser.add_argument("--concurrency", type=int, default=96, help="Concurrent WebSocket connections (default: 96)")
     parser.add_argument(

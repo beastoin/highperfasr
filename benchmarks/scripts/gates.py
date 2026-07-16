@@ -58,9 +58,10 @@ def evaluate_gates(report, gates, scenario=None):
 
     wer = _extract_wer(report)
     max_wer = gate.get("max_wer_pct")
-    if wer is not None and max_wer is not None:
+    if max_wer is not None:
         results.append({"gate": "max_wer_pct", "threshold": max_wer,
-                        "actual": wer, "passed": wer <= max_wer})
+                        "actual": wer,
+                        "passed": wer is not None and wer <= max_wer})
 
     fail_rate = _extract_failure_rate(report)
     max_fail = gate.get("max_failure_rate", 0.0)

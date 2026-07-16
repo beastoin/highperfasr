@@ -1,11 +1,11 @@
 {
   "batch": {
-    "max_wer_pct": 3.0,
+    "max_wer_pct": 2.5,
     "max_failure_rate": 0.0,
     "min_rtfx": 1.0
   },
   "streaming-realtime": {
-    "max_wer_pct": 5.0,
+    "max_wer_pct": 4.0,
     "max_failure_rate": 0.0,
     "max_p99_ms": 60000
   },
