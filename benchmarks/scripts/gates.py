@@ -21,11 +21,15 @@ def _extract_failure_rate(report):
     if "failure_rate" in rel:
         return rel["failure_rate"]
     sweep = report.get("concurrency_sweep", [])
+    if not sweep:
+        return None
     total_failures = sum(e.get("failures", 0) for e in sweep)
     total_requests = sum(
         e.get("total", e.get("ok", 0) + e.get("failures", 0)) for e in sweep
     )
-    return total_failures / max(total_requests, 1)
+    if total_requests == 0:
+        return None
+    return total_failures / total_requests
 
 
 def _extract_rtfx(report):
@@ -68,7 +72,8 @@ def evaluate_gates(report, gates, scenario=None):
     fail_rate = _extract_failure_rate(report)
     max_fail = gate.get("max_failure_rate", 0.0)
     results.append({"gate": "max_failure_rate", "threshold": max_fail,
-                    "actual": round(fail_rate, 4), "passed": fail_rate <= max_fail})
+                    "actual": round(fail_rate, 4) if fail_rate is not None else None,
+                    "passed": fail_rate is not None and fail_rate <= max_fail})
 
     sustained = report.get("sustained_load", {})
     if sustained:
