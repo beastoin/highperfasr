@@ -76,11 +76,21 @@ Full report: [benchmarks/results/2026-l4-nemo-batch/](benchmarks/results/2026-l4
 
 ### Methodology
 
-Quality rubric: real speech corpus, standard WER normalization (Whisper
-EnglishTextNormalizer), sustained concurrent load, reproducible artifacts.
-Verify: [report schema](benchmarks/report-schema.json),
+Every benchmark follows a deterministic protocol: real speech corpus (LibriSpeech
+test-clean, 2620 files, SHA256-verified), standard WER normalization (Whisper
+EnglishTextNormalizer), concurrency sweeps with sustained load, and fail-closed
+quality gates that reject results with missing metrics.
+
+Reports are validated against a [JSON schema](benchmarks/report-schema.json),
+checked for regressions against [registered baselines](benchmarks/baselines/registry.json),
+and gated by [automated thresholds](benchmarks/config/quality-gates.json)
+(batch WER < 2.5%, streaming WER < 4.0%, 0 failures).
+CI runs all checks on every PR.
+
+Verify:
 [streaming result.json](benchmarks/results/2026-l4-nemo-512-streams/result.json),
-[batch result.json](benchmarks/results/2026-l4-nemo-batch/result.json).
+[batch result.json](benchmarks/results/2026-l4-nemo-batch/result.json),
+[benchmark scripts](benchmarks/scripts/).
 
 ## Deploy
 
