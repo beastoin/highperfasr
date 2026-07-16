@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -443,7 +444,7 @@ async def run_duration_test(ws_url, wav_files, refs, concurrency, duration_s, ch
 
 async def main():
     parser = argparse.ArgumentParser(description="Long-lived streaming ASR benchmark")
-    parser.add_argument("--server", default="ws://localhost:8000", help="Server WebSocket base URL")
+    parser.add_argument("--server", default="ws://localhost:8001", help="Server WebSocket base URL")
     parser.add_argument("--chunk-ms", type=int, default=160, help="Chunk duration in ms (default: 160)")
     parser.add_argument("--concurrency", type=int, default=96, help="Concurrent WebSocket connections (default: 96)")
     parser.add_argument(
@@ -626,6 +627,13 @@ async def main():
     log.info(f"Report saved to {args.output}")
     log.info(f"Full per-stream transcripts available in JSON: {args.output}")
 
+    total_failures = sum(d.get("failures", 0) + d.get("connections_failed", 0)
+                         for d in report.get("durations", []))
+    vram_values = [d.get("vram_growth_mb") for d in report.get("durations", [])
+                   if d.get("vram_growth_mb") is not None]
+    vram_growth = max(vram_values, default=0)
+    return 1 if total_failures > 0 or vram_growth > 100 else 0
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

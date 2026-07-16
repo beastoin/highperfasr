@@ -1,0 +1,94 @@
+{
+  "schema_version": "v1alpha2",
+  "report_id": "2026-l4-batch-by-duration",
+  "generated_at": "2026-07-16T04:05:10Z",
+  "protocol_version": "v1alpha1",
+  "sut": {
+    "name": "NeMo FastAPI Server (batch + stream mode)",
+    "implementation": "labs/nemo-fastapi",
+    "git_sha": "79aaa5a",
+    "model_name": "nvidia/parakeet-tdt-0.6b-v3",
+    "model_params": "0.6B"
+  },
+  "hardware": {
+    "gpu": "NVIDIA L4",
+    "gpu_count": 1,
+    "gpu_memory_gb": 24,
+    "cpu": "GKE n2d-standard-4",
+    "ram_gb": 26
+  },
+  "software": {
+    "cuda_version": "12.8",
+    "driver_version": "570.86.15",
+    "pytorch_version": "2.6.0",
+    "framework_version": "NeMo 2.5",
+    "python_version": "3.12",
+    "container_image": "nvcr.io/nvidia/nemo:26.02"
+  },
+  "dataset": {
+    "name": "espeak-ng TTS",
+    "split": "synthetic-durations",
+    "num_files": 400,
+    "total_audio_hours": 6.7,
+    "license": "N/A (synthetic)"
+  },
+  "scenario": {
+    "name": "batch-duration-stratified-sweep",
+    "mode": "offline",
+    "concurrency": 256,
+    "description": "Duration-stratified batch concurrency sweep: 100 espeak-ng speech files per duration bracket (10s, 30s, 60s, 120s). Tests throughput and max safe concurrency as a function of audio duration."
+  },
+  "quality": {
+    "note": "WER not measured in-scenario (synthetic espeak-ng audio). See 2026-l4-nemo-batch for LibriSpeech WER."
+  },
+  "performance": {
+    "rtfx": 235,
+    "rps": 14.91,
+    "p50_ms": 9500,
+    "p99_ms": 17200,
+    "max_concurrent_streams": 256
+  },
+  "reliability": {
+    "total_requests": 3400,
+    "successful": 3400,
+    "failed": 0,
+    "failure_rate": 0.0
+  },
+  "resources": {
+    "vram_total_mb": 23034
+  },
+  "reproduction": {
+    "command": "python3 benchmarks/scripts/bench_batch_by_duration.py --server http://localhost:8000 --durations 10,30,60,120 --files 100 --sustained-rounds 4",
+    "config_file": "labs/nemo-fastapi/configs/serving-batch.yaml",
+    "notes": "60s audio hard-capped at c=24 due to VRAM estimator bug (issue #19). Run inside NGC nemo:26.02 container on GKE with L4 GPU."
+  },
+  "environment": {
+    "provider": "gcp",
+    "region": "us-central1",
+    "kubernetes_distribution": "gke",
+    "instance_type": "g2-standard-4",
+    "capacity_type": "on-demand",
+    "recipe": "recipes/gcp-l4"
+  },
+  "cost": {
+    "currency": "USD",
+    "pricing_model": "on-demand",
+    "price_source": "GCP g2-standard-4 on-demand reference price",
+    "price_as_of": "2026-07-16",
+    "node_usd_per_hour": 0.70,
+    "wall_clock_seconds": 2400,
+    "usd_per_audio_hour": 0.003
+  },
+  "artifacts": [
+    {
+      "name": "raw benchmark output",
+      "path": "benchmarks/results/2026-l4-batch-by-duration/raw.json",
+      "description": "Full script output with per-duration sweep data"
+    },
+    {
+      "name": "summary",
+      "path": "benchmarks/results/2026-l4-batch-by-duration/summary.md",
+      "description": "Human-readable benchmark report"
+    }
+  ]
+}

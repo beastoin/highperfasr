@@ -7,9 +7,9 @@ computes WER using wer_utils (Whisper normalization), runs concurrency sweep and
 sustained load, and outputs a structured JSON report.
 
 Usage:
-    python3 bench_stream.py --server ws://localhost:8000
-    python3 bench_stream.py --server ws://localhost:8000 --chunk-ms 480
-    python3 bench_stream.py --server ws://localhost:8000 --concurrency 1,4,8,16,32
+    python3 bench_stream.py --server ws://localhost:8001
+    python3 bench_stream.py --server ws://localhost:8001 --chunk-ms 480
+    python3 bench_stream.py --server ws://localhost:8001 --concurrency 1,4,8,16,32
 """
 
 import argparse
@@ -21,6 +21,8 @@ import struct
 import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bench_stream")
@@ -49,6 +51,43 @@ def compute_wer(references, hypotheses):
     return _compute(references, hypotheses)
 
 
+def collect_system_info():
+    """Collect system metadata for report reproducibility."""
+    from bench_batch import collect_system_info as _collect
+
+    return _collect()
+
+
+def manifest_from_wavs(wav_files, refs):
+    """Build manifest entries for the legacy LibriSpeech subset path."""
+    return [
+        {
+            "utt_id": Path(wav).stem,
+            "wav_path": str(wav),
+            "reference": refs.get(Path(wav).stem),
+        }
+        for wav in wav_files
+    ]
+
+
+def select_round_robin_entries(manifest, concurrency: int, target_count: int):
+    """Select benchmark work using RoundRobinLoader batches.
+
+    Falls back to simple cycling when concurrency exceeds manifest size.
+    """
+    if concurrency > len(manifest):
+        log.warning(f"concurrency {concurrency} > dataset size {len(manifest)}: audio reused within wave")
+        return [manifest[i % len(manifest)] for i in range(target_count)]
+
+    from benchmarks.datasets.loader import RoundRobinLoader
+
+    loader = RoundRobinLoader(manifest)
+    selected = []
+    while len(selected) < target_count:
+        selected.extend(loader.next_round(concurrency))
+    return selected[:target_count]
+
+
 async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
     """Stream one file via WebSocket, return transcript and timing."""
     import websockets
@@ -59,6 +98,7 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
 
     async with semaphore:
         t0 = time.monotonic()
+        ttfb = None
         try:
             with open(wav_path, "rb") as f:
                 f.read(44)  # skip WAV header
@@ -81,6 +121,8 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
                         while True:
                             msg = await asyncio.wait_for(ws.recv(), timeout=0.01)
                             resp = json.loads(msg)
+                            if ttfb is None and (resp.get("partial_transcript") or resp.get("final_transcript")):
+                                ttfb = time.monotonic() - t0
                             if resp.get("final_transcript"):
                                 final_parts.append(resp["final_transcript"])
                     except asyncio.TimeoutError:
@@ -92,6 +134,8 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
                     while True:
                         msg = await asyncio.wait_for(ws.recv(), timeout=5)
                         resp = json.loads(msg)
+                        if ttfb is None and (resp.get("partial_transcript") or resp.get("final_transcript") or resp.get("final_text")):
+                            ttfb = time.monotonic() - t0
                         if resp.get("final_transcript"):
                             final_parts.append(resp["final_transcript"])
                         if resp.get("final_text"):
@@ -110,6 +154,7 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
                     "elapsed": elapsed,
                     "audio_dur": audio_dur,
                     "rtfx": audio_dur / elapsed if elapsed > 0 else 0,
+                    "ttfb_s": round(ttfb, 4) if ttfb else None,
                     "status": "ok",
                 }
         except Exception as e:
@@ -121,9 +166,11 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
             }
 
 
-async def run_sweep(ws_url, wav_files, concurrency, chunk_ms, repeat=1):
+async def run_sweep(ws_url, manifest, concurrency, chunk_ms, repeat=1, target_count=None):
     """Run one concurrency level for streaming."""
-    files = wav_files * repeat
+    if target_count is None:
+        target_count = len(manifest) * repeat
+    files = [Path(e["wav_path"]) for e in select_round_robin_entries(manifest, concurrency, target_count)]
     sem = asyncio.Semaphore(concurrency)
     t0 = time.monotonic()
     tasks = [stream_file(ws_url, f, chunk_ms, sem) for f in files]
@@ -145,12 +192,27 @@ def summarize_sweep(results, wall_time, concurrency):
         "ok": len(ok),
         "failures": len(failed),
         "wall_s": round(wall_time, 2),
-        "sess_per_min": round(len(ok) / (wall_time / 60), 1) if wall_time > 0 else 0,
+        "rps": round(len(ok) / wall_time, 2) if wall_time > 0 else 0,
         "rtfx": round(total_audio / wall_time, 2) if wall_time > 0 else 0,
+        "rtf": round(wall_time / total_audio, 3) if total_audio > 0 else 0,
+        "total_audio_s": round(total_audio, 1),
+        "sess_per_min": round(len(ok) / (wall_time / 60), 1) if wall_time > 0 else 0,
     }
     if latencies:
+        import statistics
         summary["p50_s"] = round(latencies[len(latencies) // 2], 3)
         summary["p99_s"] = round(latencies[int(len(latencies) * 0.99)], 3)
+        summary["min_s"] = round(latencies[0], 3)
+        summary["max_s"] = round(latencies[-1], 3)
+        summary["mean_s"] = round(statistics.mean(latencies), 3)
+        if len(latencies) > 1:
+            summary["stddev_s"] = round(statistics.stdev(latencies), 3)
+
+    ttfbs = sorted(r["ttfb_s"] for r in ok if r.get("ttfb_s") is not None)
+    if ttfbs:
+        summary["ttfb_p50_s"] = round(ttfbs[len(ttfbs) // 2], 4)
+        summary["ttfb_p95_s"] = round(ttfbs[int(len(ttfbs) * 0.95)], 4)
+        summary["ttfb_p99_s"] = round(ttfbs[int(len(ttfbs) * 0.99)], 4)
 
     return summary
 
@@ -183,7 +245,7 @@ def check_regression(current, baseline_level, metric="rtfx", threshold=0.20):
 
 async def main():
     parser = argparse.ArgumentParser(description="Deterministic streaming ASR benchmark with WER")
-    parser.add_argument("--server", default="ws://localhost:8000", help="Server WebSocket base URL")
+    parser.add_argument("--server", default="ws://localhost:8001", help="Server WebSocket base URL")
     parser.add_argument("--chunk-ms", type=int, default=160, help="Chunk duration in ms (default: 160)")
     parser.add_argument(
         "--concurrency",
@@ -200,6 +262,13 @@ async def main():
     parser.add_argument("--endpoint", default="/v1/stream", help="WebSocket endpoint path (default: /v1/stream)")
     parser.add_argument("--smart", action="store_true", help="Smart mode: sweep high-to-low, early-stop on match")
     parser.add_argument("--baseline", default=None, help="Path to previous report JSON for smart comparison")
+    parser.add_argument("--dataset", default=None,
+                        help="Use multi-corpus dataset (e.g., 'librispeech-test-clean', 'all')")
+    parser.add_argument("--max-samples", type=int, default=0,
+                        help="Max samples from dataset (0=all)")
+    parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
+    parser.add_argument("--trials", type=int, default=1,
+                        help="Number of trial runs for statistical rigor (default: 1)")
     args = parser.parse_args()
 
     levels = [int(x) for x in args.concurrency.split(",")]
@@ -221,31 +290,40 @@ async def main():
     log.info(f"Server: {args.server}")
     log.info(f"Chunk: {args.chunk_ms}ms, Concurrency levels: {levels}")
 
-    ensure_librispeech()
-    refs = load_references()
-
-    wav_dir = Path("/tmp/librispeech-test-clean/wav")
-    wav_files = sorted(wav_dir.glob("*.wav"))[:200]
-    log.info(f"Using {len(wav_files)} WAV files")
+    if args.dataset:
+        from benchmarks.datasets.registry import load_dataset
+        manifest = load_dataset(args.dataset, cache_dir=args.dataset_dir, max_samples=args.max_samples)
+        refs = {e["utt_id"]: e["reference"] for e in manifest if e.get("reference")}
+    else:
+        ensure_librispeech()
+        refs = load_references()
+        wav_dir = Path("/tmp/librispeech-test-clean/wav")
+        wav_files = sorted(wav_dir.glob("*.wav"))[:200]
+        manifest = manifest_from_wavs(wav_files, refs)
+    log.info(f"Using {len(manifest)} WAV files")
 
     report = {
+        "schema_version": "v1alpha2-live",
         "benchmark": "Streaming ASR Benchmark",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "server": args.server,
         "chunk_ms": args.chunk_ms,
-        "samples": len(wav_files),
-        "dataset": "LibriSpeech test-clean",
+        "samples": len(manifest),
+        "dataset": args.dataset or "librispeech-test-clean",
         "smart_mode": args.smart,
+        "system": collect_system_info(),
+        "command": " ".join(sys.argv),
     }
 
     # Warmup
-    log.info(f"Warmup: {args.warmup} streams...")
-    await run_sweep(ws_url, wav_files[: args.warmup], concurrency=4, chunk_ms=args.chunk_ms)
+    warmup_c = min(4, len(manifest), max(args.warmup, 1))
+    log.info(f"Warmup: {args.warmup} streams at c={warmup_c}...")
+    await run_sweep(ws_url, manifest, concurrency=warmup_c, chunk_ms=args.chunk_ms, target_count=args.warmup)
 
     # WER evaluation (c=1)
     if not args.skip_wer:
         log.info("WER evaluation: c=1...")
-        wer_results, _ = await run_sweep(ws_url, wav_files, concurrency=1, chunk_ms=args.chunk_ms)
+        wer_results, _ = await run_sweep(ws_url, manifest, concurrency=1, chunk_ms=args.chunk_ms, target_count=len(manifest))
         ok_results = [r for r in wer_results if r["status"] == "ok"]
 
         ref_texts, hyp_texts = [], []
@@ -274,7 +352,9 @@ async def main():
     consecutive_matches = 0
     for c in levels:
         log.info(f"  c={c}...")
-        results, wall = await run_sweep(ws_url, wav_files, concurrency=c, chunk_ms=args.chunk_ms)
+        results, wall = await run_sweep(
+            ws_url, manifest, concurrency=c, chunk_ms=args.chunk_ms, target_count=max(len(manifest), c)
+        )
         summary = summarize_sweep(results, wall, c)
         sweep_results.append(summary)
         log.info(f"    RTFx={summary['rtfx']}, sess/min={summary['sess_per_min']}, failures={summary['failures']}")
@@ -304,7 +384,7 @@ async def main():
     rounds = args.sustained_rounds
     log.info(f"Sustained load: c={sc}, {rounds} rounds...")
     sustained_results, sustained_wall = await run_sweep(
-        ws_url, wav_files, concurrency=sc, chunk_ms=args.chunk_ms, repeat=rounds
+        ws_url, manifest, concurrency=sc, chunk_ms=args.chunk_ms, repeat=rounds
     )
     sustained_summary = summarize_sweep(sustained_results, sustained_wall, sc)
     sustained_summary["rounds"] = rounds
@@ -350,10 +430,87 @@ async def main():
     print(f"| sess/min | {sustained_summary['sess_per_min']} |")
     print(f"| Failures | {sustained_summary['failures']} |")
 
+    # Multi-trial aggregation
+    if args.trials > 1:
+        from benchmarks.scripts.stats import summarize_trials
+
+        peak = max(sweep_results, key=lambda x: x["rtfx"])
+        all_peak_rtfx = [peak["rtfx"]]
+        all_sustained_rtfx = [sustained_summary["rtfx"]]
+        all_sustained_sess = [sustained_summary["sess_per_min"]]
+        trial_total_failures = sum(s["failures"] for s in sweep_results) + sustained_summary["failures"]
+
+        for trial in range(2, args.trials + 1):
+            log.info(f"=== Trial {trial}/{args.trials} ===")
+            t_sweep = []
+            for c in levels:
+                results, wall = await run_sweep(
+                    ws_url, manifest, concurrency=c, chunk_ms=args.chunk_ms, target_count=max(len(manifest), c)
+                )
+                t_sweep.append(summarize_sweep(results, wall, c))
+            t_peak = max(t_sweep, key=lambda x: x["rtfx"])
+            all_peak_rtfx.append(t_peak["rtfx"])
+
+            t_sus_results, t_sus_wall = await run_sweep(
+                ws_url, manifest, concurrency=sc, chunk_ms=args.chunk_ms, repeat=rounds
+            )
+            t_sus = summarize_sweep(t_sus_results, t_sus_wall, sc)
+            all_sustained_rtfx.append(t_sus["rtfx"])
+            all_sustained_sess.append(t_sus["sess_per_min"])
+            t_failures = sum(s["failures"] for s in t_sweep) + t_sus["failures"]
+            trial_total_failures += t_failures
+            log.info(f"  Trial {trial}: peak RTFx={t_peak['rtfx']}, sustained={t_sus['rtfx']}, failures={t_failures}")
+
+        report["trials"] = {
+            "count": args.trials,
+            "peak_rtfx": summarize_trials(all_peak_rtfx),
+            "sustained_rtfx": summarize_trials(all_sustained_rtfx),
+            "sustained_sess_per_min": summarize_trials(all_sustained_sess),
+        }
+        log.info(f"Trials summary: peak RTFx={report['trials']['peak_rtfx']}")
+
+    # Quality gate evaluation
+    gates_path = Path(__file__).parent.parent / "config" / "quality-gates.json"
+    if gates_path.exists():
+        from benchmarks.scripts.gates import load_gates, evaluate_gates
+
+        gates = load_gates(str(gates_path))
+        gate_result = evaluate_gates(report, gates, scenario="streaming-realtime")
+        report["quality_gates"] = gate_result
+        for g in gate_result["gates"]:
+            status = "PASS" if g["passed"] else "FAIL"
+            log.info(f"  Gate {status}: {g['gate']} — threshold={g['threshold']}, actual={g['actual']}")
+
     with open(args.output, "w") as f:
         json.dump(report, f, indent=2)
     log.info(f"Report saved to {args.output}")
 
+    total_failures = trial_total_failures if args.trials > 1 else (
+        sum(s["failures"] for s in sweep_results) + sustained_summary["failures"])
+    if total_failures > 0:
+        log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
+        return 1
+
+    if "quality_gates" in report and not report["quality_gates"]["all_passed"]:
+        failed = [g for g in report["quality_gates"]["gates"] if not g["passed"]]
+        log.error(f"FAIL: {len(failed)} quality gate(s) failed")
+        return 1
+
+    if args.smart and baseline_sweep:
+        regressions = []
+        for s in sweep_results:
+            bl = baseline_sweep.get(s["concurrency"])
+            if bl:
+                reg_rtfx, _ = check_regression(s, bl, "rtfx")
+                reg_sess, _ = check_regression(s, bl, "sess_per_min")
+                if reg_rtfx or reg_sess:
+                    regressions.append(s["concurrency"])
+        if regressions:
+            log.error(f"FAIL: regression detected at concurrency levels {regressions}")
+            return 1
+
+    return 0
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

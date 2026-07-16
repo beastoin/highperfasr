@@ -1,0 +1,37 @@
+{
+  "baselines": [
+    {
+      "id": "l4-nemo-batch-2026",
+      "scenario": "batch",
+      "hardware_gpu": "NVIDIA L4",
+      "dataset": "librispeech-test-clean",
+      "report": "benchmarks/results/2026-l4-nemo-batch/result.json",
+      "metrics": {
+        "rtfx": {"max_regression_pct": 10},
+        "wer_pct": {"max_absolute_delta_pct": 0.5},
+        "p99_s": {"max_regression_pct": 20}
+      }
+    },
+    {
+      "id": "t4-nemo-batch-2026",
+      "scenario": "batch",
+      "hardware_gpu": "NVIDIA T4",
+      "dataset": "librispeech-test-clean",
+      "report": "benchmarks/results/2026-t4-nemo-batch/result.json",
+      "metrics": {
+        "rtfx": {"max_regression_pct": 10},
+        "wer_pct": {"max_absolute_delta_pct": 0.5}
+      }
+    },
+    {
+      "id": "l4-nemo-stream-2026",
+      "scenario": "streaming-realtime",
+      "hardware_gpu": "NVIDIA L4",
+      "dataset": "librispeech-test-clean",
+      "report": "benchmarks/results/2026-l4-nemo-512-streams/result.json",
+      "metrics": {
+        "wer_pct": {"max_absolute_delta_pct": 1.0}
+      }
+    }
+  ]
+}

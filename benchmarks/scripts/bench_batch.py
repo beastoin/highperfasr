@@ -25,6 +25,8 @@ from pathlib import Path
 
 import aiohttp
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bench_batch")
 
@@ -33,6 +35,47 @@ DATA_DIR = Path("/tmp/librispeech-test-clean")
 WAV_DIR = DATA_DIR / "wav"
 REF_FILE = DATA_DIR / "references.tsv"
 MAX_SAMPLES = 200
+
+
+def load_dataset_manifest(dataset_name: str, max_samples: int = 0, cache_dir=None):
+    """Load dataset from the multi-corpus registry. Returns (manifest, refs_dict)."""
+    from benchmarks.datasets.registry import load_dataset
+
+    manifest = load_dataset(dataset_name, cache_dir=cache_dir, max_samples=max_samples)
+    refs = {e["utt_id"]: e["reference"] for e in manifest if e.get("reference")}
+    log.info(f"Dataset '{dataset_name}': {len(manifest)} files, {len(refs)} references")
+    return manifest, refs
+
+
+def manifest_from_wavs(wav_files, refs):
+    """Build manifest entries for the legacy LibriSpeech subset path."""
+    return [
+        {
+            "utt_id": Path(wav).stem,
+            "wav_path": str(wav),
+            "reference": refs.get(Path(wav).stem),
+        }
+        for wav in wav_files
+    ]
+
+
+def select_round_robin_entries(manifest, concurrency: int, target_count: int):
+    """Select benchmark work using RoundRobinLoader batches.
+
+    Falls back to simple cycling when concurrency exceeds manifest size
+    (high-c sweeps don't need per-round uniqueness).
+    """
+    if concurrency > len(manifest):
+        log.warning(f"concurrency {concurrency} > dataset size {len(manifest)}: audio reused within wave")
+        return [manifest[i % len(manifest)] for i in range(target_count)]
+
+    from benchmarks.datasets.loader import RoundRobinLoader
+
+    loader = RoundRobinLoader(manifest)
+    selected = []
+    while len(selected) < target_count:
+        selected.extend(loader.next_round(concurrency))
+    return selected[:target_count]
 
 
 def ensure_librispeech(max_samples=None):
@@ -58,6 +101,9 @@ def ensure_librispeech(max_samples=None):
     if not tar_path.exists():
         urllib.request.urlretrieve(LIBRISPEECH_URL, tar_path)
         log.info(f"Downloaded {tar_path.stat().st_size / 1e6:.0f}MB")
+        import hashlib
+        sha256 = hashlib.sha256(tar_path.read_bytes()).hexdigest()
+        log.info(f"SHA256: {sha256}")
 
     log.info("Extracting...")
     refs = {}
@@ -122,54 +168,66 @@ def load_references():
 
 
 def compute_wer(references, hypotheses):
-    """Compute WER using wer_utils (Whisper normalization). Falls back to basic normalization."""
+    """Compute WER using wer_utils (Whisper normalization). Hard-fails if unavailable."""
     try:
         from wer_utils import corpus_wer, pair_wer
-
-        wer_val = corpus_wer(references, hypotheses)
-        per_utt = [pair_wer(r, h) for r, h in zip(references, hypotheses)]
-        return wer_val, per_utt
     except ImportError:
-        log.warning("wer_utils not importable (missing jiwer/whisper-normalizer), using basic normalization")
-        return _basic_wer(references, hypotheses)
+        log.error("wer_utils requires jiwer and whisper-normalizer. Install: pip install jiwer whisper-normalizer")
+        raise SystemExit(1)
+
+    wer_val = corpus_wer(references, hypotheses)
+    per_utt = [pair_wer(r, h) for r, h in zip(references, hypotheses)]
+    return wer_val, per_utt
 
 
-def _basic_wer(references, hypotheses):
-    """Fallback WER with basic normalization (lowercase + strip punctuation)."""
-    import re
+def collect_system_info():
+    """Collect system metadata for report reproducibility."""
+    import platform as _platform
+    import subprocess as _sp
 
-    def normalize(text):
-        text = text.lower()
-        text = re.sub(r"[^\w\s]", "", text)
-        return re.sub(r"\s+", " ", text).strip()
+    def _run(cmd):
+        try:
+            return _sp.check_output(cmd, shell=True, text=True, timeout=5).strip()
+        except Exception:
+            return None
 
-    def edit_distance(ref_words, hyp_words):
-        n, m = len(ref_words), len(hyp_words)
-        dp = [[0] * (m + 1) for _ in range(n + 1)]
-        for i in range(n + 1):
-            dp[i][0] = i
-        for j in range(m + 1):
-            dp[0][j] = j
-        for i in range(1, n + 1):
-            for j in range(1, m + 1):
-                if ref_words[i - 1] == hyp_words[j - 1]:
-                    dp[i][j] = dp[i - 1][j - 1]
-                else:
-                    dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
-        return dp[n][m]
+    info = {
+        "python_version": _platform.python_version(),
+        "platform": _platform.platform(),
+    }
+    try:
+        import torch
+        info["pytorch_version"] = torch.__version__
+        info["cuda_version"] = torch.version.cuda or "N/A"
+    except ImportError:
+        pass
 
-    total_errors = 0
-    total_words = 0
-    per_utt = []
-    for ref, hyp in zip(references, hypotheses):
-        ref_n = normalize(ref).split()
-        hyp_n = normalize(hyp).split()
-        errs = edit_distance(ref_n, hyp_n)
-        total_errors += errs
-        total_words += len(ref_n)
-        per_utt.append(errs / max(len(ref_n), 1))
+    git_sha = _run("git rev-parse --short HEAD")
+    if git_sha:
+        info["git_sha"] = git_sha
 
-    return total_errors / max(total_words, 1), per_utt
+    gpu = _run("nvidia-smi --query-gpu=name --format=csv,noheader")
+    if gpu:
+        info["gpu"] = gpu.split("\n")[0]
+
+    gpu_mem = _run("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits")
+    if gpu_mem:
+        info["gpu_memory_mb"] = int(gpu_mem.split("\n")[0])
+
+    driver = _run("nvidia-smi --query-gpu=driver_version --format=csv,noheader")
+    if driver:
+        info["driver_version"] = driver.split("\n")[0]
+
+    gpu_util = _run("nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits")
+    if gpu_util:
+        info["gpu_utilization_pct"] = int(gpu_util.split("\n")[0])
+
+    if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv"):
+        image = os.environ.get("NVIDIA_PYTORCH_VERSION") or os.environ.get("BASE_IMAGE")
+        if image:
+            info["container_image"] = image
+
+    return info
 
 
 def get_wav_duration(wav_path):
@@ -181,7 +239,7 @@ def get_wav_duration(wav_path):
 
 
 async def transcribe_file(session, url, wav_path, semaphore):
-    """Send one file to /v1/transcriptions, return result dict."""
+    """Send one file to the batch transcription endpoint, return result dict."""
     async with semaphore:
         t0 = time.monotonic()
         audio_dur = get_wav_duration(wav_path)
@@ -221,9 +279,11 @@ async def transcribe_file(session, url, wav_path, semaphore):
             }
 
 
-async def run_sweep(url, wav_files, concurrency, repeat=1):
+async def run_sweep(url, manifest, concurrency, repeat=1, target_count=None):
     """Run one concurrency level, return results list."""
-    files = wav_files * repeat
+    if target_count is None:
+        target_count = len(manifest) * repeat
+    files = [Path(e["wav_path"]) for e in select_round_robin_entries(manifest, concurrency, target_count)]
     sem = asyncio.Semaphore(concurrency)
     t0 = time.monotonic()
     async with aiohttp.ClientSession() as session:
@@ -253,10 +313,14 @@ def summarize_sweep(results, wall_time, concurrency):
         "sess_per_min": round(len(ok) / (wall_time / 60), 1) if wall_time > 0 else 0,
     }
     if latencies:
+        import statistics
         summary["p50_s"] = round(latencies[len(latencies) // 2], 3)
         summary["p99_s"] = round(latencies[int(len(latencies) * 0.99)], 3)
         summary["min_s"] = round(latencies[0], 3)
         summary["max_s"] = round(latencies[-1], 3)
+        summary["mean_s"] = round(statistics.mean(latencies), 3)
+        if len(latencies) > 1:
+            summary["stddev_s"] = round(statistics.stdev(latencies), 3)
 
     return summary
 
@@ -305,6 +369,13 @@ async def main():
     parser.add_argument("--endpoint", default="/v1/transcriptions", help="Transcription endpoint path (default: /v1/transcriptions)")
     parser.add_argument("--smart", action="store_true", help="Smart mode: sweep high-to-low, early-stop on match")
     parser.add_argument("--baseline", default=None, help="Path to previous report JSON for smart comparison")
+    parser.add_argument("--dataset", default=None,
+                        help="Use multi-corpus dataset (e.g., 'librispeech-test-clean', 'all')")
+    parser.add_argument("--max-samples", type=int, default=0,
+                        help="Max samples from dataset (0=all)")
+    parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
+    parser.add_argument("--trials", type=int, default=1,
+                        help="Number of trial runs for statistical rigor (default: 1)")
     args = parser.parse_args()
 
     levels = [int(x) for x in args.concurrency.split(",")]
@@ -326,31 +397,36 @@ async def main():
     log.info(f"Server: {args.server}")
     log.info(f"Concurrency levels: {levels}")
 
-    # Step 1: Ensure LibriSpeech
-    ensure_librispeech()
-    refs = load_references()
-
-    wav_files = sorted(WAV_DIR.glob("*.wav"))[:MAX_SAMPLES]
-    log.info(f"Using {len(wav_files)} WAV files, {len(refs)} references")
+    # Step 1: Load dataset (always via registry)
+    dataset_name = args.dataset or "librispeech-test-clean"
+    max_samples = args.max_samples
+    manifest, refs = load_dataset_manifest(
+        dataset_name, max_samples=max_samples, cache_dir=args.dataset_dir
+    )
+    log.info(f"Using {len(manifest)} WAV files, {len(refs)} references")
 
     report = {
+        "schema_version": "v1alpha2-live",
         "benchmark": "Batch ASR Benchmark",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "server": args.server,
-        "samples": len(wav_files),
-        "dataset": "LibriSpeech test-clean",
+        "samples": len(manifest),
+        "dataset": dataset_name,
         "smart_mode": args.smart,
+        "system": collect_system_info(),
+        "command": " ".join(sys.argv),
     }
 
     # Step 2: Warmup
-    log.info(f"Warmup: {args.warmup} requests at c=16...")
-    await run_sweep(url, wav_files, concurrency=16, repeat=1)
+    warmup_c = min(16, len(manifest), max(args.warmup, 1))
+    log.info(f"Warmup: {args.warmup} requests at c={warmup_c}...")
+    await run_sweep(url, manifest, concurrency=warmup_c, target_count=args.warmup)
     log.info("Warmup complete")
 
     # Step 3: WER evaluation (c=1 for deterministic ordering)
     if not args.skip_wer:
         log.info("WER evaluation: c=1, 200 samples...")
-        wer_results, _ = await run_sweep(url, wav_files, concurrency=1)
+        wer_results, _ = await run_sweep(url, manifest, concurrency=1, target_count=len(manifest))
 
         ok_results = [r for r in wer_results if r["status"] == "ok"]
         ref_texts = []
@@ -387,7 +463,7 @@ async def main():
     consecutive_matches = 0
     for c in levels:
         log.info(f"  c={c}...")
-        results, wall = await run_sweep(url, wav_files, concurrency=c)
+        results, wall = await run_sweep(url, manifest, concurrency=c, target_count=max(len(manifest), c))
         summary = summarize_sweep(results, wall, c)
         sweep_results.append(summary)
         log.info(
@@ -417,11 +493,11 @@ async def main():
     # Step 5: Sustained load
     sustained_c = args.sustained_concurrency
     rounds = args.sustained_rounds
-    log.info(f"Sustained load: c={sustained_c}, {rounds} rounds x {len(wav_files)} files...")
-    sustained_results, sustained_wall = await run_sweep(url, wav_files, concurrency=sustained_c, repeat=rounds)
+    log.info(f"Sustained load: c={sustained_c}, {rounds} rounds x {len(manifest)} files...")
+    sustained_results, sustained_wall = await run_sweep(url, manifest, concurrency=sustained_c, repeat=rounds)
     sustained_summary = summarize_sweep(sustained_results, sustained_wall, sustained_c)
     sustained_summary["rounds"] = rounds
-    sustained_summary["total_files"] = len(wav_files) * rounds
+    sustained_summary["total_files"] = len(manifest) * rounds
     report["sustained_load"] = sustained_summary
     log.info(
         f"  Sustained: {sustained_summary['rps']} RPS, "
@@ -495,11 +571,87 @@ async def main():
     print(f"| p50 / p99 | {sustained_summary.get('p50_s', '?')}s / {sustained_summary.get('p99_s', '?')}s |")
     print(f"| Failures | {sustained_summary['failures']} |")
 
+    # Multi-trial aggregation
+    if args.trials > 1:
+        from benchmarks.scripts.stats import summarize_trials
+
+        all_peak_rps = [peak["rps"]]
+        all_peak_rtfx = [peak["rtfx"]]
+        all_sustained_rps = [sustained_summary["rps"]]
+        all_sustained_rtfx = [sustained_summary["rtfx"]]
+        trial_total_failures = report["summary"]["total_failures"]
+
+        for trial in range(2, args.trials + 1):
+            log.info(f"=== Trial {trial}/{args.trials} ===")
+            t_sweep = []
+            for c in levels:
+                results, wall = await run_sweep(url, manifest, concurrency=c, target_count=max(len(manifest), c))
+                t_sweep.append(summarize_sweep(results, wall, c))
+            t_peak = max(t_sweep, key=lambda x: x["rps"])
+            all_peak_rps.append(t_peak["rps"])
+            all_peak_rtfx.append(t_peak["rtfx"])
+
+            t_sus_results, t_sus_wall = await run_sweep(url, manifest, concurrency=sustained_c, repeat=rounds)
+            t_sus = summarize_sweep(t_sus_results, t_sus_wall, sustained_c)
+            all_sustained_rps.append(t_sus["rps"])
+            all_sustained_rtfx.append(t_sus["rtfx"])
+            t_failures = sum(s["failures"] for s in t_sweep) + t_sus["failures"]
+            trial_total_failures += t_failures
+            log.info(f"  Trial {trial}: peak={t_peak['rps']} RPS, sustained={t_sus['rps']} RPS, failures={t_failures}")
+
+        report["summary"]["total_failures"] = trial_total_failures
+
+        report["trials"] = {
+            "count": args.trials,
+            "peak_rps": summarize_trials(all_peak_rps),
+            "peak_rtfx": summarize_trials(all_peak_rtfx),
+            "sustained_rps": summarize_trials(all_sustained_rps),
+            "sustained_rtfx": summarize_trials(all_sustained_rtfx),
+        }
+        log.info(f"Trials summary: peak RPS={report['trials']['peak_rps']}")
+
+    # Quality gate evaluation
+    gates_path = Path(__file__).parent.parent / "config" / "quality-gates.json"
+    if gates_path.exists():
+        from benchmarks.scripts.gates import load_gates, evaluate_gates, exit_code_for_gates
+
+        gates = load_gates(str(gates_path))
+        gate_result = evaluate_gates(report, gates)
+        report["quality_gates"] = gate_result
+        for g in gate_result["gates"]:
+            status = "PASS" if g["passed"] else "FAIL"
+            log.info(f"  Gate {status}: {g['gate']} — threshold={g['threshold']}, actual={g['actual']}")
+
     # Save report
     with open(args.output, "w") as f:
         json.dump(report, f, indent=2)
     log.info(f"Report saved to {args.output}")
 
+    total_failures = report["summary"]["total_failures"]
+    if total_failures > 0:
+        log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
+        return 1
+
+    if "quality_gates" in report and not report["quality_gates"]["all_passed"]:
+        failed = [g for g in report["quality_gates"]["gates"] if not g["passed"]]
+        log.error(f"FAIL: {len(failed)} quality gate(s) failed")
+        return 1
+
+    if args.smart and baseline_sweep:
+        regressions = []
+        for s in sweep_results:
+            bl = baseline_sweep.get(s["concurrency"])
+            if bl:
+                reg_rps, _ = check_regression(s, bl, "rps")
+                reg_rtfx, _ = check_regression(s, bl, "rtfx")
+                if reg_rps or reg_rtfx:
+                    regressions.append(s["concurrency"])
+        if regressions:
+            log.error(f"FAIL: regression detected at concurrency levels {regressions}")
+            return 1
+
+    return 0
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

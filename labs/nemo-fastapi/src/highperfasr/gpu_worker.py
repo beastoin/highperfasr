@@ -632,10 +632,17 @@ class GPUWorker:
             return self._stream_close(item.payload)
         raise ValueError(f"Unknown work type: {item.work_type}")
 
+    @staticmethod
+    def _load_asr_model(nemo_asr, name: str, device):
+        """Load a NeMo ASR model from HuggingFace ID or local .nemo path."""
+        if name.endswith(".nemo") or os.path.isfile(name):
+            return nemo_asr.models.ASRModel.restore_from(name, map_location=device)
+        return nemo_asr.models.ASRModel.from_pretrained(name, map_location=device)
+
     def _load_one_model(self, nemo_asr, device, idx=0):
         tag = f" (pool #{idx})" if self._pool_size > 1 else ""
         log.info(f"Loading batch model{tag}: {self._batch_cfg['name']}")
-        model = nemo_asr.models.ASRModel.from_pretrained(self._batch_cfg["name"], map_location=device)
+        model = self._load_asr_model(nemo_asr, self._batch_cfg["name"], device)
         model.eval()
 
         self._attn_mode = self._batch_cfg.get("attention_mode", "full")
