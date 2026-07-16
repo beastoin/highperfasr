@@ -18,20 +18,23 @@ def load_report(path):
 
 def get_metric(report, metric_name):
     if metric_name == "rtfx":
-        sweep = report.get(
-            "concurrency_sweep",
-            report.get("performance", {}).get("concurrency_sweep", []),
-        )
+        perf = report.get("performance", {})
+        if "rtfx" in perf:
+            return perf["rtfx"]
+        sweep = report.get("concurrency_sweep", [])
         if sweep:
             return max(e.get("rtfx", 0) for e in sweep)
     elif metric_name == "wer_pct":
-        wer = report.get("wer", report.get("quality", {}))
+        q = report.get("quality", {})
+        if "wer" in q:
+            return q["wer"]
+        wer = report.get("wer", {})
         return wer.get("corpus_wer_pct")
     elif metric_name == "p99_s":
-        sweep = report.get(
-            "concurrency_sweep",
-            report.get("performance", {}).get("concurrency_sweep", []),
-        )
+        perf = report.get("performance", {})
+        if "p99_ms" in perf:
+            return perf["p99_ms"] / 1000.0
+        sweep = report.get("concurrency_sweep", [])
         if sweep:
             return max(e.get("p99_s", 0) for e in sweep)
     return None
@@ -103,7 +106,12 @@ def main():
                 errors += 1
                 continue
             try:
-                load_report(path)
+                report = load_report(path)
+                results = check_regression(report, report, baseline["metrics"])
+                skipped = [r for r in results if r.get("status") == "skipped"]
+                if skipped:
+                    names = ", ".join(r["metric"] for r in skipped)
+                    print(f"WARN: {baseline['id']} — metrics not extractable: {names}")
                 print(f"OK: {baseline['id']} ({path})")
             except Exception as e:
                 print(f"FAIL: {baseline['id']} -- {e}")
