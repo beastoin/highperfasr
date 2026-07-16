@@ -83,6 +83,15 @@ def collect_system_info():
     if driver:
         info["driver_version"] = driver.split("\n")[0]
 
+    gpu_util = _run("nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits")
+    if gpu_util:
+        info["gpu_utilization_pct"] = int(gpu_util.split("\n")[0])
+
+    if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv"):
+        image = os.environ.get("NVIDIA_PYTORCH_VERSION") or os.environ.get("BASE_IMAGE")
+        if image:
+            info["container_image"] = image
+
     return info
 
 
@@ -367,6 +376,17 @@ async def main():
         json.dump(report, f, indent=2)
     log.info(f"\nReport saved to {args.output}")
 
+    total_failures = sum(
+        s["failures"]
+        for d in report["durations"]
+        for s in d["concurrency_sweep"]
+    ) + sum(d["sustained_load"]["failures"] for d in report["durations"])
+    if total_failures > 0:
+        log.error(f"FAIL: {total_failures} total failures across all durations")
+        return 1
+
+    return 0
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

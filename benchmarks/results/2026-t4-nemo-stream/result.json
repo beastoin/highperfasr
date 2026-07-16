@@ -34,7 +34,7 @@
   },
   "scenario": {
     "name": "streaming-concurrency-sweep",
-    "mode": "online",
+    "mode": "streaming-realtime",
     "concurrency": 256,
     "description": "WebSocket streaming concurrency sweep c=1..256 on T4 GPU with stream ID recycling fix. Sustained load at c=32 for 4 rounds."
   },

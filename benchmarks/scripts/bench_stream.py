@@ -415,6 +415,26 @@ async def main():
         json.dump(report, f, indent=2)
     log.info(f"Report saved to {args.output}")
 
+    total_failures = sum(s["failures"] for s in sweep_results) + sustained_summary["failures"]
+    if total_failures > 0:
+        log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
+        return 1
+
+    if args.smart and baseline_sweep:
+        regressions = []
+        for s in sweep_results:
+            bl = baseline_sweep.get(s["concurrency"])
+            if bl:
+                reg_rtfx, _ = check_regression(s, bl, "rtfx")
+                reg_sess, _ = check_regression(s, bl, "sess_per_min")
+                if reg_rtfx or reg_sess:
+                    regressions.append(s["concurrency"])
+        if regressions:
+            log.error(f"FAIL: regression detected at concurrency levels {regressions}")
+            return 1
+
+    return 0
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

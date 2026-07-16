@@ -160,7 +160,11 @@ def load_references():
 
 def compute_wer(references, hypotheses):
     """Compute WER using wer_utils (Whisper normalization). Hard-fails if unavailable."""
-    from wer_utils import corpus_wer, pair_wer
+    try:
+        from wer_utils import corpus_wer, pair_wer
+    except ImportError:
+        log.error("wer_utils requires jiwer and whisper-normalizer. Install: pip install jiwer whisper-normalizer")
+        raise SystemExit(1)
 
     wer_val = corpus_wer(references, hypotheses)
     per_utt = [pair_wer(r, h) for r, h in zip(references, hypotheses)]
@@ -204,6 +208,15 @@ def collect_system_info():
     driver = _run("nvidia-smi --query-gpu=driver_version --format=csv,noheader")
     if driver:
         info["driver_version"] = driver.split("\n")[0]
+
+    gpu_util = _run("nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits")
+    if gpu_util:
+        info["gpu_utilization_pct"] = int(gpu_util.split("\n")[0])
+
+    if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv"):
+        image = os.environ.get("NVIDIA_PYTORCH_VERSION") or os.environ.get("BASE_IMAGE")
+        if image:
+            info["container_image"] = image
 
     return info
 
@@ -555,6 +568,26 @@ async def main():
         json.dump(report, f, indent=2)
     log.info(f"Report saved to {args.output}")
 
+    total_failures = report["summary"]["total_failures"]
+    if total_failures > 0:
+        log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
+        return 1
+
+    if args.smart and baseline_sweep:
+        regressions = []
+        for s in sweep_results:
+            bl = baseline_sweep.get(s["concurrency"])
+            if bl:
+                reg_rps, _ = check_regression(s, bl, "rps")
+                reg_rtfx, _ = check_regression(s, bl, "rtfx")
+                if reg_rps or reg_rtfx:
+                    regressions.append(s["concurrency"])
+        if regressions:
+            log.error(f"FAIL: regression detected at concurrency levels {regressions}")
+            return 1
+
+    return 0
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))
