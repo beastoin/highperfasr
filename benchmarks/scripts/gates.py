@@ -23,9 +23,12 @@ def _extract_failure_rate(report):
     sweep = report.get("concurrency_sweep", [])
     if not sweep:
         return None
-    total_failures = sum(e.get("failures", 0) for e in sweep)
+    entries_with_failures = [e for e in sweep if "failures" in e]
+    if not entries_with_failures:
+        return None
+    total_failures = sum(e["failures"] for e in entries_with_failures)
     total_requests = sum(
-        e.get("total", e.get("ok", 0) + e.get("failures", 0)) for e in sweep
+        e.get("total", e.get("ok", 0) + e["failures"]) for e in entries_with_failures
     )
     if total_requests == 0:
         return None
