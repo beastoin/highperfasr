@@ -69,7 +69,13 @@ def manifest_from_wavs(wav_files, refs):
 
 
 def select_round_robin_entries(manifest, concurrency: int, target_count: int):
-    """Select benchmark work using RoundRobinLoader batches."""
+    """Select benchmark work using RoundRobinLoader batches.
+
+    Falls back to simple cycling when concurrency exceeds manifest size.
+    """
+    if concurrency > len(manifest):
+        return [manifest[i % len(manifest)] for i in range(target_count)]
+
     parent = Path(__file__).resolve().parent.parent.parent
     sys.path.insert(0, str(parent))
     from benchmarks.datasets.loader import RoundRobinLoader
