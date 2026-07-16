@@ -32,7 +32,12 @@ def validate_file(path, schema, verbose=False):
     with open(path) as f:
         data = json.load(f)
 
-    errors = list(jsonschema.Draft202012Validator(schema).iter_errors(data))
+    try:
+        checker = jsonschema.FormatChecker()
+    except AttributeError:
+        checker = None
+    validator = jsonschema.Draft202012Validator(schema, format_checker=checker)
+    errors = list(validator.iter_errors(data))
     if not errors:
         if verbose:
             print(f"  VALID: {path}")
