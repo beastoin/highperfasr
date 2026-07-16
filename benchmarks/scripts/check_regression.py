@@ -23,7 +23,8 @@ def get_metric(report, metric_name):
             return perf["rtfx"]
         sweep = report.get("concurrency_sweep", [])
         if sweep:
-            return max(e.get("rtfx", 0) for e in sweep)
+            values = [e["rtfx"] for e in sweep if "rtfx" in e]
+            return max(values) if values else None
     elif metric_name == "wer_pct":
         q = report.get("quality", {})
         if "wer" in q:
@@ -36,7 +37,8 @@ def get_metric(report, metric_name):
             return perf["p99_ms"] / 1000.0
         sweep = report.get("concurrency_sweep", [])
         if sweep:
-            return max(e.get("p99_s", 0) for e in sweep)
+            values = [e["p99_s"] for e in sweep if "p99_s" in e]
+            return max(values) if values else None
     return None
 
 
