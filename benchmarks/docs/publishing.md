@@ -44,9 +44,11 @@ Quality gate thresholds are defined in `benchmarks/config/quality-gates.json`:
 
 | Scenario | Max WER | Max Failure Rate | Min RTFx | Max p99 |
 |----------|---------|-----------------|----------|---------|
-| batch | 3.0% | 0% | 1.0x | -- |
-| streaming-realtime | 5.0% | 0% | -- | 60s |
+| batch | 2.5% | 0% | 1.0x | -- |
+| streaming-realtime | 4.0% | 0% | -- | 60s |
 | combined | 3.0% | 0% | -- | -- |
+
+See `benchmarks/config/quality-gates.json` for the canonical source of truth.
 
 ## Schema
 
