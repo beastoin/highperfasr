@@ -25,6 +25,8 @@ from pathlib import Path
 
 import aiohttp
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bench_batch")
 
@@ -37,8 +39,6 @@ MAX_SAMPLES = 200
 
 def load_dataset_manifest(dataset_name: str, max_samples: int = 0, cache_dir=None):
     """Load dataset from the multi-corpus registry. Returns (manifest, refs_dict)."""
-    parent = Path(__file__).resolve().parent.parent.parent
-    sys.path.insert(0, str(parent))
     from benchmarks.datasets.registry import load_dataset
 
     manifest = load_dataset(dataset_name, cache_dir=cache_dir, max_samples=max_samples)
@@ -69,8 +69,6 @@ def select_round_robin_entries(manifest, concurrency: int, target_count: int):
         log.warning(f"concurrency {concurrency} > dataset size {len(manifest)}: audio reused within wave")
         return [manifest[i % len(manifest)] for i in range(target_count)]
 
-    parent = Path(__file__).resolve().parent.parent.parent
-    sys.path.insert(0, str(parent))
     from benchmarks.datasets.loader import RoundRobinLoader
 
     loader = RoundRobinLoader(manifest)
@@ -578,8 +576,6 @@ async def main():
 
     # Multi-trial aggregation
     if args.trials > 1:
-        parent = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(parent))
         from benchmarks.scripts.stats import summarize_trials
 
         all_peak_rps = [peak["rps"]]
@@ -620,8 +616,6 @@ async def main():
     # Quality gate evaluation
     gates_path = Path(__file__).parent.parent / "config" / "quality-gates.json"
     if gates_path.exists():
-        parent = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(parent))
         from benchmarks.scripts.gates import load_gates, evaluate_gates, exit_code_for_gates
 
         gates = load_gates(str(gates_path))

@@ -22,12 +22,14 @@ DEFAULT_CACHE_DIR = Path(os.environ.get("HPFASR_DATASET_DIR", "/tmp/hpfasr-datas
 CORPORA = {
     "librispeech-test-clean": {
         "url": "https://www.openslr.org/resources/12/test-clean.tar.gz",
+        "sha256": "d4ddd1d5a6ab303066f14971d768ee43278a5f2a0aa43dc716b0e64ecbbbf6e2",
         "description": "LibriSpeech test-clean — 2620 files, 5.4h, baseline WER reference",
         "format": "librispeech",
         "expected_files": 2620,
     },
     "librispeech-test-other": {
         "url": "https://www.openslr.org/resources/12/test-other.tar.gz",
+        "sha256": "f57c1e14edd311a49ced110d1ce7a1e2d281f7b09c7d64e3f6038d24fd15f8d3",
         "description": "LibriSpeech test-other — 2939 files, 5.3h, harder speakers/accents",
         "format": "librispeech",
         "expected_files": 2939,
@@ -95,8 +97,8 @@ def _extract_librispeech(tar_path: Path, wav_dir: Path, ref_file: Path, max_samp
     log.info(f"Extracted {count} WAV files, {len(refs)} references")
 
 
-def _download_file(url: str, dest: Path) -> Path:
-    """Download a file with progress logging."""
+def _download_file(url: str, dest: Path, expected_sha256: str = None) -> Path:
+    """Download a file with progress logging and optional SHA256 verification."""
     if dest.exists():
         log.info(f"Cached: {dest} ({dest.stat().st_size / 1e6:.0f}MB)")
         return dest
@@ -104,6 +106,13 @@ def _download_file(url: str, dest: Path) -> Path:
     log.info(f"Downloading {url}...")
     urllib.request.urlretrieve(url, dest)
     log.info(f"Downloaded {dest.stat().st_size / 1e6:.0f}MB")
+    if expected_sha256:
+        import hashlib
+        actual = hashlib.sha256(dest.read_bytes()).hexdigest()
+        if actual != expected_sha256:
+            dest.unlink()
+            raise ValueError(f"SHA256 mismatch: expected {expected_sha256}, got {actual}")
+        log.info(f"SHA256 verified: {actual[:16]}...")
     return dest
 
 
@@ -199,7 +208,7 @@ def load_dataset(
         log.info(f"{name}: {existing_wavs} WAV files cached")
     else:
         archive_path = corpus_dir / Path(info["url"]).name
-        _download_file(info["url"], archive_path)
+        _download_file(info["url"], archive_path, expected_sha256=info.get("sha256"))
 
         if info["format"] == "librispeech":
             _extract_librispeech(archive_path, wav_dir, ref_file, max_samples)

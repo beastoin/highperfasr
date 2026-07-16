@@ -22,6 +22,8 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bench_stream")
 
@@ -77,8 +79,6 @@ def select_round_robin_entries(manifest, concurrency: int, target_count: int):
         log.warning(f"concurrency {concurrency} > dataset size {len(manifest)}: audio reused within wave")
         return [manifest[i % len(manifest)] for i in range(target_count)]
 
-    parent = Path(__file__).resolve().parent.parent.parent
-    sys.path.insert(0, str(parent))
     from benchmarks.datasets.loader import RoundRobinLoader
 
     loader = RoundRobinLoader(manifest)
@@ -291,9 +291,6 @@ async def main():
     log.info(f"Chunk: {args.chunk_ms}ms, Concurrency levels: {levels}")
 
     if args.dataset:
-        from pathlib import Path as _P
-        parent = _P(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(parent))
         from benchmarks.datasets.registry import load_dataset
         manifest = load_dataset(args.dataset, cache_dir=args.dataset_dir, max_samples=args.max_samples)
         refs = {e["utt_id"]: e["reference"] for e in manifest if e.get("reference")}
@@ -434,8 +431,6 @@ async def main():
 
     # Multi-trial aggregation
     if args.trials > 1:
-        parent = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(parent))
         from benchmarks.scripts.stats import summarize_trials
 
         peak = max(sweep_results, key=lambda x: x["rtfx"])
@@ -476,8 +471,6 @@ async def main():
     # Quality gate evaluation
     gates_path = Path(__file__).parent.parent / "config" / "quality-gates.json"
     if gates_path.exists():
-        parent = Path(__file__).resolve().parent.parent.parent
-        sys.path.insert(0, str(parent))
         from benchmarks.scripts.gates import load_gates, evaluate_gates
 
         gates = load_gates(str(gates_path))
