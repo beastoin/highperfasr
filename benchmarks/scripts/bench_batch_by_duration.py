@@ -46,6 +46,46 @@ SUSTAINED_CONCURRENCY = {
 FILES_PER_DURATION = 100
 
 
+def collect_system_info():
+    """Collect system metadata for report reproducibility."""
+    import platform as _platform
+
+    def _run(cmd):
+        try:
+            return subprocess.check_output(cmd, shell=True, text=True, timeout=5).strip()
+        except Exception:
+            return None
+
+    info = {
+        "python_version": _platform.python_version(),
+        "platform": _platform.platform(),
+    }
+    try:
+        import torch
+        info["pytorch_version"] = torch.__version__
+        info["cuda_version"] = torch.version.cuda or "N/A"
+    except ImportError:
+        pass
+
+    git_sha = _run("git rev-parse --short HEAD")
+    if git_sha:
+        info["git_sha"] = git_sha
+
+    gpu = _run("nvidia-smi --query-gpu=name --format=csv,noheader")
+    if gpu:
+        info["gpu"] = gpu.split("\n")[0]
+
+    gpu_mem = _run("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits")
+    if gpu_mem:
+        info["gpu_memory_mb"] = int(gpu_mem.split("\n")[0])
+
+    driver = _run("nvidia-smi --query-gpu=driver_version --format=csv,noheader")
+    if driver:
+        info["driver_version"] = driver.split("\n")[0]
+
+    return info
+
+
 def get_wav_duration(wav_path):
     with wave.open(str(wav_path), "rb") as w:
         return w.getnframes() / w.getframerate()
@@ -170,10 +210,14 @@ def summarize(results, wall_time, concurrency):
         "total_audio_s": round(total_audio, 1),
     }
     if latencies:
+        import statistics
         s["p50_s"] = round(latencies[len(latencies) // 2], 3)
         s["p99_s"] = round(latencies[int(len(latencies) * 0.99)], 3)
         s["min_s"] = round(latencies[0], 3)
         s["max_s"] = round(latencies[-1], 3)
+        s["mean_s"] = round(statistics.mean(latencies), 3)
+        if len(latencies) > 1:
+            s["stddev_s"] = round(statistics.stdev(latencies), 3)
     return s
 
 
@@ -211,6 +255,8 @@ async def main():
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "server": args.server,
         "files_per_duration": args.files,
+        "system": collect_system_info(),
+        "command": " ".join(sys.argv),
         "durations": [],
     }
 

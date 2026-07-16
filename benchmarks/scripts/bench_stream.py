@@ -49,6 +49,13 @@ def compute_wer(references, hypotheses):
     return _compute(references, hypotheses)
 
 
+def collect_system_info():
+    """Collect system metadata for report reproducibility."""
+    from bench_batch import collect_system_info as _collect
+
+    return _collect()
+
+
 def manifest_from_wavs(wav_files, refs):
     """Build manifest entries for the legacy LibriSpeech subset path."""
     return [
@@ -172,12 +179,21 @@ def summarize_sweep(results, wall_time, concurrency):
         "ok": len(ok),
         "failures": len(failed),
         "wall_s": round(wall_time, 2),
-        "sess_per_min": round(len(ok) / (wall_time / 60), 1) if wall_time > 0 else 0,
+        "rps": round(len(ok) / wall_time, 2) if wall_time > 0 else 0,
         "rtfx": round(total_audio / wall_time, 2) if wall_time > 0 else 0,
+        "rtf": round(wall_time / total_audio, 3) if total_audio > 0 else 0,
+        "total_audio_s": round(total_audio, 1),
+        "sess_per_min": round(len(ok) / (wall_time / 60), 1) if wall_time > 0 else 0,
     }
     if latencies:
+        import statistics
         summary["p50_s"] = round(latencies[len(latencies) // 2], 3)
         summary["p99_s"] = round(latencies[int(len(latencies) * 0.99)], 3)
+        summary["min_s"] = round(latencies[0], 3)
+        summary["max_s"] = round(latencies[-1], 3)
+        summary["mean_s"] = round(statistics.mean(latencies), 3)
+        if len(latencies) > 1:
+            summary["stddev_s"] = round(statistics.stdev(latencies), 3)
 
     return summary
 
@@ -276,6 +292,8 @@ async def main():
         "samples": len(manifest),
         "dataset": args.dataset or "LibriSpeech test-clean (200 subset)",
         "smart_mode": args.smart,
+        "system": collect_system_info(),
+        "command": " ".join(sys.argv),
     }
 
     # Warmup

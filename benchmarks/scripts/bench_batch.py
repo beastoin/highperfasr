@@ -159,54 +159,53 @@ def load_references():
 
 
 def compute_wer(references, hypotheses):
-    """Compute WER using wer_utils (Whisper normalization). Falls back to basic normalization."""
+    """Compute WER using wer_utils (Whisper normalization). Hard-fails if unavailable."""
+    from wer_utils import corpus_wer, pair_wer
+
+    wer_val = corpus_wer(references, hypotheses)
+    per_utt = [pair_wer(r, h) for r, h in zip(references, hypotheses)]
+    return wer_val, per_utt
+
+
+def collect_system_info():
+    """Collect system metadata for report reproducibility."""
+    import platform as _platform
+    import subprocess as _sp
+
+    def _run(cmd):
+        try:
+            return _sp.check_output(cmd, shell=True, text=True, timeout=5).strip()
+        except Exception:
+            return None
+
+    info = {
+        "python_version": _platform.python_version(),
+        "platform": _platform.platform(),
+    }
     try:
-        from wer_utils import corpus_wer, pair_wer
-
-        wer_val = corpus_wer(references, hypotheses)
-        per_utt = [pair_wer(r, h) for r, h in zip(references, hypotheses)]
-        return wer_val, per_utt
+        import torch
+        info["pytorch_version"] = torch.__version__
+        info["cuda_version"] = torch.version.cuda or "N/A"
     except ImportError:
-        log.warning("wer_utils not importable (missing jiwer/whisper-normalizer), using basic normalization")
-        return _basic_wer(references, hypotheses)
+        pass
 
+    git_sha = _run("git rev-parse --short HEAD")
+    if git_sha:
+        info["git_sha"] = git_sha
 
-def _basic_wer(references, hypotheses):
-    """Fallback WER with basic normalization (lowercase + strip punctuation)."""
-    import re
+    gpu = _run("nvidia-smi --query-gpu=name --format=csv,noheader")
+    if gpu:
+        info["gpu"] = gpu.split("\n")[0]
 
-    def normalize(text):
-        text = text.lower()
-        text = re.sub(r"[^\w\s]", "", text)
-        return re.sub(r"\s+", " ", text).strip()
+    gpu_mem = _run("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits")
+    if gpu_mem:
+        info["gpu_memory_mb"] = int(gpu_mem.split("\n")[0])
 
-    def edit_distance(ref_words, hyp_words):
-        n, m = len(ref_words), len(hyp_words)
-        dp = [[0] * (m + 1) for _ in range(n + 1)]
-        for i in range(n + 1):
-            dp[i][0] = i
-        for j in range(m + 1):
-            dp[0][j] = j
-        for i in range(1, n + 1):
-            for j in range(1, m + 1):
-                if ref_words[i - 1] == hyp_words[j - 1]:
-                    dp[i][j] = dp[i - 1][j - 1]
-                else:
-                    dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
-        return dp[n][m]
+    driver = _run("nvidia-smi --query-gpu=driver_version --format=csv,noheader")
+    if driver:
+        info["driver_version"] = driver.split("\n")[0]
 
-    total_errors = 0
-    total_words = 0
-    per_utt = []
-    for ref, hyp in zip(references, hypotheses):
-        ref_n = normalize(ref).split()
-        hyp_n = normalize(hyp).split()
-        errs = edit_distance(ref_n, hyp_n)
-        total_errors += errs
-        total_words += len(ref_n)
-        per_utt.append(errs / max(len(ref_n), 1))
-
-    return total_errors / max(total_words, 1), per_utt
+    return info
 
 
 def get_wav_duration(wav_path):
@@ -292,10 +291,14 @@ def summarize_sweep(results, wall_time, concurrency):
         "sess_per_min": round(len(ok) / (wall_time / 60), 1) if wall_time > 0 else 0,
     }
     if latencies:
+        import statistics
         summary["p50_s"] = round(latencies[len(latencies) // 2], 3)
         summary["p99_s"] = round(latencies[int(len(latencies) * 0.99)], 3)
         summary["min_s"] = round(latencies[0], 3)
         summary["max_s"] = round(latencies[-1], 3)
+        summary["mean_s"] = round(statistics.mean(latencies), 3)
+        if len(latencies) > 1:
+            summary["stddev_s"] = round(statistics.stdev(latencies), 3)
 
     return summary
 
@@ -389,6 +392,8 @@ async def main():
         "samples": len(manifest),
         "dataset": args.dataset or "LibriSpeech test-clean (200 subset)",
         "smart_mode": args.smart,
+        "system": collect_system_info(),
+        "command": " ".join(sys.argv),
     }
 
     # Step 2: Warmup
