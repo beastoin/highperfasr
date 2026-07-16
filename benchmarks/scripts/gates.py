@@ -35,7 +35,8 @@ def _extract_rtfx(report):
         return perf["rtfx"]
     sweep = report.get("concurrency_sweep", [])
     if sweep:
-        return max(e.get("rtfx", 0) for e in sweep)
+        rtfx_values = [e["rtfx"] for e in sweep if "rtfx" in e]
+        return max(rtfx_values) if rtfx_values else None
     return None
 
 
@@ -77,9 +78,10 @@ def evaluate_gates(report, gates, scenario=None):
 
     min_rtfx = gate.get("min_rtfx")
     rtfx = _extract_rtfx(report)
-    if min_rtfx is not None and rtfx is not None:
+    if min_rtfx is not None:
         results.append({"gate": "min_rtfx", "threshold": min_rtfx,
-                        "actual": round(rtfx, 2), "passed": rtfx >= min_rtfx})
+                        "actual": round(rtfx, 2) if rtfx is not None else None,
+                        "passed": rtfx is not None and rtfx >= min_rtfx})
 
     max_p99 = gate.get("max_p99_ms")
     p99_ms = _extract_p99_ms(report)

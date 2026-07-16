@@ -34,6 +34,24 @@ def test_quality_gate_fails_when_configured_wer_is_missing():
     assert result["all_passed"] is False
 
 
+def test_quality_gate_fails_when_configured_rtfx_is_missing():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "batch"},
+            "quality": {"wer": 1.5},
+            "concurrency_sweep": [{"total": 1, "failures": 0}],
+        },
+        {"batch": {"max_wer_pct": 2.5, "max_failure_rate": 0.0, "min_rtfx": 1.0}},
+    )
+
+    rtfx_gate = next(g for g in result["gates"] if g["gate"] == "min_rtfx")
+    assert rtfx_gate["actual"] is None
+    assert rtfx_gate["passed"] is False
+    assert result["all_passed"] is False
+
+
 def test_quality_gate_config_matches_project_wer_thresholds():
     config = json.loads((SCRIPTS_DIR.parent / "config" / "quality-gates.json").read_text())
 
