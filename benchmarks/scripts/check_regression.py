@@ -99,7 +99,8 @@ def main():
         for baseline in registry["baselines"]:
             path = Path(baseline["report"])
             if not path.exists():
-                print(f"WARN: baseline report missing: {path}")
+                print(f"FAIL: baseline report missing: {path}")
+                errors += 1
                 continue
             try:
                 load_report(path)

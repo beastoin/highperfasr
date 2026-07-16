@@ -889,6 +889,13 @@ async def main():
     log.info(f"Report saved to {args.output}")
 
     has_failures = report.get("summary", {}).get("sustained_total_failures", 0) > 0
+    for entry in report.get("combined_sweep", []):
+        has_failures = has_failures or entry.get("batch_failures", 0) > 0
+        has_failures = has_failures or entry.get("stream_failures", 0) > 0
+    for bl in report.get("baselines", {}).get("batch", []):
+        has_failures = has_failures or bl.get("failures", 0) > 0
+    for bl in report.get("baselines", {}).get("stream", []):
+        has_failures = has_failures or bl.get("failures", 0) > 0
     if "soak_test" in report:
         st = report["soak_test"]
         has_failures = has_failures or st.get("total_failures", 0) > 0 or st.get("leak_detected", False)

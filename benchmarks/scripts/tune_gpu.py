@@ -62,7 +62,11 @@ def _run_bench_batch(
         cmd.append("--skip-wer")
     if dataset_dir is not None:
         cmd.extend(["--dataset-dir", str(dataset_dir)])
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        log.warning(f"Batch bench timed out at c={concurrency}")
+        return {"error": "timeout after 300s", "concurrency": concurrency}
     if result.returncode != 0:
         log.warning(f"Batch bench failed at c={concurrency}: {result.stderr[-200:]}")
         return {"error": result.stderr[-200:], "concurrency": concurrency}
@@ -98,7 +102,11 @@ async def _run_bench_stream(server: str, concurrency: int, endpoint: str = "/v1/
         cmd.append("--skip-wer")
     if dataset_dir is not None:
         cmd.extend(["--dataset-dir", str(dataset_dir)])
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired:
+        log.warning(f"Stream bench timed out at c={concurrency}")
+        return {"error": "timeout after 600s", "concurrency": concurrency}
     if result.returncode != 0:
         log.warning(f"Stream bench failed at c={concurrency}: {result.stderr[-200:]}")
         return {"error": result.stderr[-200:], "concurrency": concurrency}

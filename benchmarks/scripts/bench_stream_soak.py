@@ -627,8 +627,11 @@ async def main():
     log.info(f"Report saved to {args.output}")
     log.info(f"Full per-stream transcripts available in JSON: {args.output}")
 
-    total_failures = sum(d.get("failures", 0) for d in report.get("durations", []))
-    vram_growth = max((d.get("vram_growth_mb", 0) for d in report.get("durations", [])), default=0)
+    total_failures = sum(d.get("failures", 0) + d.get("connections_failed", 0)
+                         for d in report.get("durations", []))
+    vram_values = [d.get("vram_growth_mb") for d in report.get("durations", [])
+                   if d.get("vram_growth_mb") is not None]
+    vram_growth = max(vram_values, default=0)
     return 1 if total_failures > 0 or vram_growth > 100 else 0
 
 

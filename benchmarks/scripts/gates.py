@@ -54,3 +54,27 @@ def evaluate_gates(report, gates, scenario=None):
 
 def exit_code_for_gates(result):
     return 0 if result["all_passed"] else 1
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="Evaluate quality gates for a benchmark report")
+    parser.add_argument("--report", required=True, help="Path to benchmark report JSON")
+    parser.add_argument("--scenario", default=None, help="Override scenario (batch, streaming-realtime, combined)")
+    parser.add_argument("--gates", default=str(Path(__file__).parent.parent / "config" / "quality-gates.json"),
+                        help="Path to quality gates config")
+    args = parser.parse_args()
+
+    gates = load_gates(args.gates)
+    with open(args.report) as f:
+        report = json.load(f)
+
+    result = evaluate_gates(report, gates, scenario=args.scenario)
+    for g in result["gates"]:
+        status = "PASS" if g["passed"] else "FAIL"
+        print(f"  {status}: {g['gate']} — threshold={g['threshold']}, actual={g['actual']}")
+    print(f"\nOverall: {'PASS' if result['all_passed'] else 'FAIL'} (scenario={result['scenario']})")
+    sys.exit(exit_code_for_gates(result))

@@ -28,7 +28,7 @@
       "scenario": "streaming-realtime",
       "hardware_gpu": "NVIDIA L4",
       "dataset": "librispeech-test-clean",
-      "report": "benchmarks/results/2026-l4-nemo-stream/result.json",
+      "report": "benchmarks/results/2026-l4-nemo-512-streams/result.json",
       "metrics": {
         "wer_pct": {"max_absolute_delta_pct": 1.0}
       }
