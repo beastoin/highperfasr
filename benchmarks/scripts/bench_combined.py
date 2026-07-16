@@ -27,6 +27,7 @@ import argparse
 import asyncio
 import json
 import logging
+import sys
 import os
 import struct
 import subprocess
@@ -887,6 +888,15 @@ async def main():
         json.dump(report, f, indent=2)
     log.info(f"Report saved to {args.output}")
 
+    has_failures = report.get("summary", {}).get("sustained_total_failures", 0) > 0
+    if "soak_test" in report:
+        st = report["soak_test"]
+        has_failures = has_failures or st.get("total_failures", 0) > 0 or st.get("leak_detected", False)
+    if "chaos_test" in report:
+        ct = report["chaos_test"]
+        has_failures = has_failures or ct.get("result") == "FAIL"
+    return 1 if has_failures else 0
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

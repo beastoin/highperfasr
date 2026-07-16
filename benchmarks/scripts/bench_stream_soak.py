@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -626,6 +627,10 @@ async def main():
     log.info(f"Report saved to {args.output}")
     log.info(f"Full per-stream transcripts available in JSON: {args.output}")
 
+    total_failures = sum(d.get("failures", 0) for d in report.get("durations", []))
+    vram_growth = max((d.get("vram_growth_mb", 0) for d in report.get("durations", [])), default=0)
+    return 1 if total_failures > 0 or vram_growth > 100 else 0
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(asyncio.run(main()))

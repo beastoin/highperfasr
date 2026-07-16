@@ -1,0 +1,33 @@
+name: Benchmark validation
+
+on:
+  pull_request:
+    paths:
+      - "benchmarks/**"
+      - ".github/workflows/benchmark-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "benchmarks/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[bench]"
+
+      - name: Run unit tests
+        run: python -m pytest benchmarks/datasets/tests benchmarks/scripts/tests -v
+
+      - name: Validate all committed reports
+        run: python benchmarks/scripts/validate_report.py --all
+
+      - name: Check baseline registry
+        run: python benchmarks/scripts/check_regression.py --all --registry benchmarks/baselines/registry.json

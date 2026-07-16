@@ -72,40 +72,12 @@ async def stream_file(ws_url, wav_path, chunk_ms):
         return {"utt_id": utt_id, "error": str(e)[:200], "elapsed": time.monotonic() - t0, "status": "error"}
 
 
-def edit_distance_detail(ref_words, hyp_words):
-    """Compute edit distance with S/I/D counts."""
-    n, m = len(ref_words), len(hyp_words)
-    dp = [[0] * (m + 1) for _ in range(n + 1)]
-    for i in range(n + 1):
-        dp[i][0] = i
-    for j in range(m + 1):
-        dp[0][j] = j
-    for i in range(1, n + 1):
-        for j in range(1, m + 1):
-            if ref_words[i - 1] == hyp_words[j - 1]:
-                dp[i][j] = dp[i - 1][j - 1]
-            else:
-                dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
-    # Backtrace for S/I/D
-    i, j = n, m
-    subs, ins, dels = 0, 0, 0
-    while i > 0 or j > 0:
-        if i > 0 and j > 0 and ref_words[i - 1] == hyp_words[j - 1]:
-            i -= 1
-            j -= 1
-        elif i > 0 and j > 0 and dp[i][j] == dp[i - 1][j - 1] + 1:
-            subs += 1
-            i -= 1
-            j -= 1
-        elif j > 0 and dp[i][j] == dp[i][j - 1] + 1:
-            ins += 1
-            j -= 1
-        elif i > 0 and dp[i][j] == dp[i - 1][j] + 1:
-            dels += 1
-            i -= 1
-        else:
-            break
-    return dp[n][m], subs, ins, dels
+def detailed_pair_wer(ref_text, hyp_text):
+    """Compute per-pair WER with S/I/D counts using jiwer.process_words."""
+    import jiwer
+
+    out = jiwer.process_words(ref_text, hyp_text)
+    return out.substitutions, out.insertions, out.deletions, out.hits
 
 
 async def main():
@@ -143,10 +115,8 @@ async def main():
         normalizer = EnglishTextNormalizer()
         norm_name = "whisper_english"
     except ImportError:
-        import re
-
-        normalizer = lambda t: re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", t.lower())).strip()
-        norm_name = "basic_lowercase"
+        print("ERROR: whisper_normalizer is required. Install: pip install whisper-normalizer")
+        return 1
 
     # Stream all files
     sem = asyncio.Semaphore(args.concurrency)
@@ -186,7 +156,8 @@ async def main():
         ref_words = ref_norm.split()
         hyp_words = hyp_norm.split()
 
-        errs, subs, ins, dels = edit_distance_detail(ref_words, hyp_words)
+        subs, ins, dels, hits = detailed_pair_wer(ref_norm, hyp_norm)
+        errs = subs + ins + dels
         utt_wer = errs / max(len(ref_words), 1)
 
         total_ref_words += len(ref_words)
@@ -315,4 +286,4 @@ async def main():
     print(f"Summary JSON: {summary_path}")
 
 
-asyncio.run(main())
+sys.exit(asyncio.run(main()) or 0)

@@ -56,3 +56,20 @@ def pair_wer(reference: str, hypothesis: str) -> float:
     if not ref.strip():
         return 0.0 if not hyp.strip() else 1.0
     return jiwer.wer(ref, hyp)
+
+
+def detailed_wer(ref_texts: list[str], hyp_texts: list[str]) -> list[dict]:
+    """Compute WER with per-utterance S/I/D error decomposition."""
+    results = []
+    for ref, hyp in zip(ref_texts, hyp_texts):
+        ref_n = normalize_text(ref)
+        hyp_n = normalize_text(hyp)
+        out = jiwer.process_words(ref_n, hyp_n)
+        results.append({
+            "substitutions": out.substitutions,
+            "insertions": out.insertions,
+            "deletions": out.deletions,
+            "hits": out.hits,
+            "wer": out.wer,
+        })
+    return results
