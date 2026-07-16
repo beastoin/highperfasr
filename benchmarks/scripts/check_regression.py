@@ -129,9 +129,14 @@ def main():
 
     current = load_report(args.report)
 
-    for baseline in registry["baselines"]:
-        if args.baseline_id and baseline["id"] != args.baseline_id:
-            continue
+    matched_baselines = registry["baselines"]
+    if args.baseline_id:
+        matched_baselines = [b for b in matched_baselines if b["id"] == args.baseline_id]
+    elif len(matched_baselines) > 1:
+        print(f"WARN: --report compares against all {len(matched_baselines)} baselines; "
+              "use --baseline-id to target a specific one")
+
+    for baseline in matched_baselines:
         base_path = Path(baseline["report"])
         if not base_path.exists():
             continue

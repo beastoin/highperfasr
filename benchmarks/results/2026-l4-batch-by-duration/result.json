@@ -39,8 +39,7 @@
     "description": "Duration-stratified batch concurrency sweep: 100 espeak-ng speech files per duration bracket (10s, 30s, 60s, 120s). Tests throughput and max safe concurrency as a function of audio duration."
   },
   "quality": {
-    "wer": 1.57,
-    "normalization": "Whisper EnglishTextNormalizer (measured separately on LibriSpeech test-clean)"
+    "note": "WER not measured in-scenario (synthetic espeak-ng audio). See 2026-l4-nemo-batch for LibriSpeech WER."
   },
   "performance": {
     "rtfx": 235,

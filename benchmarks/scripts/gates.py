@@ -46,7 +46,8 @@ def _extract_p99_ms(report):
         return perf["p99_ms"]
     sweep = report.get("concurrency_sweep", [])
     if sweep:
-        return max(e.get("p99_s", 0) * 1000 for e in sweep)
+        p99_values = [e["p99_s"] * 1000 for e in sweep if "p99_s" in e]
+        return max(p99_values) if p99_values else None
     return None
 
 
@@ -82,10 +83,10 @@ def evaluate_gates(report, gates, scenario=None):
 
     max_p99 = gate.get("max_p99_ms")
     p99_ms = _extract_p99_ms(report)
-    if max_p99 is not None and p99_ms is not None:
+    if max_p99 is not None:
         results.append({"gate": "max_p99_ms", "threshold": max_p99,
-                        "actual": round(p99_ms, 1),
-                        "passed": p99_ms <= max_p99})
+                        "actual": round(p99_ms, 1) if p99_ms is not None else None,
+                        "passed": p99_ms is not None and p99_ms <= max_p99})
 
     return {"scenario": scenario, "gates": results,
             "all_passed": all(g["passed"] for g in results)}
