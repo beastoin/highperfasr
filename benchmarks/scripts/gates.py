@@ -7,25 +7,63 @@ def load_gates(path):
         return json.load(f)
 
 
+def _extract_wer(report):
+    """Extract WER % from either live-runner or v1alpha2 format."""
+    wer = report.get("wer", {}).get("corpus_wer_pct")
+    if wer is not None:
+        return wer
+    return report.get("quality", {}).get("wer")
+
+
+def _extract_failure_rate(report):
+    """Extract failure rate from either live-runner or v1alpha2 format."""
+    rel = report.get("reliability", {})
+    if "failure_rate" in rel:
+        return rel["failure_rate"]
+    sweep = report.get("concurrency_sweep", [])
+    total_failures = sum(e.get("failures", 0) for e in sweep)
+    total_requests = sum(
+        e.get("total", e.get("ok", 0) + e.get("failures", 0)) for e in sweep
+    )
+    return total_failures / max(total_requests, 1)
+
+
+def _extract_rtfx(report):
+    """Extract peak RTFx from either live-runner or v1alpha2 format."""
+    perf = report.get("performance", {})
+    if "rtfx" in perf:
+        return perf["rtfx"]
+    sweep = report.get("concurrency_sweep", [])
+    if sweep:
+        return max(e.get("rtfx", 0) for e in sweep)
+    return None
+
+
+def _extract_p99_ms(report):
+    """Extract max p99 latency in ms from either format."""
+    perf = report.get("performance", {})
+    if "p99_ms" in perf:
+        return perf["p99_ms"]
+    sweep = report.get("concurrency_sweep", [])
+    if sweep:
+        return max(e.get("p99_s", 0) * 1000 for e in sweep)
+    return None
+
+
 def evaluate_gates(report, gates, scenario=None):
     if scenario is None:
         scenario = report.get("scenario", {}).get("mode", "batch")
     gate = gates.get(scenario, gates.get("batch", {}))
     results = []
 
-    wer = report.get("wer", {}).get("corpus_wer_pct")
+    wer = _extract_wer(report)
     max_wer = gate.get("max_wer_pct")
     if wer is not None and max_wer is not None:
         results.append({"gate": "max_wer_pct", "threshold": max_wer,
                         "actual": wer, "passed": wer <= max_wer})
 
-    sweep = report.get("concurrency_sweep", [])
-    total_failures = sum(e.get("failures", 0) for e in sweep)
+    fail_rate = _extract_failure_rate(report)
     max_fail = gate.get("max_failure_rate", 0.0)
-    total_requests = sum(
-        e.get("total", e.get("ok", 0) + e.get("failures", 0)) for e in sweep
-    )
-    fail_rate = total_failures / max(total_requests, 1)
     results.append({"gate": "max_failure_rate", "threshold": max_fail,
                     "actual": round(fail_rate, 4), "passed": fail_rate <= max_fail})
 
@@ -36,17 +74,17 @@ def evaluate_gates(report, gates, scenario=None):
                         "actual": sus_failures, "passed": sus_failures == 0})
 
     min_rtfx = gate.get("min_rtfx")
-    if min_rtfx is not None and sweep:
-        peak_rtfx = max(e.get("rtfx", 0) for e in sweep)
+    rtfx = _extract_rtfx(report)
+    if min_rtfx is not None and rtfx is not None:
         results.append({"gate": "min_rtfx", "threshold": min_rtfx,
-                        "actual": round(peak_rtfx, 2), "passed": peak_rtfx >= min_rtfx})
+                        "actual": round(rtfx, 2), "passed": rtfx >= min_rtfx})
 
     max_p99 = gate.get("max_p99_ms")
-    if max_p99 is not None and sweep:
-        max_observed = max(e.get("p99_s", 0) * 1000 for e in sweep)
+    p99_ms = _extract_p99_ms(report)
+    if max_p99 is not None and p99_ms is not None:
         results.append({"gate": "max_p99_ms", "threshold": max_p99,
-                        "actual": round(max_observed, 1),
-                        "passed": max_observed <= max_p99})
+                        "actual": round(p99_ms, 1),
+                        "passed": p99_ms <= max_p99})
 
     return {"scenario": scenario, "gates": results,
             "all_passed": all(g["passed"] for g in results)}

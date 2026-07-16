@@ -586,6 +586,7 @@ async def main():
         all_peak_rtfx = [peak["rtfx"]]
         all_sustained_rps = [sustained_summary["rps"]]
         all_sustained_rtfx = [sustained_summary["rtfx"]]
+        trial_total_failures = report["summary"]["total_failures"]
 
         for trial in range(2, args.trials + 1):
             log.info(f"=== Trial {trial}/{args.trials} ===")
@@ -601,7 +602,11 @@ async def main():
             t_sus = summarize_sweep(t_sus_results, t_sus_wall, sustained_c)
             all_sustained_rps.append(t_sus["rps"])
             all_sustained_rtfx.append(t_sus["rtfx"])
-            log.info(f"  Trial {trial}: peak={t_peak['rps']} RPS, sustained={t_sus['rps']} RPS")
+            t_failures = sum(s["failures"] for s in t_sweep) + t_sus["failures"]
+            trial_total_failures += t_failures
+            log.info(f"  Trial {trial}: peak={t_peak['rps']} RPS, sustained={t_sus['rps']} RPS, failures={t_failures}")
+
+        report["summary"]["total_failures"] = trial_total_failures
 
         report["trials"] = {
             "count": args.trials,

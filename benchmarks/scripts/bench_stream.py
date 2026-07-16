@@ -134,7 +134,7 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
                     while True:
                         msg = await asyncio.wait_for(ws.recv(), timeout=5)
                         resp = json.loads(msg)
-                        if ttfb is None and (resp.get("partial_transcript") or resp.get("final_transcript")):
+                        if ttfb is None and (resp.get("partial_transcript") or resp.get("final_transcript") or resp.get("final_text")):
                             ttfb = time.monotonic() - t0
                         if resp.get("final_transcript"):
                             final_parts.append(resp["final_transcript"])
@@ -442,6 +442,7 @@ async def main():
         all_peak_rtfx = [peak["rtfx"]]
         all_sustained_rtfx = [sustained_summary["rtfx"]]
         all_sustained_sess = [sustained_summary["sess_per_min"]]
+        trial_total_failures = sum(s["failures"] for s in sweep_results) + sustained_summary["failures"]
 
         for trial in range(2, args.trials + 1):
             log.info(f"=== Trial {trial}/{args.trials} ===")
@@ -460,7 +461,9 @@ async def main():
             t_sus = summarize_sweep(t_sus_results, t_sus_wall, sc)
             all_sustained_rtfx.append(t_sus["rtfx"])
             all_sustained_sess.append(t_sus["sess_per_min"])
-            log.info(f"  Trial {trial}: peak RTFx={t_peak['rtfx']}, sustained={t_sus['rtfx']}")
+            t_failures = sum(s["failures"] for s in t_sweep) + t_sus["failures"]
+            trial_total_failures += t_failures
+            log.info(f"  Trial {trial}: peak RTFx={t_peak['rtfx']}, sustained={t_sus['rtfx']}, failures={t_failures}")
 
         report["trials"] = {
             "count": args.trials,
@@ -488,7 +491,8 @@ async def main():
         json.dump(report, f, indent=2)
     log.info(f"Report saved to {args.output}")
 
-    total_failures = sum(s["failures"] for s in sweep_results) + sustained_summary["failures"]
+    total_failures = trial_total_failures if args.trials > 1 else (
+        sum(s["failures"] for s in sweep_results) + sustained_summary["failures"])
     if total_failures > 0:
         log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
         return 1
