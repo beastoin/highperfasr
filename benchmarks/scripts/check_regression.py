@@ -132,14 +132,19 @@ def main():
     matched_baselines = registry["baselines"]
     if args.baseline_id:
         matched_baselines = [b for b in matched_baselines if b["id"] == args.baseline_id]
+        if not matched_baselines:
+            print(f"FAIL: unknown baseline-id '{args.baseline_id}'")
+            return 1
     elif len(matched_baselines) > 1:
         print(f"WARN: --report compares against all {len(matched_baselines)} baselines; "
               "use --baseline-id to target a specific one")
 
+    comparisons_run = 0
     for baseline in matched_baselines:
         base_path = Path(baseline["report"])
         if not base_path.exists():
-            continue
+            print(f"FAIL: baseline report missing: {base_path}")
+            return 1
         base_report = load_report(base_path)
         results = check_regression(current, base_report, baseline["metrics"])
 
@@ -157,8 +162,13 @@ def main():
                     f"(delta: {r.get('delta_pct', r.get('delta'))})"
                 )
 
+        comparisons_run += 1
         if not all_passed:
             return 1
+
+    if comparisons_run == 0:
+        print("FAIL: no baseline comparisons were run")
+        return 1
     return 0
 
 
