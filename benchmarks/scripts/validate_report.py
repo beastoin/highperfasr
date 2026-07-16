@@ -32,10 +32,9 @@ def validate_file(path, schema, verbose=False):
     with open(path) as f:
         data = json.load(f)
 
-    try:
-        checker = jsonschema.FormatChecker()
-    except AttributeError:
-        checker = None
+    checker = jsonschema.FormatChecker()
+    if not checker.checkers.get("date-time"):
+        print("WARNING: date-time format checker not registered. Install: pip install jsonschema[format]", file=sys.stderr)
     validator = jsonschema.Draft202012Validator(schema, format_checker=checker)
     errors = list(validator.iter_errors(data))
     if not errors:
