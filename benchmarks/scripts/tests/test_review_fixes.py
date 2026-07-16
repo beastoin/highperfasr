@@ -65,6 +65,26 @@ def test_quality_gate_fails_when_sweep_omits_failures_key():
     assert fr_gate["passed"] is False
 
 
+def test_quality_gate_fails_when_mixed_sweep_omits_failures_key():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "batch"},
+            "quality": {"wer": 1.5},
+            "concurrency_sweep": [
+                {"total": 10, "failures": 0, "rtfx": 2.0},
+                {"total": 10, "rtfx": 3.0},
+            ],
+        },
+        {"batch": {"max_wer_pct": 2.5, "max_failure_rate": 0.0, "min_rtfx": 1.0}},
+    )
+
+    fr_gate = next(g for g in result["gates"] if g["gate"] == "max_failure_rate")
+    assert fr_gate["actual"] is None
+    assert fr_gate["passed"] is False
+
+
 def test_quality_gate_fails_when_configured_rtfx_is_missing():
     gates = _load_script("gates")
 
