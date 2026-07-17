@@ -313,3 +313,64 @@ def test_bench_batch_zero_max_samples_means_full_dataset(monkeypatch, tmp_path):
 
     assert captured["dataset_name"] == "librispeech-test-clean"
     assert captured["max_samples"] == 0
+
+
+def test_bench_stream_default_uses_full_registry_dataset(monkeypatch, tmp_path):
+    bench_stream = _load_script("bench_stream")
+    captured = {}
+
+    def fake_load_dataset_manifest(dataset_name, max_samples=0, cache_dir=None):
+        captured["dataset_name"] = dataset_name
+        captured["max_samples"] = max_samples
+        return [{"utt_id": "sample", "wav_path": str(tmp_path / "sample.wav"), "reference": "reference"}], {
+            "sample": "reference"
+        }
+
+    async def fake_run_sweep(*_args, **_kwargs):
+        return [], 0.0
+
+    monkeypatch.setattr(bench_stream, "load_dataset_manifest", fake_load_dataset_manifest)
+    monkeypatch.setattr(bench_stream, "run_sweep", fake_run_sweep)
+    monkeypatch.setattr(
+        bench_stream,
+        "summarize_sweep",
+        lambda _results, _wall, concurrency: {
+            "concurrency": concurrency,
+            "rtfx": 0,
+            "sess_per_min": 0,
+            "failures": 0,
+        },
+    )
+    monkeypatch.setattr(bench_stream, "collect_system_info", lambda: {})
+    monkeypatch.setattr(bench_stream, "collect_gpu_memory_used_mb", lambda: 0)
+
+    import benchmarks.scripts.gates as gates
+
+    monkeypatch.setattr(gates, "evaluate_gates", lambda *_args, **_kwargs: {"all_passed": True, "gates": []})
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "bench_stream.py",
+            "--server",
+            "ws://localhost:8001",
+            "--concurrency",
+            "1",
+            "--sustained-rounds",
+            "1",
+            "--sustained-concurrency",
+            "1",
+            "--warmup",
+            "1",
+            "--skip-wer",
+            "--output",
+            str(tmp_path / "report.json"),
+        ],
+    )
+
+    import asyncio
+
+    asyncio.run(bench_stream.main())
+
+    assert captured["dataset_name"] == "librispeech-test-clean"
+    assert captured["max_samples"] == 0

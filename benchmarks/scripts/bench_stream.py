@@ -2,7 +2,7 @@
 """
 Deterministic streaming ASR benchmark with WER.
 
-Downloads LibriSpeech test-clean (200 samples), streams audio chunks via WebSocket,
+Loads the frozen LibriSpeech test-clean benchmark corpus, streams audio chunks via WebSocket,
 computes WER using wer_utils (Whisper normalization), runs concurrency sweep and
 sustained load, and outputs a structured JSON report.
 
@@ -89,6 +89,16 @@ def manifest_from_wavs(wav_files, refs):
         }
         for wav in wav_files
     ]
+
+
+def load_dataset_manifest(dataset_name: str, max_samples: int = 0, cache_dir=None):
+    """Load streaming benchmark data from the shared corpus registry."""
+    from benchmarks.datasets.registry import load_dataset
+
+    manifest = load_dataset(dataset_name, cache_dir=cache_dir, max_samples=max_samples)
+    refs = {e["utt_id"]: e["reference"] for e in manifest if e.get("reference")}
+    log.info(f"Dataset '{dataset_name}': {len(manifest)} files, {len(refs)} references")
+    return manifest, refs
 
 
 def select_round_robin_entries(manifest, concurrency: int, target_count: int):
@@ -321,16 +331,8 @@ async def main():
     log.info(f"Server: {args.server}")
     log.info(f"Chunk: {args.chunk_ms}ms, Concurrency levels: {levels}")
 
-    if args.dataset:
-        from benchmarks.datasets.registry import load_dataset
-        manifest = load_dataset(args.dataset, cache_dir=args.dataset_dir, max_samples=args.max_samples)
-        refs = {e["utt_id"]: e["reference"] for e in manifest if e.get("reference")}
-    else:
-        ensure_librispeech()
-        refs = load_references()
-        wav_dir = Path("/tmp/librispeech-test-clean/wav")
-        wav_files = sorted(wav_dir.glob("*.wav"))[:200]
-        manifest = manifest_from_wavs(wav_files, refs)
+    dataset_name = args.dataset or "librispeech-test-clean"
+    manifest, refs = load_dataset_manifest(dataset_name, max_samples=args.max_samples, cache_dir=args.dataset_dir)
     log.info(f"Using {len(manifest)} WAV files")
 
     report = {
@@ -340,7 +342,7 @@ async def main():
         "server": args.server,
         "chunk_ms": args.chunk_ms,
         "samples": len(manifest),
-        "dataset": args.dataset or "librispeech-test-clean",
+        "dataset": dataset_name,
         "smart_mode": args.smart,
         "system": collect_system_info(),
         "command": " ".join(sys.argv),

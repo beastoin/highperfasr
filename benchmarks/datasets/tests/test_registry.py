@@ -7,7 +7,14 @@ from unittest.mock import patch
 
 import pytest
 
-from benchmarks.datasets.registry import CORPORA, _build_manifest, _get_wav_duration, load_dataset
+from benchmarks.datasets.registry import (
+    BENCHMARK_CORPORA,
+    CORPORA,
+    TUNING_MANIFESTS,
+    _build_manifest,
+    _get_wav_duration,
+    load_dataset,
+)
 
 
 def _make_wav(path: Path, duration_s: float = 1.0, sr: int = 16000):
@@ -35,6 +42,25 @@ class TestCorpusRegistry:
             assert "url" in info, f"{name} missing url"
             assert "description" in info, f"{name} missing description"
             assert "format" in info, f"{name} missing format"
+
+    def test_benchmark_corpora_are_immutable_and_verified(self):
+        for name in BENCHMARK_CORPORA:
+            info = CORPORA[name]
+            files = info.get("files") or [info]
+            for file_info in files:
+                assert "/resolve/main/" not in file_info["url"], f"{name} uses mutable source URL"
+                assert file_info.get("sha256"), f"{name} missing SHA256"
+
+    def test_tuning_manifests_are_registered(self):
+        expected = {
+            "tuning-very-short",
+            "tuning-short",
+            "tuning-medium",
+            "tuning-long",
+            "tuning-very-long",
+            "tuning-noisy",
+        }
+        assert expected.issubset(TUNING_MANIFESTS)
 
 
 class TestWavDuration:
@@ -181,3 +207,34 @@ class TestLoadDatasetCache:
             load_dataset("tiny-ami", cache_dir=tmp_path)
 
         extract.assert_called_once()
+
+    def test_prepared_tuning_manifest_is_loadable(self, tmp_path):
+        manifest_dir = tmp_path / "tuning-short"
+        manifest_dir.mkdir(parents=True)
+        (manifest_dir / "manifest.json").write_text(
+            '[{"utt_id": "utt0", "wav_path": "wav/utt0.wav", "duration_s": 2.0, "reference": "hello"}]'
+        )
+
+        manifest = load_dataset("tuning-short", cache_dir=tmp_path)
+
+        assert manifest == [
+            {
+                "utt_id": "utt0",
+                "wav_path": str(manifest_dir / "wav/utt0.wav"),
+                "duration_s": 2.0,
+                "reference": "hello",
+                "corpus": "tuning-short",
+            }
+        ]
+
+    def test_tuning_alias_combines_prepared_manifests(self, tmp_path):
+        for name in TUNING_MANIFESTS:
+            manifest_dir = tmp_path / name
+            manifest_dir.mkdir(parents=True)
+            (manifest_dir / "manifest.json").write_text(
+                f'[{{"utt_id": "{name}", "wav_path": "/tmp/{name}.wav", "duration_s": 1.0}}]'
+            )
+
+        manifest = load_dataset("tuning", cache_dir=tmp_path)
+
+        assert len(manifest) == len(TUNING_MANIFESTS)

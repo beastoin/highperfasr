@@ -14,6 +14,10 @@ Fixed evaluation sets for proving published claims. Same files every run.
 | Long-form batch | Earnings-22 full | `earnings22-full` | 125 | 17–94 min each, 119h total | REST behavior on long audio |
 | Long-form streaming | AMI eval (headset mix) | `ami-eval-ihm` | 20 meetings | ~11h total | Streaming on multi-speaker meetings |
 
+The combined frozen benchmark manifest is loadable as `benchmark`. Individual
+benchmark corpora are pinned to immutable source revisions and SHA-256 verified
+when downloaded.
+
 ### Why frozen matters
 
 The benchmark must be immune to config search. If batch size, chunk size, VAD,
@@ -46,6 +50,24 @@ primary axis that breaks serving configs.
 | Long | 1–5 min | TED-LIUM 3, AMI train/dev | 300 | Streaming state growth, queue starvation |
 | Very long | 17–94 min | Earnings-21 | 44 | REST timeouts, memory growth, decoder stability |
 | Noisy/far-field | 30s–5 min | CHiME-6, AMI far-field | 200 | False VAD, silence, unstable streaming |
+
+### Tuning manifests
+
+Tuning data is loaded through prepared manifests under the dataset cache. Each
+bucket has a registry alias:
+
+| Bucket | Registry key |
+|--------|--------------|
+| Very short | `tuning-very-short` |
+| Short | `tuning-short` |
+| Medium | `tuning-medium` |
+| Long | `tuning-long` |
+| Very long | `tuning-very-long` |
+| Noisy/far-field | `tuning-noisy` |
+
+Use `tuning` to load every prepared tuning bucket. Each bucket expects a
+`manifest.json` in `$HPFASR_DATASET_DIR/<registry-key>/` with entries containing
+`utt_id`, `wav_path`, `duration_s`, and optional `reference`.
 
 ### Tuning dataset rules
 

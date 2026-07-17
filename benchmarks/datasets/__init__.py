@@ -27,6 +27,6 @@ Usage:
 """
 
 from benchmarks.datasets.loader import RoundRobinLoader, load_manifest
-from benchmarks.datasets.registry import CORPORA, load_dataset
+from benchmarks.datasets.registry import CORPORA, TUNING_MANIFESTS, load_dataset
 
-__all__ = ["CORPORA", "RoundRobinLoader", "load_dataset", "load_manifest"]
+__all__ = ["CORPORA", "TUNING_MANIFESTS", "RoundRobinLoader", "load_dataset", "load_manifest"]
