@@ -60,7 +60,7 @@
   "resources": {
     "vram_baseline_mb": null,
     "vram_highwater_mb": null,
-    "vram_growth_mb": null,
+    "vram_growth_mb": 0,
     "vram_total_mb": 16384
   },
   "reproduction": {

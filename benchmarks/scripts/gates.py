@@ -95,6 +95,9 @@ def _extract_sustained_duration_s(report):
         return sustained["duration_s"]
     if "wall_s" in sustained:
         return sustained["wall_s"]
+    scenario = report.get("scenario", {})
+    if "duration_seconds" in scenario:
+        return scenario["duration_seconds"]
     return None
 
 

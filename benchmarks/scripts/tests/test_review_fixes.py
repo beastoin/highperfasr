@@ -111,13 +111,17 @@ def test_quality_gate_config_matches_project_wer_thresholds():
     assert config["streaming-realtime"]["max_stream_lag_p95_ms"] == 5000
 
 
-def test_streaming_gate_fails_when_sustained_duration_is_missing():
+def test_streaming_gate_reads_duration_from_scenario_metadata():
     gates = _load_script("gates")
 
     result = gates.evaluate_gates(
         {
             "scenario": {"mode": "streaming-realtime", "duration_seconds": 600},
-            "wer": {"corpus_wer_pct": 3.0, "reference_wer_pct": 3.0},
+            "wer": {
+                "corpus_wer_pct": 3.0,
+                "reference_wer_pct": 3.0,
+                "max_load_corpus_wer_pct": 3.0,
+            },
             "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0, "rt_compliance_pct": 100}],
             "sustained_load": {"failures": 0, "vram_growth_mb": 0, "lag_p95_s": 1.0},
         },
@@ -136,9 +140,9 @@ def test_streaming_gate_fails_when_sustained_duration_is_missing():
     )
 
     duration_gate = next(g for g in result["gates"] if g["gate"] == "min_sustained_duration_s")
-    assert duration_gate["actual"] is None
-    assert duration_gate["passed"] is False
-    assert result["all_passed"] is False
+    assert duration_gate["actual"] == 600
+    assert duration_gate["passed"] is True
+    assert result["all_passed"] is True
 
 
 def test_streaming_gate_fails_when_lag_exceeds_threshold():
