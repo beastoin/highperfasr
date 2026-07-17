@@ -149,3 +149,35 @@ class TestLoadDatasetCache:
             load_dataset("tiny", cache_dir=tmp_path, max_samples=3)
 
         extract.assert_called_once()
+
+    def test_earnings22_format_dispatches_to_extractor(self, tmp_path):
+        corpus = {
+            "url": "https://example.com/earnings.parquet",
+            "description": "Tiny Earnings-22 test corpus",
+            "format": "earnings22",
+            "expected_files": 1,
+        }
+
+        with patch.dict(CORPORA, {"tiny-earnings": corpus}), \
+             patch("benchmarks.datasets.registry._download_file"), \
+             patch("benchmarks.datasets.registry._extract_earnings22") as extract, \
+             patch("benchmarks.datasets.registry._build_manifest", return_value=[]):
+            load_dataset("tiny-earnings", cache_dir=tmp_path)
+
+        extract.assert_called_once()
+
+    def test_ami_format_dispatches_to_extractor(self, tmp_path):
+        corpus = {
+            "url": "https://example.com/ami.tar.gz",
+            "description": "Tiny AMI test corpus",
+            "format": "ami",
+            "expected_files": 1,
+        }
+
+        with patch.dict(CORPORA, {"tiny-ami": corpus}), \
+             patch("benchmarks.datasets.registry._download_file"), \
+             patch("benchmarks.datasets.registry._extract_ami") as extract, \
+             patch("benchmarks.datasets.registry._build_manifest", return_value=[]):
+            load_dataset("tiny-ami", cache_dir=tmp_path)
+
+        extract.assert_called_once()

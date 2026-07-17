@@ -35,7 +35,7 @@ Metrics are separated into **benchmark** (proof for published claims) and **tuni
 | Sessions per minute | `sessions_min` | sess/min | — | Throughput for short-session workloads |
 | RTFx (aggregate) | `rtfx` | audio sec / wall sec | — | Aggregate streaming throughput |
 | Realtime compliance | `rt_compliance_pct` | % | ≥ 95% | Streams keep up with realtime audio |
-| Stream lag p95/p99 | `lag_p95_ms`, `lag_p99_ms` | ms | — | High concurrency is usable, not buffering |
+| Stream lag p95/p99 | `lag_p95_ms`, `lag_p99_ms` | ms | p95 ≤ 5000 | High concurrency is usable, not buffering |
 | TTFB p50/p95 | `ttfb_p50_ms`, `ttfb_p95_ms` | ms | — | First partial responsiveness |
 | EOS-to-final latency p50/p95 | `eos_final_p50_ms`, `eos_final_p95_ms` | ms | — | Final transcript speed after speech ends |
 | Failure/disconnect rate | `failure_rate` | % | 0% | Load is sustainable |
@@ -78,6 +78,7 @@ A concurrency level is "stable" when ALL of these hold for ≥ 600 seconds:
 - Failure rate = 0%
 - VRAM within GPU capacity
 - (Streaming) Realtime compliance ≥ 95%
+- (Streaming) Stream lag p95 ≤ 5000 ms
 
 ## WER Measurement Protocol
 

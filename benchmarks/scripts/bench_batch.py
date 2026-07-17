@@ -35,6 +35,10 @@ DATA_DIR = Path("/tmp/librispeech-test-clean")
 WAV_DIR = DATA_DIR / "wav"
 REF_FILE = DATA_DIR / "references.tsv"
 MAX_SAMPLES = 200
+REFERENCE_WER_PCT = {
+    ("batch", "librispeech-test-clean"): 1.57,
+    ("streaming-realtime", "librispeech-test-clean"): 3.21,
+}
 
 
 def load_dataset_manifest(dataset_name: str, max_samples: int = 0, cache_dir=None):
@@ -230,6 +234,51 @@ def collect_system_info():
     return info
 
 
+def collect_gpu_memory_used_mb():
+    """Return max used GPU memory across visible GPUs, or None when unavailable."""
+    import subprocess as _sp
+
+    try:
+        output = _sp.check_output(
+            ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+            text=True,
+            timeout=5,
+        ).strip()
+    except Exception:
+        return None
+
+    values = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            values.append(int(line))
+        except ValueError:
+            return None
+    return max(values) if values else None
+
+
+def reference_wer_pct(mode, dataset_name, override=None, baseline_report=None):
+    """Resolve reference-model WER for WER delta gates."""
+    if override is not None:
+        return override
+    if baseline_report:
+        live_ref = baseline_report.get("wer", {}).get("reference_wer_pct")
+        if live_ref is not None:
+            return live_ref
+        quality_ref = baseline_report.get("quality", {}).get("reference_wer")
+        if quality_ref is not None:
+            return quality_ref
+        live_wer = baseline_report.get("wer", {}).get("corpus_wer_pct")
+        if live_wer is not None:
+            return live_wer
+        quality_wer = baseline_report.get("quality", {}).get("wer")
+        if quality_wer is not None:
+            return quality_wer
+    return REFERENCE_WER_PCT.get((mode, dataset_name))
+
+
 def get_wav_duration(wav_path):
     """Get audio duration in seconds from WAV file."""
     import wave
@@ -369,6 +418,8 @@ async def main():
     parser.add_argument("--endpoint", default="/v1/transcriptions", help="Transcription endpoint path (default: /v1/transcriptions)")
     parser.add_argument("--smart", action="store_true", help="Smart mode: sweep high-to-low, early-stop on match")
     parser.add_argument("--baseline", default=None, help="Path to previous report JSON for smart comparison")
+    parser.add_argument("--reference-wer-pct", type=float, default=None,
+                        help="Reference model WER %% for WER delta gate")
     parser.add_argument("--dataset", default=None,
                         help="Use multi-corpus dataset (e.g., 'librispeech-test-clean', 'all')")
     parser.add_argument("--max-samples", type=int, default=0,
@@ -416,6 +467,7 @@ async def main():
         "system": collect_system_info(),
         "command": " ".join(sys.argv),
     }
+    vram_start_mb = collect_gpu_memory_used_mb()
 
     # Step 2: Warmup
     warmup_c = min(16, len(manifest), max(args.warmup, 1))
@@ -444,6 +496,11 @@ async def main():
                 "samples_evaluated": len(ref_texts),
                 "normalization": "whisper_english",
             }
+            ref_wer = reference_wer_pct(
+                "batch", dataset_name, override=args.reference_wer_pct, baseline_report=baseline_report
+            )
+            if ref_wer is not None:
+                report["wer"]["reference_wer_pct"] = ref_wer
             high_wer = [(ref_texts[i], hyp_texts[i], per_utt[i]) for i in range(len(per_utt)) if per_utt[i] > 0.1]
             report["wer"]["high_wer_count"] = len(high_wer)
             log.info(f"WER: {wer_val*100:.2f}% ({len(ref_texts)} samples, {len(high_wer)} with >10% WER)")
@@ -499,6 +556,16 @@ async def main():
     sustained_summary["rounds"] = rounds
     sustained_summary["total_files"] = len(manifest) * rounds
     report["sustained_load"] = sustained_summary
+    vram_end_mb = collect_gpu_memory_used_mb()
+    if vram_start_mb is not None or vram_end_mb is not None:
+        report["resources"] = {
+            "vram_start_mb": vram_start_mb,
+            "vram_end_mb": vram_end_mb,
+            "vram_growth_mb": (
+                vram_end_mb - vram_start_mb if vram_start_mb is not None and vram_end_mb is not None else None
+            ),
+            "vram_peak_mb": max(v for v in (vram_start_mb, vram_end_mb) if v is not None),
+        }
     log.info(
         f"  Sustained: {sustained_summary['rps']} RPS, "
         f"{sustained_summary['total_files']} files, "

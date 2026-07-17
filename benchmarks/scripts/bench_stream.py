@@ -58,6 +58,20 @@ def collect_system_info():
     return _collect()
 
 
+def collect_gpu_memory_used_mb():
+    """Collect max used GPU memory through bench_batch helper."""
+    from bench_batch import collect_gpu_memory_used_mb as _collect
+
+    return _collect()
+
+
+def reference_wer_pct(mode, dataset_name, override=None, baseline_report=None):
+    """Resolve reference-model WER through bench_batch helper."""
+    from bench_batch import reference_wer_pct as _reference
+
+    return _reference(mode, dataset_name, override=override, baseline_report=baseline_report)
+
+
 def manifest_from_wavs(wav_files, refs):
     """Build manifest entries for the legacy LibriSpeech subset path."""
     return [
@@ -185,6 +199,7 @@ def summarize_sweep(results, wall_time, concurrency):
     failed = [r for r in results if r["status"] == "error"]
     latencies = sorted(r["elapsed"] for r in ok)
     total_audio = sum(r.get("audio_dur", 0) for r in ok)
+    lags = sorted(max(0, r.get("elapsed", 0) - r.get("audio_dur", 0)) for r in ok)
 
     summary = {
         "concurrency": concurrency,
@@ -207,6 +222,13 @@ def summarize_sweep(results, wall_time, concurrency):
         summary["mean_s"] = round(statistics.mean(latencies), 3)
         if len(latencies) > 1:
             summary["stddev_s"] = round(statistics.stdev(latencies), 3)
+
+    if lags:
+        summary["lag_p50_s"] = round(lags[int((len(lags) - 1) * 0.50)], 3)
+        summary["lag_p95_s"] = round(lags[int((len(lags) - 1) * 0.95)], 3)
+        summary["lag_p99_s"] = round(lags[int((len(lags) - 1) * 0.99)], 3)
+        realtime_ok = sum(1 for lag in lags if lag <= 1.0)
+        summary["rt_compliance_pct"] = round(realtime_ok / len(lags) * 100, 1)
 
     ttfbs = sorted(r["ttfb_s"] for r in ok if r.get("ttfb_s") is not None)
     if ttfbs:
@@ -262,6 +284,8 @@ async def main():
     parser.add_argument("--endpoint", default="/v1/stream", help="WebSocket endpoint path (default: /v1/stream)")
     parser.add_argument("--smart", action="store_true", help="Smart mode: sweep high-to-low, early-stop on match")
     parser.add_argument("--baseline", default=None, help="Path to previous report JSON for smart comparison")
+    parser.add_argument("--reference-wer-pct", type=float, default=None,
+                        help="Reference model WER %% for WER delta gate")
     parser.add_argument("--dataset", default=None,
                         help="Use multi-corpus dataset (e.g., 'librispeech-test-clean', 'all')")
     parser.add_argument("--max-samples", type=int, default=0,
@@ -314,6 +338,7 @@ async def main():
         "system": collect_system_info(),
         "command": " ".join(sys.argv),
     }
+    vram_start_mb = collect_gpu_memory_used_mb()
 
     # Warmup
     warmup_c = min(4, len(manifest), max(args.warmup, 1))
@@ -339,6 +364,13 @@ async def main():
                 "samples_evaluated": len(ref_texts),
                 "normalization": "whisper_english",
             }
+            ref_wer = reference_wer_pct(
+                "streaming-realtime", report["dataset"],
+                override=args.reference_wer_pct,
+                baseline_report=baseline_report,
+            )
+            if ref_wer is not None:
+                report["wer"]["reference_wer_pct"] = ref_wer
             log.info(f"WER: {wer_val*100:.2f}%")
 
             if args.smart and baseline_report and "wer" in baseline_report:
@@ -389,6 +421,22 @@ async def main():
     sustained_summary = summarize_sweep(sustained_results, sustained_wall, sc)
     sustained_summary["rounds"] = rounds
     report["sustained_load"] = sustained_summary
+    if "rt_compliance_pct" in sustained_summary or "lag_p95_s" in sustained_summary:
+        report["streaming"] = {}
+        if "rt_compliance_pct" in sustained_summary:
+            report["streaming"]["rt_compliance_pct"] = sustained_summary["rt_compliance_pct"]
+        if "lag_p95_s" in sustained_summary:
+            report["streaming"]["lag_p95_ms"] = sustained_summary["lag_p95_s"] * 1000
+    vram_end_mb = collect_gpu_memory_used_mb()
+    if vram_start_mb is not None or vram_end_mb is not None:
+        report["resources"] = {
+            "vram_start_mb": vram_start_mb,
+            "vram_end_mb": vram_end_mb,
+            "vram_growth_mb": (
+                vram_end_mb - vram_start_mb if vram_start_mb is not None and vram_end_mb is not None else None
+            ),
+            "vram_peak_mb": max(v for v in (vram_start_mb, vram_end_mb) if v is not None),
+        }
 
     if args.smart and baseline_report and "sustained_load" in baseline_report:
         bl_s = baseline_report["sustained_load"]

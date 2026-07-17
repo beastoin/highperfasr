@@ -82,6 +82,25 @@ def _flac_to_wav_bytes(flac_bytes: bytes) -> tuple[bytes, int]:
     return buf.getvalue(), sr
 
 
+def _write_audio_bytes_as_wav(audio_bytes: bytes, wav_path: Path) -> None:
+    """Decode encoded audio bytes and write normalized PCM16 WAV."""
+    import soundfile as sf
+
+    audio, sr = sf.read(io.BytesIO(audio_bytes), dtype="float32")
+    if len(audio.shape) > 1:
+        audio = audio[:, 0]
+    wav_path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(wav_path, audio, sr, subtype="PCM_16", format="WAV")
+
+
+def _write_audio_array_as_wav(audio, sr: int, wav_path: Path) -> None:
+    """Write an audio array to normalized PCM16 WAV."""
+    import soundfile as sf
+
+    wav_path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(wav_path, audio, sr, subtype="PCM_16", format="WAV")
+
+
 def _extract_librispeech(tar_path: Path, wav_dir: Path, ref_file: Path, max_samples: int = 0):
     """Extract LibriSpeech tar.gz into flat WAV dir + references TSV."""
     wav_dir.mkdir(parents=True, exist_ok=True)
@@ -119,6 +138,85 @@ def _extract_librispeech(tar_path: Path, wav_dir: Path, ref_file: Path, max_samp
             f.write(f"{utt_id}\t{refs[utt_id]}\n")
 
     log.info(f"Extracted {count} WAV files, {len(refs)} references")
+
+
+def _extract_earnings22(parquet_path: Path, wav_dir: Path, ref_file: Path, max_samples: int = 0):
+    """Extract Hugging Face Earnings-22 parquet rows into WAV + references TSV."""
+    try:
+        import pyarrow.parquet as pq
+    except ImportError as exc:
+        raise RuntimeError("earnings22 extraction requires pyarrow. Install benchmark extras: pip install -e '.[bench]'") from exc
+
+    wav_dir.mkdir(parents=True, exist_ok=True)
+    table = pq.read_table(parquet_path)
+    rows = table.to_pylist()
+    limit = max_samples if max_samples > 0 else len(rows)
+    refs = {}
+    count = 0
+
+    for idx, row in enumerate(rows[:limit]):
+        audio = row.get("audio")
+        if not audio:
+            continue
+
+        utt_id = row.get("id") or row.get("file") or row.get("path") or f"earnings22_{idx:04d}"
+        utt_id = Path(str(utt_id)).stem
+        wav_path = wav_dir / f"{utt_id}.wav"
+
+        if not wav_path.exists():
+            if isinstance(audio, dict) and audio.get("bytes") is not None:
+                _write_audio_bytes_as_wav(audio["bytes"], wav_path)
+            elif isinstance(audio, dict) and audio.get("array") is not None:
+                _write_audio_array_as_wav(audio["array"], int(audio.get("sampling_rate", 16000)), wav_path)
+            else:
+                raise ValueError(f"Unsupported Earnings-22 audio row shape for {utt_id}")
+        count += 1
+
+        ref = row.get("transcription") or row.get("text") or row.get("sentence") or row.get("normalized_text")
+        if ref:
+            refs[utt_id] = str(ref)
+
+    with open(ref_file, "w") as f:
+        for utt_id in sorted(refs):
+            f.write(f"{utt_id}\t{refs[utt_id]}\n")
+
+    log.info(f"Extracted {count} Earnings-22 WAV files, {len(refs)} references")
+
+
+def _extract_ami(tar_path: Path, wav_dir: Path, ref_file: Path, max_samples: int = 0):
+    """Extract AMI audio archive into flat WAV dir.
+
+    The HF AMI audio archive does not include aligned references in this artifact,
+    so references.tsv is intentionally created empty.
+    """
+    wav_dir.mkdir(parents=True, exist_ok=True)
+    limit = max_samples if max_samples > 0 else 999999
+    count = 0
+
+    mode = "r:gz" if tar_path.suffixes[-2:] == [".tar", ".gz"] else "r:*"
+    with tarfile.open(tar_path, mode) as tar:
+        for member in tar:
+            if count >= limit:
+                break
+            if not member.isfile():
+                continue
+            suffix = Path(member.name).suffix.lower()
+            if suffix not in {".wav", ".flac"}:
+                continue
+            extracted = tar.extractfile(member)
+            if not extracted:
+                continue
+            utt_id = Path(member.name).stem
+            wav_path = wav_dir / f"{utt_id}.wav"
+            if suffix == ".flac":
+                wav_bytes, _ = _flac_to_wav_bytes(extracted.read())
+                wav_path.write_bytes(wav_bytes)
+            else:
+                _write_audio_bytes_as_wav(extracted.read(), wav_path)
+            count += 1
+
+    ref_file.write_text("")
+    log.info(f"Extracted {count} AMI WAV files")
 
 
 def _download_file(url: str, dest: Path, expected_sha256: str = None) -> Path:
@@ -236,6 +334,10 @@ def load_dataset(
 
         if info["format"] == "librispeech":
             _extract_librispeech(archive_path, wav_dir, ref_file, max_samples)
+        elif info["format"] == "earnings22":
+            _extract_earnings22(archive_path, wav_dir, ref_file, max_samples)
+        elif info["format"] == "ami":
+            _extract_ami(archive_path, wav_dir, ref_file, max_samples)
         else:
             raise ValueError(f"Unknown format: {info['format']}")
 

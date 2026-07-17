@@ -84,6 +84,7 @@
       "type": "object",
       "properties": {
         "wer": { "type": "number", "description": "Word Error Rate (0-100)" },
+        "reference_wer": { "type": "number", "description": "Reference model WER (0-100) for WER delta gates" },
         "cer": { "type": "number", "description": "Character Error Rate (0-100)" },
         "normalization": { "type": "string", "description": "Text normalization method used" }
       }
@@ -97,6 +98,8 @@
         "p50_ms": { "type": "number" },
         "p95_ms": { "type": "number" },
         "p99_ms": { "type": "number" },
+        "lag_p95_ms": { "type": "number", "description": "Streaming lag p95 beyond realtime audio duration" },
+        "rt_compliance_pct": { "type": "number", "description": "Percent of streams that stayed within realtime lag tolerance" },
         "max_concurrent_streams": { "type": "integer" }
       }
     },
@@ -114,6 +117,7 @@
       "properties": {
         "vram_baseline_mb": { "type": "number" },
         "vram_highwater_mb": { "type": "number" },
+        "vram_growth_mb": { "type": "number" },
         "vram_total_mb": { "type": "number" },
         "vram_utilization": { "type": "number", "description": "0-1 fraction" }
       }

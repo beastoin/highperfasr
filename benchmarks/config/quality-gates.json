@@ -18,6 +18,7 @@
       "max_relative_pct": 5.0
     },
     "max_vram_growth_mb": 100,
+    "max_stream_lag_p95_ms": 5000,
     "min_sustained_duration_s": 600
   },
   "combined": {

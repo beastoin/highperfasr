@@ -58,11 +58,11 @@ python3 scripts/bench_batch.py --server http://localhost:8000 --trials 3
 Fail-closed thresholds in [`config/quality-gates.json`](config/quality-gates.json).
 Every gate returns `passed: false` when its metric data is missing — no silent passes.
 
-| Scenario | Max WER | WER Delta | Max Failure Rate | Min RTFx | RT Compliance | VRAM Growth |
-|----------|---------|-----------|-----------------|----------|---------------|-------------|
-| batch | 2.5% | ≤ max(0.3pp, 5% rel) | 0% | 1.0x | — | < 100 MB |
-| streaming-realtime | 4.0% | ≤ max(0.3pp, 5% rel) | 0% | — | ≥ 95% | < 100 MB |
-| combined | 3.0% | — | 0% | — | — | — |
+| Scenario | Max WER | WER Delta | Max Failure Rate | Min RTFx | RT Compliance | Stream Lag p95 | Sustained | VRAM Growth |
+|----------|---------|-----------|-----------------|----------|---------------|----------------|-----------|-------------|
+| batch | 2.5% | ≤ max(0.3pp, 5% rel) | 0% | 1.0x | — | — | — | < 100 MB |
+| streaming-realtime | 4.0% | ≤ max(0.3pp, 5% rel) | 0% | — | ≥ 95% | ≤ 5000 ms | ≥ 600s | < 100 MB |
+| combined | 3.0% | — | 0% | — | — | — | — | — |
 
 ```bash
 python3 scripts/gates.py --report results/2026-l4-nemo-batch/result.json --scenario batch

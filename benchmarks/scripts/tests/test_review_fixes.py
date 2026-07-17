@@ -108,6 +108,67 @@ def test_quality_gate_config_matches_project_wer_thresholds():
 
     assert config["batch"]["max_wer_pct"] == 2.5
     assert config["streaming-realtime"]["max_wer_pct"] == 4.0
+    assert config["streaming-realtime"]["max_stream_lag_p95_ms"] == 5000
+
+
+def test_streaming_gate_fails_when_sustained_duration_is_missing():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "streaming-realtime"},
+            "wer": {"corpus_wer_pct": 3.0, "reference_wer_pct": 3.0},
+            "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0, "rt_compliance_pct": 100}],
+            "sustained_load": {"failures": 0, "vram_growth_mb": 0, "lag_p95_s": 1.0},
+        },
+        {
+            "streaming-realtime": {
+                "max_wer_pct": 4.0,
+                "max_failure_rate": 0.0,
+                "min_rt_compliance_pct": 95.0,
+                "wer_delta": {"max_absolute_pp": 0.3, "max_relative_pct": 5.0},
+                "max_vram_growth_mb": 100,
+                "min_sustained_duration_s": 600,
+                "max_stream_lag_p95_ms": 5000,
+            }
+        },
+        scenario="streaming-realtime",
+    )
+
+    duration_gate = next(g for g in result["gates"] if g["gate"] == "min_sustained_duration_s")
+    assert duration_gate["actual"] is None
+    assert duration_gate["passed"] is False
+    assert result["all_passed"] is False
+
+
+def test_streaming_gate_fails_when_lag_exceeds_threshold():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "streaming-realtime"},
+            "wer": {"corpus_wer_pct": 3.0, "reference_wer_pct": 3.0},
+            "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0, "rt_compliance_pct": 100}],
+            "sustained_load": {"failures": 0, "wall_s": 600, "vram_growth_mb": 0, "lag_p95_s": 6.0},
+        },
+        {
+            "streaming-realtime": {
+                "max_wer_pct": 4.0,
+                "max_failure_rate": 0.0,
+                "min_rt_compliance_pct": 95.0,
+                "wer_delta": {"max_absolute_pp": 0.3, "max_relative_pct": 5.0},
+                "max_vram_growth_mb": 100,
+                "min_sustained_duration_s": 600,
+                "max_stream_lag_p95_ms": 5000,
+            }
+        },
+        scenario="streaming-realtime",
+    )
+
+    lag_gate = next(g for g in result["gates"] if g["gate"] == "max_stream_lag_p95_ms")
+    assert lag_gate["actual"] == 6000
+    assert lag_gate["passed"] is False
+    assert result["all_passed"] is False
 
 
 def test_combined_exit_status_sees_nested_sweep_failures():
