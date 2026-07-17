@@ -77,6 +77,19 @@ def evaluate_gates(report, gates, scenario=None):
                     "actual": round(fail_rate, 4) if fail_rate is not None else None,
                     "passed": fail_rate is not None and fail_rate <= max_fail})
 
+    wer_delta_cfg = gate.get("wer_delta")
+    if wer_delta_cfg is not None:
+        ref_wer = report.get("wer", {}).get("reference_wer_pct")
+        if wer is not None and ref_wer is not None:
+            delta = wer - ref_wer
+            max_delta = max(wer_delta_cfg["max_absolute_pp"], wer_delta_cfg["max_relative_pct"] / 100.0 * ref_wer)
+            results.append({"gate": "wer_delta", "threshold": round(max_delta, 3),
+                            "actual": round(delta, 3),
+                            "passed": delta <= max_delta})
+        else:
+            results.append({"gate": "wer_delta", "threshold": None,
+                            "actual": None, "passed": False})
+
     sustained = report.get("sustained_load", {})
     if sustained:
         sus_failures = sustained.get("failures", 0)
@@ -96,6 +109,24 @@ def evaluate_gates(report, gates, scenario=None):
         results.append({"gate": "max_p99_ms", "threshold": max_p99,
                         "actual": round(p99_ms, 1) if p99_ms is not None else None,
                         "passed": p99_ms is not None and p99_ms <= max_p99})
+
+    max_vram_growth = gate.get("max_vram_growth_mb")
+    if max_vram_growth is not None:
+        vram_growth = report.get("resources", {}).get("vram_growth_mb")
+        if vram_growth is None:
+            vram_growth = report.get("sustained_load", {}).get("vram_growth_mb")
+        results.append({"gate": "max_vram_growth_mb", "threshold": max_vram_growth,
+                        "actual": round(vram_growth, 1) if vram_growth is not None else None,
+                        "passed": vram_growth is not None and vram_growth <= max_vram_growth})
+
+    min_rt_compliance = gate.get("min_rt_compliance_pct")
+    if min_rt_compliance is not None:
+        rt_compliance = report.get("streaming", {}).get("rt_compliance_pct")
+        if rt_compliance is None:
+            rt_compliance = report.get("performance", {}).get("rt_compliance_pct")
+        results.append({"gate": "min_rt_compliance_pct", "threshold": min_rt_compliance,
+                        "actual": round(rt_compliance, 1) if rt_compliance is not None else None,
+                        "passed": rt_compliance is not None and rt_compliance >= min_rt_compliance})
 
     return {"scenario": scenario, "gates": results,
             "all_passed": all(g["passed"] for g in results)}

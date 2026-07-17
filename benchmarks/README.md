@@ -47,16 +47,22 @@ python3 scripts/bench_batch.py --server http://localhost:8000 --trials 3
 | [T4 batch](results/2026-t4-nemo-batch/) | T4 16GB | REST c=1..32 | 1.86% | — |
 | [L4 duration sweep](results/2026-l4-batch-by-duration/) | L4 24GB | 5s–120s audio brackets | — | Duration-stratified |
 
+## Metrics & Datasets
+
+- [**Metric definitions**](docs/metrics.md) — formal benchmark metrics (batch/streaming), WER delta gate, proof lines
+- [**Dataset specification**](docs/datasets.md) — benchmark vs tuning dataset separation, sources, rules
+- [**Tuning methodology**](docs/tuning.md) — knobs-vs-gauges, tuning workflow, common pitfalls
+
 ## Quality Gates
 
 Fail-closed thresholds in [`config/quality-gates.json`](config/quality-gates.json).
 Every gate returns `passed: false` when its metric data is missing — no silent passes.
 
-| Scenario | Max WER | Max Failure Rate | Min RTFx | Max p99 |
-|----------|---------|-----------------|----------|---------|
-| batch | 2.5% | 0% | 1.0x | — |
-| streaming-realtime | 4.0% | 0% | — | 60s |
-| combined | 3.0% | 0% | — | — |
+| Scenario | Max WER | WER Delta | Max Failure Rate | Min RTFx | RT Compliance | VRAM Growth |
+|----------|---------|-----------|-----------------|----------|---------------|-------------|
+| batch | 2.5% | ≤ max(0.3pp, 5% rel) | 0% | 1.0x | — | < 100 MB |
+| streaming-realtime | 4.0% | ≤ max(0.3pp, 5% rel) | 0% | — | ≥ 95% | < 100 MB |
+| combined | 3.0% | — | 0% | — | — | — |
 
 ```bash
 python3 scripts/gates.py --report results/2026-l4-nemo-batch/result.json --scenario batch

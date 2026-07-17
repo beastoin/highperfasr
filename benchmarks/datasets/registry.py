@@ -34,6 +34,30 @@ CORPORA = {
         "format": "librispeech",
         "expected_files": 2939,
     },
+    "earnings22-full": {
+        "url": "https://huggingface.co/datasets/distil-whisper/earnings22/resolve/main/data/test-00000-of-00001.parquet",
+        "description": "Earnings-22 — 125 earnings calls, 119h, long-form batch benchmark",
+        "format": "earnings22",
+        "expected_files": 125,
+        "tier": "benchmark",
+    },
+    "ami-eval-ihm": {
+        "url": "https://huggingface.co/datasets/edinburghcstr/ami/resolve/main/audio/ihm/eval.tar.gz",
+        "description": "AMI eval — 20 meetings, ~11h, close-talk headset mix, streaming benchmark",
+        "format": "ami",
+        "expected_files": 20,
+        "tier": "benchmark",
+    },
+}
+
+BENCHMARK_CORPORA = ["librispeech-test-clean", "librispeech-test-other", "earnings22-full", "ami-eval-ihm"]
+TUNING_BUCKETS = {
+    "very-short": {"duration_range": (1, 5), "sources": ["librispeech-train", "common-voice-en"], "count": 400},
+    "short": {"duration_range": (5, 15), "sources": ["common-voice-en", "spgispeech"], "count": 600},
+    "medium": {"duration_range": (15, 60), "sources": ["gigaspeech", "tedlium3"], "count": 400},
+    "long": {"duration_range": (60, 300), "sources": ["tedlium3", "ami-train"], "count": 300},
+    "very-long": {"duration_range": (300, 5700), "sources": ["earnings21"], "count": 44},
+    "noisy": {"duration_range": (30, 300), "sources": ["chime6", "ami-farfield"], "count": 200},
 }
 
 
