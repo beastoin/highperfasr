@@ -140,10 +140,22 @@ def _extract_stream_lag_p95_ms(report):
     return max(values) if values else None
 
 
+_SCENARIO_ALIASES = {
+    "offline": "batch",
+    "soak": "streaming-realtime",
+    "streaming": "streaming-realtime",
+    "stream": "streaming-realtime",
+}
+
+
 def evaluate_gates(report, gates, scenario=None):
     if scenario is None:
         scenario = report.get("scenario", {}).get("mode", "batch")
-    gate = gates.get(scenario, gates.get("batch", {}))
+    scenario = _SCENARIO_ALIASES.get(scenario, scenario)
+    if scenario not in gates:
+        raise ValueError(f"Unknown scenario '{scenario}'. Available: {list(gates.keys())}. "
+                         f"Pass --scenario explicitly or add an alias to _SCENARIO_ALIASES.")
+    gate = gates[scenario]
     results = []
 
     wer = _extract_wer(report)
@@ -152,7 +164,7 @@ def evaluate_gates(report, gates, scenario=None):
         results.append({"gate": "max_wer_pct", "threshold": max_wer,
                         "actual": wer,
                         "passed": wer is not None and wer <= max_wer})
-        if scenario in {"batch", "streaming-realtime"}:
+        if scenario in gates:
             load_wer = _extract_load_wer(report)
             results.append({"gate": "max_load_wer_pct", "threshold": max_wer,
                             "actual": load_wer,
@@ -176,7 +188,7 @@ def evaluate_gates(report, gates, scenario=None):
         else:
             results.append({"gate": "wer_delta", "threshold": None,
                             "actual": None, "passed": False})
-        if scenario in {"batch", "streaming-realtime"}:
+        if scenario in gates:
             load_wer = _extract_load_wer(report)
             if load_wer is not None and ref_wer is not None:
                 load_delta = load_wer - ref_wer
