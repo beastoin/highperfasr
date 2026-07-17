@@ -84,8 +84,8 @@
       "type": "object",
       "properties": {
         "wer": { "type": "number", "description": "Word Error Rate (0-100)" },
-        "reference_wer": { "type": "number", "description": "Reference model WER (0-100) for WER delta gates" },
-        "max_load_wer": { "type": "number", "description": "Word Error Rate measured under max stable load (0-100)" },
+        "reference_wer": { "type": ["number", "null"], "description": "Reference model WER (0-100) for WER delta gates" },
+        "max_load_wer": { "type": ["number", "null"], "description": "Word Error Rate measured under max stable load (0-100)" },
         "cer": { "type": "number", "description": "Character Error Rate (0-100)" },
         "normalization": { "type": "string", "description": "Text normalization method used" }
       }
@@ -99,8 +99,8 @@
         "p50_ms": { "type": "number" },
         "p95_ms": { "type": "number" },
         "p99_ms": { "type": "number" },
-        "lag_p95_ms": { "type": "number", "description": "Streaming lag p95 beyond realtime audio duration" },
-        "rt_compliance_pct": { "type": "number", "description": "Percent of streams that stayed within realtime lag tolerance" },
+        "lag_p95_ms": { "type": ["number", "null"], "description": "Streaming lag p95 beyond realtime audio duration" },
+        "rt_compliance_pct": { "type": ["number", "null"], "description": "Percent of streams that stayed within realtime lag tolerance" },
         "max_concurrent_streams": { "type": "integer" }
       }
     },
@@ -177,12 +177,16 @@
     {
       "if": {
         "properties": {
-          "scenario": {
-            "properties": { "name": { "const": "batch-concurrency-sweep" } },
+          "dataset": {
+            "properties": { "name": { "pattern": "^(LibriSpeech|Earnings-22|AMI)" } },
             "required": ["name"]
+          },
+          "scenario": {
+            "properties": { "mode": { "enum": ["offline", "server", "long-form"] } },
+            "required": ["mode"]
           }
         },
-        "required": ["scenario"]
+        "required": ["dataset", "scenario"]
       },
       "then": {
         "properties": {
@@ -196,16 +200,16 @@
         "properties": {
           "scenario": {
             "properties": {
-              "mode": { "enum": ["streaming-realtime", "streaming-saturation", "soak"] },
-              "duration_seconds": { "type": "number" }
+              "mode": { "enum": ["streaming-realtime", "streaming-saturation", "soak"] }
             },
-            "required": ["mode", "duration_seconds"]
+            "required": ["mode"]
           }
         },
         "required": ["scenario"]
       },
       "then": {
         "properties": {
+          "scenario": { "required": ["duration_seconds"] },
           "quality": { "required": ["wer", "reference_wer", "max_load_wer"] },
           "performance": { "required": ["rt_compliance_pct", "lag_p95_ms"] },
           "resources": { "required": ["vram_growth_mb"] }

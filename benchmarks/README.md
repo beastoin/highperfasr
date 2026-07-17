@@ -102,7 +102,7 @@ on every PR touching `benchmarks/`:
 1. Unit tests (`pytest benchmarks/` — 43 tests)
 2. Schema validation of all committed reports
 3. Baseline regression checks
-4. Quality gate evaluation on L4 and T4 batch reports
+4. Quality gate evaluation on current L4 batch and streaming proof reports
 
 ## Report Schema
 

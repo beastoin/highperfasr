@@ -5,8 +5,11 @@ import json
 import sys
 from pathlib import Path
 
+import jsonschema
+
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+BENCHMARKS_DIR = SCRIPTS_DIR.parent
 
 
 def _load_script(name):
@@ -15,6 +18,18 @@ def _load_script(name):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _schema_errors(report):
+    schema = json.loads((BENCHMARKS_DIR / "report-schema.json").read_text())
+    validator = jsonschema.Draft202012Validator(schema)
+    return sorted(validator.iter_errors(report), key=lambda e: list(e.path))
+
+
+def _valid_report(path):
+    report = json.loads((BENCHMARKS_DIR / path).read_text())
+    assert _schema_errors(report) == []
+    return report
 
 
 def test_quality_gate_fails_when_configured_wer_is_missing():
@@ -109,6 +124,76 @@ def test_quality_gate_config_matches_project_wer_thresholds():
     assert config["batch"]["max_wer_pct"] == 2.5
     assert config["streaming-realtime"]["max_wer_pct"] == 4.0
     assert config["streaming-realtime"]["max_stream_lag_p95_ms"] == 5000
+
+
+def test_schema_requires_canonical_batch_metrics_for_any_offline_scenario_name():
+    report = _valid_report("results/2026-l4-nemo-batch/result.json")
+    report["scenario"]["name"] = "batch-regression-smoke"
+    report["quality"].pop("reference_wer")
+    report["quality"].pop("max_load_wer")
+    report["resources"].pop("vram_growth_mb")
+
+    messages = [error.message for error in _schema_errors(report)]
+
+    assert "'reference_wer' is a required property" in messages
+    assert "'max_load_wer' is a required property" in messages
+    assert "'vram_growth_mb' is a required property" in messages
+
+
+def test_schema_allows_synthetic_batch_tuning_reports_without_wer_proof_fields():
+    _valid_report("results/2026-l4-batch-by-duration/result.json")
+
+
+def test_schema_requires_streaming_completeness_without_duration_bypass():
+    report = _valid_report("results/2026-l4-nemo-512-streams/result.json")
+    report["scenario"]["name"] = "streaming-regression-smoke"
+    report["scenario"].pop("duration_seconds")
+    report["quality"].pop("reference_wer")
+    report["quality"].pop("max_load_wer")
+    report["performance"].pop("rt_compliance_pct")
+    report["performance"].pop("lag_p95_ms")
+    report["resources"].pop("vram_growth_mb")
+
+    messages = [error.message for error in _schema_errors(report)]
+
+    assert "'duration_seconds' is a required property" in messages
+    assert "'reference_wer' is a required property" in messages
+    assert "'max_load_wer' is a required property" in messages
+    assert "'rt_compliance_pct' is a required property" in messages
+    assert "'lag_p95_ms' is a required property" in messages
+    assert "'vram_growth_mb' is a required property" in messages
+
+
+def test_t4_batch_report_does_not_fabricate_missing_vram_growth():
+    report = _valid_report("results/2026-t4-nemo-batch/result.json")
+
+    assert report["resources"]["vram_baseline_mb"] is None
+    assert report["resources"]["vram_highwater_mb"] is None
+    assert report["resources"]["vram_growth_mb"] is None
+
+
+def test_t4_batch_report_missing_vram_fails_quality_gate():
+    gates = _load_script("gates")
+    report = _valid_report("results/2026-t4-nemo-batch/result.json")
+    config = json.loads((BENCHMARKS_DIR / "config" / "quality-gates.json").read_text())
+
+    result = gates.evaluate_gates(report, config, scenario="batch")
+    vram_gate = next(g for g in result["gates"] if g["gate"] == "max_vram_growth_mb")
+
+    assert vram_gate["actual"] is None
+    assert vram_gate["passed"] is False
+    assert result["all_passed"] is False
+
+
+def test_t4_stream_report_records_missing_required_evidence_explicitly():
+    report = _valid_report("results/2026-t4-nemo-stream/result.json")
+
+    assert report["scenario"]["duration_seconds"] == 664.84
+    assert report["quality"]["reference_wer"] is None
+    assert report["quality"]["max_load_wer"] is None
+    assert report["performance"]["rt_compliance_pct"] is None
+    assert report["performance"]["lag_p95_ms"] is None
+    assert report["resources"]["vram_growth_mb"] is None
 
 
 def test_streaming_gate_reads_duration_from_scenario_metadata():

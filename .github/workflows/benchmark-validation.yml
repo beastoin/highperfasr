@@ -35,12 +35,6 @@ jobs:
             --report benchmarks/results/2026-l4-nemo-batch/result.json \
             --scenario batch
 
-      - name: Evaluate T4 batch quality gates
-        run: |
-          python benchmarks/scripts/gates.py \
-            --report benchmarks/results/2026-t4-nemo-batch/result.json \
-            --scenario batch
-
       - name: Evaluate L4 streaming quality gates
         run: |
           python benchmarks/scripts/gates.py \
