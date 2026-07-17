@@ -58,9 +58,9 @@
     "failure_rate": 0.0
   },
   "resources": {
-    "vram_baseline_mb": 0,
-    "vram_highwater_mb": 0,
-    "vram_growth_mb": 0,
+    "vram_baseline_mb": null,
+    "vram_highwater_mb": null,
+    "vram_growth_mb": null,
     "vram_total_mb": 16384
   },
   "reproduction": {

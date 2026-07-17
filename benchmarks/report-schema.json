@@ -116,9 +116,9 @@
     "resources": {
       "type": "object",
       "properties": {
-        "vram_baseline_mb": { "type": "number" },
-        "vram_highwater_mb": { "type": "number" },
-        "vram_growth_mb": { "type": "number" },
+        "vram_baseline_mb": { "type": ["number", "null"] },
+        "vram_highwater_mb": { "type": ["number", "null"] },
+        "vram_growth_mb": { "type": ["number", "null"] },
         "vram_total_mb": { "type": "number" },
         "vram_utilization": { "type": "number", "description": "0-1 fraction" }
       }

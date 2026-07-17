@@ -95,7 +95,7 @@ def _extract_sustained_duration_s(report):
         return sustained["duration_s"]
     if "wall_s" in sustained:
         return sustained["wall_s"]
-    return report.get("scenario", {}).get("duration_seconds")
+    return None
 
 
 def _extract_rt_compliance_pct(report):

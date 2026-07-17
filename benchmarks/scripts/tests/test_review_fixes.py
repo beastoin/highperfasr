@@ -116,7 +116,7 @@ def test_streaming_gate_fails_when_sustained_duration_is_missing():
 
     result = gates.evaluate_gates(
         {
-            "scenario": {"mode": "streaming-realtime"},
+            "scenario": {"mode": "streaming-realtime", "duration_seconds": 600},
             "wer": {"corpus_wer_pct": 3.0, "reference_wer_pct": 3.0},
             "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0, "rt_compliance_pct": 100}],
             "sustained_load": {"failures": 0, "vram_growth_mb": 0, "lag_p95_s": 1.0},
