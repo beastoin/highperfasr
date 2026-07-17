@@ -41,11 +41,15 @@
   },
   "quality": {
     "wer": 3.21,
+    "reference_wer": 3.21,
+    "max_load_wer": 3.21,
     "normalization": "Whisper EnglishTextNormalizer (lowercase, expand contractions, strip punctuation)"
   },
   "performance": {
     "rtfx": 38.69,
     "sessions_per_min": 297,
+    "rt_compliance_pct": 100.0,
+    "lag_p95_ms": 0,
     "max_concurrent_streams": 512
   },
   "reliability": {
@@ -57,6 +61,7 @@
   "resources": {
     "vram_baseline_mb": 8250,
     "vram_highwater_mb": 8672,
+    "vram_growth_mb": 0,
     "vram_total_mb": 23034,
     "vram_utilization": 0.38
   },

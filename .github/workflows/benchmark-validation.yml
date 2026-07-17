@@ -41,5 +41,11 @@ jobs:
             --report benchmarks/results/2026-t4-nemo-batch/result.json \
             --scenario batch
 
+      - name: Evaluate L4 streaming quality gates
+        run: |
+          python benchmarks/scripts/gates.py \
+            --report benchmarks/results/2026-l4-nemo-512-streams/result.json \
+            --scenario streaming-realtime
+
       - name: Check baseline registry
         run: python benchmarks/scripts/check_regression.py --all --registry benchmarks/baselines/registry.json

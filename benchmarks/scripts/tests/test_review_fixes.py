@@ -171,6 +171,71 @@ def test_streaming_gate_fails_when_lag_exceeds_threshold():
     assert result["all_passed"] is False
 
 
+def test_gate_fails_when_max_load_wer_is_missing():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "batch"},
+            "wer": {"corpus_wer_pct": 1.6, "reference_wer_pct": 1.57},
+            "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0}],
+            "resources": {"vram_growth_mb": 0},
+        },
+        {
+            "batch": {
+                "max_wer_pct": 2.5,
+                "max_failure_rate": 0.0,
+                "min_rtfx": 1.0,
+                "wer_delta": {"max_absolute_pp": 0.3, "max_relative_pct": 5.0},
+                "max_vram_growth_mb": 100,
+            }
+        },
+        scenario="batch",
+    )
+
+    load_gate = next(g for g in result["gates"] if g["gate"] == "max_load_wer_pct")
+    load_delta_gate = next(g for g in result["gates"] if g["gate"] == "max_load_wer_delta")
+    assert load_gate["actual"] is None
+    assert load_gate["passed"] is False
+    assert load_delta_gate["actual"] is None
+    assert load_delta_gate["passed"] is False
+    assert result["all_passed"] is False
+
+
+def test_gate_fails_when_max_load_wer_regresses():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "batch"},
+            "wer": {
+                "corpus_wer_pct": 1.6,
+                "reference_wer_pct": 1.57,
+                "max_load_corpus_wer_pct": 2.1,
+            },
+            "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0}],
+            "resources": {"vram_growth_mb": 0},
+        },
+        {
+            "batch": {
+                "max_wer_pct": 2.5,
+                "max_failure_rate": 0.0,
+                "min_rtfx": 1.0,
+                "wer_delta": {"max_absolute_pp": 0.3, "max_relative_pct": 5.0},
+                "max_vram_growth_mb": 100,
+            }
+        },
+        scenario="batch",
+    )
+
+    c1_gate = next(g for g in result["gates"] if g["gate"] == "wer_delta")
+    load_delta_gate = next(g for g in result["gates"] if g["gate"] == "max_load_wer_delta")
+    assert c1_gate["passed"] is True
+    assert load_delta_gate["actual"] == 0.53
+    assert load_delta_gate["passed"] is False
+    assert result["all_passed"] is False
+
+
 def test_combined_exit_status_sees_nested_sweep_failures():
     bench_combined = _load_script("bench_combined")
 

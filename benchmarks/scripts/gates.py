@@ -23,6 +23,26 @@ def _extract_reference_wer(report):
     return report.get("quality", {}).get("reference_wer")
 
 
+def _extract_load_wer(report):
+    """Extract max-load WER % from either live-runner or v1alpha2 format."""
+    wer = report.get("wer", {})
+    for key in ("max_load_corpus_wer_pct", "load_corpus_wer_pct"):
+        if wer.get(key) is not None:
+            return wer[key]
+
+    quality = report.get("quality", {})
+    for key in ("max_load_wer", "load_wer"):
+        if quality.get(key) is not None:
+            return quality[key]
+
+    sustained = report.get("sustained_load", {})
+    for key in ("wer_pct", "corpus_wer_pct"):
+        if sustained.get(key) is not None:
+            return sustained[key]
+
+    return None
+
+
 def _extract_failure_rate(report):
     """Extract failure rate from either live-runner or v1alpha2 format."""
     rel = report.get("reliability", {})
@@ -129,6 +149,11 @@ def evaluate_gates(report, gates, scenario=None):
         results.append({"gate": "max_wer_pct", "threshold": max_wer,
                         "actual": wer,
                         "passed": wer is not None and wer <= max_wer})
+        if scenario in {"batch", "streaming-realtime"}:
+            load_wer = _extract_load_wer(report)
+            results.append({"gate": "max_load_wer_pct", "threshold": max_wer,
+                            "actual": load_wer,
+                            "passed": load_wer is not None and load_wer <= max_wer})
 
     fail_rate = _extract_failure_rate(report)
     max_fail = gate.get("max_failure_rate", 0.0)
@@ -148,6 +173,20 @@ def evaluate_gates(report, gates, scenario=None):
         else:
             results.append({"gate": "wer_delta", "threshold": None,
                             "actual": None, "passed": False})
+        if scenario in {"batch", "streaming-realtime"}:
+            load_wer = _extract_load_wer(report)
+            if load_wer is not None and ref_wer is not None:
+                load_delta = load_wer - ref_wer
+                max_delta = max(
+                    wer_delta_cfg["max_absolute_pp"],
+                    wer_delta_cfg["max_relative_pct"] / 100.0 * ref_wer,
+                )
+                results.append({"gate": "max_load_wer_delta", "threshold": round(max_delta, 3),
+                                "actual": round(load_delta, 3),
+                                "passed": load_delta <= max_delta})
+            else:
+                results.append({"gate": "max_load_wer_delta", "threshold": None,
+                                "actual": None, "passed": False})
 
     sustained = report.get("sustained_load", {})
     if sustained:

@@ -41,6 +41,7 @@
   "quality": {
     "wer": 1.57,
     "reference_wer": 1.57,
+    "max_load_wer": 1.57,
     "normalization": "Whisper EnglishTextNormalizer (lowercase, expand contractions, strip punctuation)"
   },
   "performance": {

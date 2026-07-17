@@ -184,6 +184,29 @@ def compute_wer(references, hypotheses):
     return wer_val, per_utt
 
 
+def summarize_wer_results(results, refs):
+    """Compute report-ready WER fields from successful benchmark results."""
+    ref_texts = []
+    hyp_texts = []
+    for r in (r for r in results if r["status"] == "ok"):
+        utt_id = r["utt_id"]
+        if utt_id in refs:
+            ref_texts.append(refs[utt_id])
+            hyp_texts.append(r["text"])
+
+    if not ref_texts:
+        return None
+
+    wer_val, per_utt = compute_wer(ref_texts, hyp_texts)
+    high_wer_count = sum(1 for per_utt_wer in per_utt if per_utt_wer > 0.1)
+    return {
+        "corpus_wer_pct": round(wer_val * 100, 2),
+        "samples_evaluated": len(ref_texts),
+        "normalization": "whisper_english",
+        "high_wer_count": high_wer_count,
+    }
+
+
 def collect_system_info():
     """Collect system metadata for report reproducibility."""
     import platform as _platform
@@ -480,30 +503,21 @@ async def main():
         log.info("WER evaluation: c=1, 200 samples...")
         wer_results, _ = await run_sweep(url, manifest, concurrency=1, target_count=len(manifest))
 
-        ok_results = [r for r in wer_results if r["status"] == "ok"]
-        ref_texts = []
-        hyp_texts = []
-        for r in ok_results:
-            utt_id = r["utt_id"]
-            if utt_id in refs:
-                ref_texts.append(refs[utt_id])
-                hyp_texts.append(r["text"])
+        wer_summary = summarize_wer_results(wer_results, refs)
 
-        if ref_texts:
-            wer_val, per_utt = compute_wer(ref_texts, hyp_texts)
-            report["wer"] = {
-                "corpus_wer_pct": round(wer_val * 100, 2),
-                "samples_evaluated": len(ref_texts),
-                "normalization": "whisper_english",
-            }
+        if wer_summary:
+            report["wer"] = wer_summary
+            report["wer"]["c1_corpus_wer_pct"] = report["wer"]["corpus_wer_pct"]
             ref_wer = reference_wer_pct(
                 "batch", dataset_name, override=args.reference_wer_pct, baseline_report=baseline_report
             )
             if ref_wer is not None:
                 report["wer"]["reference_wer_pct"] = ref_wer
-            high_wer = [(ref_texts[i], hyp_texts[i], per_utt[i]) for i in range(len(per_utt)) if per_utt[i] > 0.1]
-            report["wer"]["high_wer_count"] = len(high_wer)
-            log.info(f"WER: {wer_val*100:.2f}% ({len(ref_texts)} samples, {len(high_wer)} with >10% WER)")
+            log.info(
+                f"WER: {report['wer']['corpus_wer_pct']:.2f}% "
+                f"({report['wer']['samples_evaluated']} samples, "
+                f"{report['wer']['high_wer_count']} with >10% WER)"
+            )
 
             if args.smart and baseline_report and "wer" in baseline_report:
                 base_wer = baseline_report["wer"]["corpus_wer_pct"]
@@ -556,6 +570,17 @@ async def main():
     sustained_summary["rounds"] = rounds
     sustained_summary["total_files"] = len(manifest) * rounds
     report["sustained_load"] = sustained_summary
+    if not args.skip_wer:
+        load_wer_summary = summarize_wer_results(sustained_results, refs)
+        if load_wer_summary:
+            report.setdefault("wer", {})
+            report["wer"]["max_load_corpus_wer_pct"] = load_wer_summary["corpus_wer_pct"]
+            report["wer"]["max_load_samples_evaluated"] = load_wer_summary["samples_evaluated"]
+            sustained_summary["wer_pct"] = load_wer_summary["corpus_wer_pct"]
+            log.info(
+                f"Max-load WER: {load_wer_summary['corpus_wer_pct']:.2f}% "
+                f"at c={sustained_c} ({load_wer_summary['samples_evaluated']} samples)"
+            )
     vram_end_mb = collect_gpu_memory_used_mb()
     if vram_start_mb is not None or vram_end_mb is not None:
         report["resources"] = {
