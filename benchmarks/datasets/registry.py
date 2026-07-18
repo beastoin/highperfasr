@@ -32,14 +32,14 @@ AMI_REVISION = "46f28f2503e2ec48f8867a84eef356c70476beab"
 CORPORA = {
     "librispeech-test-clean": {
         "url": "https://www.openslr.org/resources/12/test-clean.tar.gz",
-        "sha256": "d4ddd1d5a6ab303066f14971d768ee43278a5f2a0aa43dc716b0e64ecbbbf6e2",
+        "sha256": "39fde525e59672dc6d1551919b1478f724438a95aa55f874b576be21967e6c23",
         "description": "LibriSpeech test-clean — 2620 files, 5.4h, baseline WER reference",
         "format": "librispeech",
         "expected_files": 2620,
     },
     "librispeech-test-other": {
         "url": "https://www.openslr.org/resources/12/test-other.tar.gz",
-        "sha256": "f57c1e14edd311a49ced110d1ce7a1e2d281f7b09c7d64e3f6038d24fd15f8d3",
+        "sha256": "d09c181bba5cf717b3dee7d4d592af11a3ee3a09e08ae025c5506f6ebe961c29",
         "description": "LibriSpeech test-other — 2939 files, 5.3h, harder speakers/accents",
         "format": "librispeech",
         "expected_files": 2939,
