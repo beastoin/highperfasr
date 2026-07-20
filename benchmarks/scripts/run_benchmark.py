@@ -208,6 +208,10 @@ def main():
         exit_code = run_script("bench_batch.py", batch_args, "Batch Benchmark")
         results["batch"] = {"exit_code": exit_code, "output": batch_output}
 
+        if exit_code != 0:
+            log.warning(f"Batch benchmark exited with code {exit_code}")
+            overall_pass = False
+
         if os.path.exists(batch_output):
             gates_pass, _ = run_gates(batch_output, "batch")
             results["batch"]["gates_pass"] = gates_pass
@@ -239,6 +243,10 @@ def main():
 
         exit_code = run_script("bench_stream.py", stream_args, "Streaming Benchmark")
         results["streaming"] = {"exit_code": exit_code, "output": stream_output}
+
+        if exit_code != 0:
+            log.warning(f"Streaming benchmark exited with code {exit_code}")
+            overall_pass = False
 
         if os.path.exists(stream_output):
             gates_pass, _ = run_gates(stream_output, "streaming-realtime")

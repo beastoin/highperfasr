@@ -164,7 +164,7 @@ def evaluate_gates(report, gates, scenario=None):
         results.append({"gate": "max_wer_pct", "threshold": max_wer,
                         "actual": wer,
                         "passed": wer is not None and wer <= max_wer})
-        if scenario in gates:
+        if scenario in ("batch", "streaming-realtime"):
             load_wer = _extract_load_wer(report)
             results.append({"gate": "max_load_wer_pct", "threshold": max_wer,
                             "actual": load_wer,
@@ -188,7 +188,7 @@ def evaluate_gates(report, gates, scenario=None):
         else:
             results.append({"gate": "wer_delta", "threshold": None,
                             "actual": None, "passed": False})
-        if scenario in gates:
+        if scenario in ("batch", "streaming-realtime"):
             load_wer = _extract_load_wer(report)
             if load_wer is not None and ref_wer is not None:
                 load_delta = load_wer - ref_wer

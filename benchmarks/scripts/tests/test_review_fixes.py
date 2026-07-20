@@ -325,6 +325,30 @@ def test_gate_fails_when_max_load_wer_regresses():
     assert result["all_passed"] is False
 
 
+def test_combined_scenario_skips_max_load_wer_gates():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "combined"},
+            "wer": {"corpus_wer_pct": 2.5},
+            "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0}],
+            "resources": {"vram_growth_mb": 0},
+        },
+        {
+            "batch": {"max_wer_pct": 2.5, "max_failure_rate": 0.0},
+            "streaming-realtime": {"max_wer_pct": 4.0, "max_failure_rate": 0.0},
+            "combined": {"max_wer_pct": 3.0, "max_failure_rate": 0.0},
+        },
+        scenario="combined",
+    )
+
+    gate_names = [g["gate"] for g in result["gates"]]
+    assert "max_load_wer_pct" not in gate_names
+    assert "max_load_wer_delta" not in gate_names
+    assert result["all_passed"] is True
+
+
 def test_combined_exit_status_sees_nested_sweep_failures():
     bench_combined = _load_script("bench_combined")
 
