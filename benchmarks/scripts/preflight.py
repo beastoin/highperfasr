@@ -82,6 +82,13 @@ def detect_server(base_url, timeout=5):
             resp = urllib.request.urlopen(req, timeout=timeout)
             data = json.loads(resp.read())
             result["raw"] = data
+
+            status = data.get("status", data.get("state", "ready"))
+            is_ready = data.get("ready", True)
+            if str(status).lower() in ("loading", "starting") or is_ready is False:
+                log.warning(f"Server responding but not ready: status={status}, ready={is_ready}")
+                continue
+
             result["healthy"] = True
 
             mode = normalize_server_mode(data.get("mode", data.get("server_mode", "unknown")))
@@ -93,11 +100,15 @@ def detect_server(base_url, timeout=5):
 
             result["uptime_s"] = data.get("uptime_seconds", data.get("uptime_s"))
 
-            host_port = http_url.split("//", 1)[-1]
+            parts = urlsplit(http_url)
+            scheme = parts.scheme
+            host_port = parts.netloc
+            batch_scheme = scheme
+            ws_scheme = "wss" if scheme == "https" else "ws"
             if mode in ("batch", "both"):
-                result["batch_url"] = f"http://{host_port}"
+                result["batch_url"] = f"{batch_scheme}://{host_port}"
             if mode in ("streaming", "both"):
-                result["stream_url"] = f"ws://{host_port}"
+                result["stream_url"] = f"{ws_scheme}://{host_port}"
 
             break
         except (urllib.error.URLError, json.JSONDecodeError, Exception):

@@ -145,6 +145,23 @@ def main():
     log.info("=" * 60)
 
     server_info = detect_server(http_url)
+
+    # In compose, batch (:8000) and streaming (:8001) are separate services.
+    # Probe the compose streaming port before aborting or selecting mode.
+    compose_stream_url = _compose_stream_url_from_batch_url(http_url)
+    compose_http = compose_stream_url.replace("ws://", "http://").replace("wss://", "https://")
+    if args.mode in ("auto", "streaming") and (
+        not server_info["healthy"] or server_info["mode"] == "batch"
+    ):
+        stream_probe = detect_server(compose_http)
+        if stream_probe["healthy"]:
+            log.info(f"Compose streaming service detected at {compose_http}")
+            if server_info["healthy"]:
+                server_info["mode"] = "both"
+            else:
+                server_info = stream_probe
+                server_info["mode"] = "streaming"
+
     if not server_info["healthy"]:
         log.error(f"Server at {http_url} is not healthy. Aborting.")
         return 1
@@ -152,16 +169,6 @@ def main():
     log.info(f"Server healthy: mode={server_info['mode']}, uptime={server_info.get('uptime_s', '?')}s")
     if server_info["models"]:
         log.info(f"Models loaded: {server_info['models']}")
-
-    # In compose, batch (:8000) and streaming (:8001) are separate services.
-    # If auto-detect sees batch-only, probe the compose streaming port.
-    if args.mode == "auto" and server_info["mode"] == "batch":
-        compose_stream_url = _compose_stream_url_from_batch_url(http_url)
-        compose_http = compose_stream_url.replace("ws://", "http://").replace("wss://", "https://")
-        stream_probe = detect_server(compose_http)
-        if stream_probe["healthy"]:
-            log.info(f"Compose streaming service detected at {compose_http}")
-            server_info["mode"] = "both"
 
     # Resolve mode
     mode, run_batch, run_streaming = resolve_benchmark_selection(args.mode, server_info["mode"])
