@@ -13,8 +13,11 @@ from benchmarks.datasets.registry import (
     CORPORA,
     TUNING_MANIFESTS,
     _build_manifest,
+    _download_corpus_files,
     _download_file,
+    _extract_hf_audio_parquet,
     _get_wav_duration,
+    _verify_sha256,
     load_dataset,
 )
 
@@ -250,3 +253,136 @@ class TestLoadDatasetCache:
         manifest = load_dataset("tuning", cache_dir=tmp_path)
 
         assert len(manifest) == len(TUNING_MANIFESTS)
+
+    def test_benchmark_alias_loads_all_four_corpora(self, tmp_path):
+        for corpus_name in BENCHMARK_CORPORA:
+            corpus_dir = tmp_path / corpus_name
+            wav_dir = corpus_dir / "wav"
+            wav_dir.mkdir(parents=True)
+            expected = CORPORA[corpus_name].get("expected_files", 1)
+            for i in range(expected):
+                _make_wav(wav_dir / f"utt{i}.wav", duration_s=1.0)
+            (corpus_dir / "references.tsv").write_text(
+                "\n".join(f"utt{i}\ttext {i}" for i in range(expected))
+            )
+
+        result = load_dataset("benchmark", cache_dir=tmp_path)
+
+        corpora_seen = {e["corpus"] for e in result}
+        assert corpora_seen == set(BENCHMARK_CORPORA)
+
+
+class TestParquetExtraction:
+    def _make_parquet(self, path, rows):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        table = pa.table({
+            "audio": [r.get("audio") for r in rows],
+            "text": [r.get("text", "") for r in rows],
+            "id": [r.get("id", f"utt_{i}") for i, r in enumerate(rows)],
+        })
+        pq.write_table(table, path)
+
+    def test_extract_skips_rows_without_audio(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        wav_dir = tmp_path / "wav"
+        ref_file = tmp_path / "refs.tsv"
+
+        self._make_parquet(parquet, [
+            {"audio": None, "text": "should skip", "id": "skip1"},
+            {"audio": {"bytes": self._wav_bytes()}, "text": "hello", "id": "keep1"},
+            {"audio": None, "text": "also skip", "id": "skip2"},
+        ])
+
+        _extract_hf_audio_parquet(parquet, wav_dir, ref_file)
+
+        wavs = list(wav_dir.glob("*.wav"))
+        assert len(wavs) == 1
+        assert wavs[0].stem == "keep1"
+
+    def test_extract_raises_on_unsupported_audio_shape(self, tmp_path):
+        parquet = tmp_path / "data.parquet"
+        wav_dir = tmp_path / "wav"
+        ref_file = tmp_path / "refs.tsv"
+
+        self._make_parquet(parquet, [
+            {"audio": {"unexpected_key": "data"}, "text": "bad", "id": "bad1"},
+        ])
+
+        with pytest.raises(ValueError, match="Unsupported parquet audio row shape"):
+            _extract_hf_audio_parquet(parquet, wav_dir, ref_file)
+
+    def test_extract_respects_max_samples_across_shards(self, tmp_path):
+        wav_dir = tmp_path / "wav"
+        ref_file = tmp_path / "refs.tsv"
+
+        shard1 = tmp_path / "shard1.parquet"
+        shard2 = tmp_path / "shard2.parquet"
+        self._make_parquet(shard1, [
+            {"audio": {"bytes": self._wav_bytes()}, "text": f"text{i}", "id": f"s1_{i}"}
+            for i in range(5)
+        ])
+        self._make_parquet(shard2, [
+            {"audio": {"bytes": self._wav_bytes()}, "text": f"text{i}", "id": f"s2_{i}"}
+            for i in range(5)
+        ])
+
+        _extract_hf_audio_parquet([shard1, shard2], wav_dir, ref_file, max_samples=7)
+
+        wavs = list(wav_dir.glob("*.wav"))
+        assert len(wavs) == 7
+
+    def _wav_bytes(self, duration_s=0.1, sr=16000):
+        num_samples = int(sr * duration_s)
+        data_size = num_samples * 2
+        buf = io.BytesIO()
+        buf.write(b"RIFF")
+        buf.write(struct.pack("<I", 36 + data_size))
+        buf.write(b"WAVE")
+        buf.write(b"fmt ")
+        buf.write(struct.pack("<IHHIIHH", 16, 1, 1, sr, sr * 2, 2, 16))
+        buf.write(b"data")
+        buf.write(struct.pack("<I", data_size))
+        buf.write(b"\x00" * data_size)
+        return buf.getvalue()
+
+
+class TestVerifySha256:
+    def test_deletes_file_on_mismatch(self, tmp_path):
+        bad_file = tmp_path / "corrupt.bin"
+        bad_file.write_bytes(b"corrupted data")
+        expected = hashlib.sha256(b"correct data").hexdigest()
+
+        with pytest.raises(ValueError, match="SHA256 mismatch"):
+            _verify_sha256(bad_file, expected)
+
+        assert not bad_file.exists()
+
+    def test_passes_on_match(self, tmp_path):
+        good_file = tmp_path / "good.bin"
+        content = b"valid content"
+        good_file.write_bytes(content)
+        expected = hashlib.sha256(content).hexdigest()
+
+        _verify_sha256(good_file, expected)
+
+        assert good_file.exists()
+
+
+class TestDownloadCorpusFiles:
+    def test_multi_file_returns_all_paths(self, tmp_path):
+        info = {
+            "files": [
+                {"url": "https://example.com/shard1.parquet", "sha256": "abc"},
+                {"url": "https://example.com/shard2.parquet", "sha256": "def"},
+                {"url": "https://example.com/shard3.parquet", "sha256": "ghi"},
+            ]
+        }
+
+        with patch("benchmarks.datasets.registry._download_file") as mock_dl:
+            mock_dl.side_effect = lambda url, dest, **kw: dest
+            paths = _download_corpus_files(info, tmp_path)
+
+        assert len(paths) == 3
+        assert all(str(p).endswith(".parquet") for p in paths)
+        assert mock_dl.call_count == 3
