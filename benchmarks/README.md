@@ -10,20 +10,29 @@ All scripts are standalone — no NeMo imports, just a running server URL.
 ```bash
 pip install aiohttp websockets jiwer whisper-normalizer soundfile
 
-# Batch: concurrency sweep + WER (auto-downloads LibriSpeech test-clean)
+# Recommended: use the orchestrator (auto-detects mode, enforces correct order, runs gates)
+python3 scripts/run_benchmark.py --server http://localhost:8000 --quick
+
+# Full publishable run with 3 trials
+python3 scripts/run_benchmark.py --server http://localhost:8000 --full --trials 3
+
+# Individual scripts (the orchestrator calls these in the correct order)
 python3 scripts/bench_batch.py --server http://localhost:8000
-
-# Streaming: concurrency sweep + WER
-python3 scripts/bench_stream.py --server ws://localhost:8001
-
-# Statistical rigor: 3 trials with 95% CI
-python3 scripts/bench_batch.py --server http://localhost:8000 --trials 3
+python3 scripts/bench_stream.py --server ws://localhost:8000
 ```
+
+The orchestrator auto-detects the server mode (batch/streaming/both), resolves
+the correct ports, runs batch before streaming (GPU contention causes streaming
+failures if run simultaneously), evaluates quality gates, and prints a combined
+pass/fail summary. Use `--quick` for fast validation (200 samples) and `--full`
+for publishable results (all samples).
 
 ## Scripts
 
 | Script | Purpose |
 |--------|---------|
+| `run_benchmark.py` | **Orchestrator** — auto-detects mode, enforces batch-first ordering, runs gates |
+| `preflight.py` | Server auto-detection, duration estimates, unbuffered output |
 | `bench_batch.py` | Batch REST benchmark — concurrency sweep, sustained load, WER |
 | `bench_stream.py` | Streaming WebSocket benchmark — concurrency sweep, TTFB, WER |
 | `bench_stream_soak.py` | Sustained streaming soak — persistent connections, VRAM tracking |

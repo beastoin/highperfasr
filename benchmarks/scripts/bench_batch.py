@@ -27,6 +27,10 @@ import aiohttp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+from preflight import detect_server, resolve_batch_url, log_duration_estimate, log_preflight_summary, ensure_unbuffered
+
+ensure_unbuffered()
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bench_batch")
 
@@ -450,10 +454,21 @@ async def main():
     parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
     parser.add_argument("--trials", type=int, default=1,
                         help="Number of trial runs for statistical rigor (default: 1)")
+    parser.add_argument("--quick", action="store_true",
+                        help="Quick validation: 200 samples (use full corpus for publishable results)")
     args = parser.parse_args()
 
+    if args.quick:
+        if args.max_samples == 0:
+            args.max_samples = 200
+        log.info("Quick mode: 200 samples for fast validation (use --max-samples 0 for publishable results)")
+
     levels = [int(x) for x in args.concurrency.split(",")]
-    url = f"{args.server}{args.endpoint}"
+
+    server_info = detect_server(args.server)
+    log_preflight_summary(server_info, "batch")
+    server_base = resolve_batch_url(args.server, server_info)
+    url = f"{server_base}{args.endpoint}"
 
     baseline_report, baseline_sweep = None, {}
     if args.baseline:
@@ -500,7 +515,8 @@ async def main():
 
     # Step 3: WER evaluation (c=1 for deterministic ordering)
     if not args.skip_wer:
-        log.info("WER evaluation: c=1, 200 samples...")
+        total_audio = sum(e.get("duration_s", 5.0) for e in manifest)
+        log_duration_estimate(len(manifest), total_audio, mode="batch")
         wer_results, _ = await run_sweep(url, manifest, concurrency=1, target_count=len(manifest))
 
         wer_summary = summarize_wer_results(wer_results, refs)
