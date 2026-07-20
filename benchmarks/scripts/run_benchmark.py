@@ -229,7 +229,10 @@ def main():
             log.warning(f"Batch benchmark exited with code {exit_code}")
             overall_pass = False
 
-        if os.path.exists(batch_output):
+        if args.quick:
+            results["batch"]["gates_pass"] = None
+            log.info("Quick mode: skipping quality gates (use --full for gate enforcement)")
+        elif os.path.exists(batch_output):
             gates_pass, _ = run_gates(batch_output, "batch")
             results["batch"]["gates_pass"] = gates_pass
             if not gates_pass:
@@ -265,7 +268,10 @@ def main():
             log.warning(f"Streaming benchmark exited with code {exit_code}")
             overall_pass = False
 
-        if os.path.exists(stream_output):
+        if args.quick:
+            results["streaming"]["gates_pass"] = None
+            log.info("Quick mode: skipping quality gates (use --full for gate enforcement)")
+        elif os.path.exists(stream_output):
             gates_pass, _ = run_gates(stream_output, "streaming-realtime")
             results["streaming"]["gates_pass"] = gates_pass
             if not gates_pass:
@@ -284,7 +290,8 @@ def main():
     log.info("")
 
     for name, r in results.items():
-        status = "PASS" if r.get("gates_pass") else "FAIL"
+        gp = r.get("gates_pass")
+        status = "SKIP" if gp is None else ("PASS" if gp else "FAIL")
         log.info(f"  {name:12s}: {status}  (report: {r.get('output', 'N/A')})")
 
         if os.path.exists(r.get("output", "")):

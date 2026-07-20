@@ -547,9 +547,9 @@ async def main():
         }
         log.info(f"Trials summary: peak RTFx={report['trials']['peak_rtfx']}")
 
-    # Quality gate evaluation
+    # Quality gate evaluation (skipped in quick mode — gates require full sustained load)
     gates_path = Path(__file__).parent.parent / "config" / "quality-gates.json"
-    if gates_path.exists():
+    if gates_path.exists() and not args.quick:
         from benchmarks.scripts.gates import load_gates, evaluate_gates
 
         gates = load_gates(str(gates_path))
@@ -558,6 +558,8 @@ async def main():
         for g in gate_result["gates"]:
             status = "PASS" if g["passed"] else "FAIL"
             log.info(f"  Gate {status}: {g['gate']} — threshold={g['threshold']}, actual={g['actual']}")
+    elif args.quick:
+        log.info("Quick mode: skipping quality gates (use full corpus for gate enforcement)")
 
     with open(args.output, "w") as f:
         json.dump(report, f, indent=2)
