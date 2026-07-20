@@ -18,7 +18,7 @@ python3 scripts/run_benchmark.py --server http://localhost:8000 --full --trials 
 
 # Individual scripts (the orchestrator calls these in the correct order)
 python3 scripts/bench_batch.py --server http://localhost:8000
-python3 scripts/bench_stream.py --server ws://localhost:8000
+python3 scripts/bench_stream.py --server ws://localhost:8001  # compose: streaming on :8001
 ```
 
 The orchestrator auto-detects the server mode (batch/streaming/both), resolves
@@ -26,6 +26,10 @@ the correct ports, runs batch before streaming (GPU contention causes streaming
 failures if run simultaneously), evaluates quality gates, and prints a combined
 pass/fail summary. Use `--quick` for fast validation (200 samples) and `--full`
 for publishable results (all samples).
+
+**Port mapping:** In Docker Compose, batch is on `:8000` and streaming on `:8001`
+(separate services). In both-mode (single server), both share `:8000`. The
+orchestrator auto-probes `:8001` when it detects batch-only on `:8000`.
 
 ## Scripts
 

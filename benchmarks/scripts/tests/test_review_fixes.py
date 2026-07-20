@@ -373,6 +373,50 @@ def test_run_benchmark_auto_selects_stream_runtime_mode():
     assert run_streaming is True
 
 
+def test_run_benchmark_compose_probe_upgrades_batch_to_both(monkeypatch, tmp_path):
+    run_benchmark = _load_script("run_benchmark")
+
+    probe_calls = []
+    original_detect = run_benchmark.detect_server
+
+    def fake_detect(url, **kwargs):
+        probe_calls.append(url)
+        if ":8001" in url:
+            return {"healthy": True, "mode": "streaming", "models": [],
+                    "uptime_s": 1, "batch_url": None,
+                    "stream_url": f"ws://localhost:8001", "raw": {}}
+        return {"healthy": True, "mode": "batch", "models": [],
+                "uptime_s": 1, "batch_url": f"http://localhost:8000",
+                "stream_url": None, "raw": {"mode": "batch"}}
+
+    def fake_run_script(script_name, args, label):
+        outdir = str(tmp_path)
+        for a in args:
+            if a.startswith(outdir):
+                import json
+                Path(a).write_text(json.dumps({
+                    "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0}],
+                    "wer": {"corpus_wer_pct": 1.0, "reference_wer_pct": 1.0,
+                            "max_load_corpus_wer_pct": 1.0},
+                    "resources": {"vram_growth_mb": 0},
+                }))
+                break
+        return 0
+
+    monkeypatch.setattr(run_benchmark, "detect_server", fake_detect)
+    monkeypatch.setattr(run_benchmark, "run_script", fake_run_script)
+    monkeypatch.setattr(run_benchmark, "run_gates", lambda *a, **kw: (True, []))
+    monkeypatch.setattr(
+        sys, "argv",
+        ["run_benchmark.py", "--server", "http://localhost:8000",
+         "--output-dir", str(tmp_path)],
+    )
+
+    exit_code = run_benchmark.main()
+
+    assert any(":8001" in u for u in probe_calls), "Should probe compose streaming port"
+
+
 def test_check_regression_treats_missing_metrics_as_failure():
     check_regression = _load_script("check_regression")
 
