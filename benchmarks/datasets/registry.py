@@ -6,6 +6,7 @@ Each corpus defines a download URL, extraction logic, and WAV normalization.
 All audio is converted to 16kHz mono PCM16 WAV during extraction.
 """
 
+import hashlib
 import io
 import json
 import logging
@@ -328,19 +329,24 @@ def _download_file(url: str, dest: Path, expected_sha256: str = None) -> Path:
     """Download a file with progress logging and optional SHA256 verification."""
     if dest.exists():
         log.info(f"Cached: {dest} ({dest.stat().st_size / 1e6:.0f}MB)")
+        if expected_sha256:
+            _verify_sha256(dest, expected_sha256)
         return dest
     dest.parent.mkdir(parents=True, exist_ok=True)
     log.info(f"Downloading {url}...")
     urllib.request.urlretrieve(url, dest)
     log.info(f"Downloaded {dest.stat().st_size / 1e6:.0f}MB")
     if expected_sha256:
-        import hashlib
-        actual = hashlib.sha256(dest.read_bytes()).hexdigest()
-        if actual != expected_sha256:
-            dest.unlink()
-            raise ValueError(f"SHA256 mismatch: expected {expected_sha256}, got {actual}")
-        log.info(f"SHA256 verified: {actual[:16]}...")
+        _verify_sha256(dest, expected_sha256)
     return dest
+
+
+def _verify_sha256(path: Path, expected_sha256: str) -> None:
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual != expected_sha256:
+        path.unlink()
+        raise ValueError(f"SHA256 mismatch: expected {expected_sha256}, got {actual}")
+    log.info(f"SHA256 verified: {actual[:16]}...")
 
 
 def _download_corpus_files(info: dict, corpus_dir: Path) -> list[Path]:

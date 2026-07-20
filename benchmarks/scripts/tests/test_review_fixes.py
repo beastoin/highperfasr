@@ -339,6 +339,16 @@ def test_combined_exit_status_sees_nested_sweep_failures():
     )
 
 
+def test_run_benchmark_auto_selects_stream_runtime_mode():
+    run_benchmark = _load_script("run_benchmark")
+
+    mode, run_batch, run_streaming = run_benchmark.resolve_benchmark_selection("auto", "stream")
+
+    assert mode == "streaming"
+    assert run_batch is False
+    assert run_streaming is True
+
+
 def test_check_regression_treats_missing_metrics_as_failure():
     check_regression = _load_script("check_regression")
 

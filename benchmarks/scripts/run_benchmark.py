@@ -36,16 +36,15 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS_DIR))
 
-from preflight import detect_server, ensure_unbuffered
+from preflight import detect_server, ensure_unbuffered, normalize_server_mode, resolve_batch_url, resolve_stream_url
 
 ensure_unbuffered()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("orchestrator")
-
-SCRIPTS_DIR = Path(__file__).resolve().parent
 
 
 def run_script(script_name, args, label):
@@ -92,6 +91,19 @@ def run_gates(report_path, scenario):
     return result.returncode == 0, []
 
 
+def resolve_benchmark_selection(requested_mode, server_mode):
+    """Return (mode, run_batch, run_streaming) for a requested/server mode pair."""
+    if requested_mode == "auto":
+        mode = normalize_server_mode(server_mode)
+        if mode == "unknown":
+            log.warning("Could not detect server mode, defaulting to 'both'")
+            mode = "both"
+    else:
+        mode = normalize_server_mode(requested_mode)
+
+    return mode, mode in ("batch", "both"), mode in ("streaming", "both")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Benchmark orchestrator — auto-detects server, enforces correct ordering, runs gates"
@@ -135,21 +147,16 @@ def main():
         log.info(f"Models loaded: {server_info['models']}")
 
     # Resolve mode
+    mode, run_batch, run_streaming = resolve_benchmark_selection(args.mode, server_info["mode"])
     if args.mode == "auto":
-        mode = server_info["mode"]
-        if mode == "unknown":
-            log.warning("Could not detect server mode, defaulting to 'both'")
-            mode = "both"
         log.info(f"Auto-detected mode: {mode}")
-    else:
-        mode = args.mode
-
-    run_batch = mode in ("batch", "both")
-    run_streaming = mode in ("streaming", "both")
+    if not run_batch and not run_streaming:
+        log.error(f"No benchmarks selected for mode '{mode}'")
+        return 1
 
     # Resolve URLs
-    batch_url = server_info.get("batch_url") or http_url
-    stream_url = server_info.get("stream_url") or http_url.replace("http://", "ws://")
+    batch_url = resolve_batch_url(http_url, server_info)
+    stream_url = resolve_stream_url(http_url, server_info)
 
     # Resolve defaults based on --quick / --full
     if args.quick:

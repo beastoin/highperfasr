@@ -13,8 +13,40 @@ import os
 import sys
 import urllib.request
 import urllib.error
+from urllib.parse import urlsplit, urlunsplit
 
 log = logging.getLogger("preflight")
+
+
+def normalize_server_mode(mode):
+    """Normalize serving modes to benchmark scenario names."""
+    aliases = {
+        "stream": "streaming",
+        "streams": "streaming",
+        "streaming-realtime": "streaming",
+        "offline": "batch",
+    }
+    if mode is None:
+        return "unknown"
+    return aliases.get(str(mode).strip().lower(), str(mode).strip().lower() or "unknown")
+
+
+def _http_to_ws_url(url):
+    parts = urlsplit(url)
+    scheme = "wss" if parts.scheme == "https" else "ws"
+    return urlunsplit((scheme, parts.netloc, parts.path, parts.query, parts.fragment))
+
+
+def _compose_stream_url_from_batch_url(url):
+    parts = urlsplit(url)
+    if parts.hostname and parts.port == 8000:
+        host = parts.hostname
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        netloc = f"{host}:8001"
+        scheme = "wss" if parts.scheme == "https" else "ws"
+        return urlunsplit((scheme, netloc, parts.path, parts.query, parts.fragment))
+    return _http_to_ws_url(url)
 
 
 def detect_server(base_url, timeout=5):
@@ -52,7 +84,7 @@ def detect_server(base_url, timeout=5):
             result["raw"] = data
             result["healthy"] = True
 
-            mode = data.get("mode", data.get("server_mode", "unknown"))
+            mode = normalize_server_mode(data.get("mode", data.get("server_mode", "unknown")))
             result["mode"] = mode
 
             models = data.get("models", data.get("loaded_models", []))
@@ -77,11 +109,12 @@ def detect_server(base_url, timeout=5):
 def resolve_stream_url(user_url, server_info):
     """Return the correct WebSocket URL, auto-correcting port if needed.
 
-    In both-mode, batch and streaming share the same port. If the user
-    specified a different port (e.g., 8001), correct it.
+    In both-mode, batch and streaming share the same port. In Docker Compose,
+    the stream service listens on container port 8000 but is published on host
+    port 8001, so a batch URL on :8000 must not be reused for streaming.
     """
     if not server_info["healthy"]:
-        return user_url
+        return _http_to_ws_url(user_url)
 
     if server_info["stream_url"]:
         detected = server_info["stream_url"]
@@ -92,7 +125,7 @@ def resolve_stream_url(user_url, server_info):
             )
         return detected
 
-    return user_url
+    return _compose_stream_url_from_batch_url(user_url)
 
 
 def resolve_batch_url(user_url, server_info):

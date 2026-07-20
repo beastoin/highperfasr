@@ -1,5 +1,6 @@
 """Tests for corpus registry — metadata, FLAC conversion, manifest building."""
 
+import hashlib
 import io
 import struct
 from pathlib import Path
@@ -12,6 +13,7 @@ from benchmarks.datasets.registry import (
     CORPORA,
     TUNING_MANIFESTS,
     _build_manifest,
+    _download_file,
     _get_wav_duration,
     load_dataset,
 )
@@ -158,6 +160,16 @@ class TestLoadDatasetCache:
             load_dataset("tiny", cache_dir=tmp_path, max_samples=2)
 
         extract.assert_not_called()
+
+    def test_cached_download_is_sha256_verified(self, tmp_path):
+        cached = tmp_path / "cached.bin"
+        cached.write_bytes(b"bad-cache")
+        expected = hashlib.sha256(b"expected").hexdigest()
+
+        with pytest.raises(ValueError, match="SHA256 mismatch"):
+            _download_file("https://example.com/cached.bin", cached, expected_sha256=expected)
+
+        assert not cached.exists()
 
     def test_limited_dataset_expands_partial_cache_when_limit_increases(self, tmp_path):
         self._seed_cache(tmp_path, "tiny", wav_count=2)
