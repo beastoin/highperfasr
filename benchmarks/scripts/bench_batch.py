@@ -192,6 +192,7 @@ def summarize_wer_results(results, refs):
     """Compute report-ready WER fields from successful benchmark results."""
     ref_texts = []
     hyp_texts = []
+    wer_failures = sum(1 for r in results if r["status"] != "ok")
     for r in (r for r in results if r["status"] == "ok"):
         utt_id = r["utt_id"]
         if utt_id in refs:
@@ -206,6 +207,7 @@ def summarize_wer_results(results, refs):
     return {
         "corpus_wer_pct": round(wer_val * 100, 2),
         "samples_evaluated": len(ref_texts),
+        "samples_failed": wer_failures,
         "normalization": "whisper_english",
         "high_wer_count": high_wer_count,
     }
@@ -535,6 +537,12 @@ async def main():
                 f"{report['wer']['high_wer_count']} with >10% WER)"
             )
 
+            if report["wer"]["samples_failed"] > 0:
+                log.error(
+                    f"WER incomplete: {report['wer']['samples_failed']} of "
+                    f"{len(manifest)} eval items failed at c=1"
+                )
+
             if args.smart and baseline_report and "wer" in baseline_report:
                 base_wer = baseline_report["wer"]["corpus_wer_pct"]
                 cur_wer = report["wer"]["corpus_wer_pct"]
@@ -738,8 +746,12 @@ async def main():
     log.info(f"Report saved to {args.output}")
 
     total_failures = report["summary"]["total_failures"]
+    wer_failures = report.get("wer", {}).get("samples_failed", 0)
     if total_failures > 0:
         log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
+        return 1
+    if wer_failures > 0:
+        log.error(f"FAIL: {wer_failures} WER eval items failed at c=1 — incomplete coverage")
         return 1
 
     if "quality_gates" in report and not report["quality_gates"]["all_passed"]:

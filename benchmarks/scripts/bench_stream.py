@@ -381,6 +381,7 @@ async def main():
                 "corpus_wer_pct": wer_summary["corpus_wer_pct"],
                 "c1_corpus_wer_pct": wer_summary["corpus_wer_pct"],
                 "samples_evaluated": wer_summary["samples_evaluated"],
+                "samples_failed": wer_summary.get("samples_failed", 0),
                 "normalization": wer_summary["normalization"],
             }
             ref_wer = reference_wer_pct(
@@ -391,6 +392,12 @@ async def main():
             if ref_wer is not None:
                 report["wer"]["reference_wer_pct"] = ref_wer
             log.info(f"WER: {report['wer']['corpus_wer_pct']:.2f}%")
+
+            if report["wer"]["samples_failed"] > 0:
+                log.error(
+                    f"WER incomplete: {report['wer']['samples_failed']} of "
+                    f"{len(manifest)} eval items failed at c=1"
+                )
 
             if args.smart and baseline_report and "wer" in baseline_report:
                 base_wer = baseline_report["wer"]["corpus_wer_pct"]
@@ -567,8 +574,12 @@ async def main():
 
     total_failures = trial_total_failures if args.trials > 1 else (
         sum(s["failures"] for s in sweep_results) + sustained_summary["failures"])
+    wer_failures = report.get("wer", {}).get("samples_failed", 0)
     if total_failures > 0:
         log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
+        return 1
+    if wer_failures > 0:
+        log.error(f"FAIL: {wer_failures} WER eval items failed at c=1 — incomplete coverage")
         return 1
 
     if "quality_gates" in report and not report["quality_gates"]["all_passed"]:
