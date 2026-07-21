@@ -36,15 +36,20 @@
     "name": "streaming-concurrency-sweep",
     "mode": "streaming-realtime",
     "concurrency": 256,
+    "duration_seconds": 664.84,
     "description": "WebSocket streaming concurrency sweep c=1..256 on T4 GPU with stream ID recycling fix. Sustained load at c=32 for 4 rounds."
   },
   "quality": {
     "wer": 3.19,
+    "reference_wer": null,
+    "max_load_wer": null,
     "normalization": "Whisper EnglishTextNormalizer (lowercase, expand contractions, strip punctuation)"
   },
   "performance": {
     "rtfx": 22.17,
     "sessions_per_min": 170.2,
+    "rt_compliance_pct": null,
+    "lag_p95_ms": null,
     "max_concurrent_streams": 256,
     "p50_s": 45.05,
     "p99_s": 65.207
@@ -63,6 +68,9 @@
     ]
   },
   "resources": {
+    "vram_baseline_mb": null,
+    "vram_highwater_mb": null,
+    "vram_growth_mb": null,
     "vram_total_mb": 16384
   },
   "reproduction": {

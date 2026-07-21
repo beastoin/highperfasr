@@ -40,6 +40,8 @@
   },
   "quality": {
     "wer": 1.57,
+    "reference_wer": 1.57,
+    "max_load_wer": 1.57,
     "normalization": "Whisper EnglishTextNormalizer (lowercase, expand contractions, strip punctuation)"
   },
   "performance": {
@@ -56,7 +58,9 @@
     "failure_rate": 0.0
   },
   "resources": {
+    "vram_baseline_mb": 8500,
     "vram_highwater_mb": 8500,
+    "vram_growth_mb": 0,
     "vram_total_mb": 23034
   },
   "reproduction": {

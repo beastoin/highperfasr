@@ -2,12 +2,24 @@
   "batch": {
     "max_wer_pct": 2.5,
     "max_failure_rate": 0.0,
-    "min_rtfx": 1.0
+    "min_rtfx": 1.0,
+    "wer_delta": {
+      "max_absolute_pp": 0.3,
+      "max_relative_pct": 5.0
+    },
+    "max_vram_growth_mb": 100
   },
   "streaming-realtime": {
     "max_wer_pct": 4.0,
     "max_failure_rate": 0.0,
-    "max_p99_ms": 60000
+    "min_rt_compliance_pct": 95.0,
+    "wer_delta": {
+      "max_absolute_pp": 0.3,
+      "max_relative_pct": 5.0
+    },
+    "max_vram_growth_mb": 100,
+    "max_stream_lag_p95_ms": 5000,
+    "min_sustained_duration_s": 600
   },
   "combined": {
     "max_wer_pct": 3.0,

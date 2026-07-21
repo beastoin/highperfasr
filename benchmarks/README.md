@@ -10,20 +10,33 @@ All scripts are standalone — no NeMo imports, just a running server URL.
 ```bash
 pip install aiohttp websockets jiwer whisper-normalizer soundfile
 
-# Batch: concurrency sweep + WER (auto-downloads LibriSpeech test-clean)
+# Recommended: use the orchestrator (auto-detects mode, enforces correct order, runs gates)
+python3 scripts/run_benchmark.py --server http://localhost:8000 --quick
+
+# Full publishable run with 3 trials
+python3 scripts/run_benchmark.py --server http://localhost:8000 --full --trials 3
+
+# Individual scripts (the orchestrator calls these in the correct order)
 python3 scripts/bench_batch.py --server http://localhost:8000
-
-# Streaming: concurrency sweep + WER
-python3 scripts/bench_stream.py --server ws://localhost:8001
-
-# Statistical rigor: 3 trials with 95% CI
-python3 scripts/bench_batch.py --server http://localhost:8000 --trials 3
+python3 scripts/bench_stream.py --server ws://localhost:8001  # compose: streaming on :8001
 ```
+
+The orchestrator auto-detects the server mode (batch/streaming/both), resolves
+the correct ports, runs batch before streaming (GPU contention causes streaming
+failures if run simultaneously), evaluates quality gates, and prints a combined
+pass/fail summary. Use `--quick` for fast validation (200 samples) and `--full`
+for publishable results (all samples).
+
+**Port mapping:** In Docker Compose, batch is on `:8000` and streaming on `:8001`
+(separate services). In both-mode (single server), both share `:8000`. The
+orchestrator auto-probes `:8001` when it detects batch-only on `:8000`.
 
 ## Scripts
 
 | Script | Purpose |
 |--------|---------|
+| `run_benchmark.py` | **Orchestrator** — auto-detects mode, enforces batch-first ordering, runs gates |
+| `preflight.py` | Server auto-detection, duration estimates, unbuffered output |
 | `bench_batch.py` | Batch REST benchmark — concurrency sweep, sustained load, WER |
 | `bench_stream.py` | Streaming WebSocket benchmark — concurrency sweep, TTFB, WER |
 | `bench_stream_soak.py` | Sustained streaming soak — persistent connections, VRAM tracking |
@@ -47,16 +60,22 @@ python3 scripts/bench_batch.py --server http://localhost:8000 --trials 3
 | [T4 batch](results/2026-t4-nemo-batch/) | T4 16GB | REST c=1..32 | 1.86% | — |
 | [L4 duration sweep](results/2026-l4-batch-by-duration/) | L4 24GB | 5s–120s audio brackets | — | Duration-stratified |
 
+## Metrics & Datasets
+
+- [**Metric definitions**](docs/metrics.md) — formal benchmark metrics (batch/streaming), WER delta gate, proof lines
+- [**Dataset specification**](docs/datasets.md) — benchmark vs tuning dataset separation, sources, rules
+- [**Tuning methodology**](docs/tuning.md) — knobs-vs-gauges, tuning workflow, common pitfalls
+
 ## Quality Gates
 
 Fail-closed thresholds in [`config/quality-gates.json`](config/quality-gates.json).
 Every gate returns `passed: false` when its metric data is missing — no silent passes.
 
-| Scenario | Max WER | Max Failure Rate | Min RTFx | Max p99 |
-|----------|---------|-----------------|----------|---------|
-| batch | 2.5% | 0% | 1.0x | — |
-| streaming-realtime | 4.0% | 0% | — | 60s |
-| combined | 3.0% | 0% | — | — |
+| Scenario | Max WER | WER Delta | Max Failure Rate | Min RTFx | RT Compliance | Stream Lag p95 | Sustained | VRAM Growth |
+|----------|---------|-----------|-----------------|----------|---------------|----------------|-----------|-------------|
+| batch | 2.5% | ≤ max(0.3pp, 5% rel) | 0% | 1.0x | — | — | — | < 100 MB |
+| streaming-realtime | 4.0% | ≤ max(0.3pp, 5% rel) | 0% | — | ≥ 95% | ≤ 5000 ms | ≥ 600s | < 100 MB |
+| combined | 3.0% | — | 0% | — | — | — | — | — |
 
 ```bash
 python3 scripts/gates.py --report results/2026-l4-nemo-batch/result.json --scenario batch
@@ -96,7 +115,7 @@ on every PR touching `benchmarks/`:
 1. Unit tests (`pytest benchmarks/` — 43 tests)
 2. Schema validation of all committed reports
 3. Baseline regression checks
-4. Quality gate evaluation on L4 and T4 batch reports
+4. Quality gate evaluation on current L4 batch and streaming proof reports
 
 ## Report Schema
 

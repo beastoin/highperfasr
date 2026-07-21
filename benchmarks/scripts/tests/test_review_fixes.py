@@ -5,8 +5,11 @@ import json
 import sys
 from pathlib import Path
 
+import jsonschema
+
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+BENCHMARKS_DIR = SCRIPTS_DIR.parent
 
 
 def _load_script(name):
@@ -15,6 +18,18 @@ def _load_script(name):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _schema_errors(report):
+    schema = json.loads((BENCHMARKS_DIR / "report-schema.json").read_text())
+    validator = jsonschema.Draft202012Validator(schema)
+    return sorted(validator.iter_errors(report), key=lambda e: list(e.path))
+
+
+def _valid_report(path):
+    report = json.loads((BENCHMARKS_DIR / path).read_text())
+    assert _schema_errors(report) == []
+    return report
 
 
 def test_quality_gate_fails_when_configured_wer_is_missing():
@@ -108,6 +123,230 @@ def test_quality_gate_config_matches_project_wer_thresholds():
 
     assert config["batch"]["max_wer_pct"] == 2.5
     assert config["streaming-realtime"]["max_wer_pct"] == 4.0
+    assert config["streaming-realtime"]["max_stream_lag_p95_ms"] == 5000
+
+
+def test_schema_requires_canonical_batch_metrics_for_any_offline_scenario_name():
+    report = _valid_report("results/2026-l4-nemo-batch/result.json")
+    report["scenario"]["name"] = "batch-regression-smoke"
+    report["quality"].pop("reference_wer")
+    report["quality"].pop("max_load_wer")
+    report["resources"].pop("vram_growth_mb")
+
+    messages = [error.message for error in _schema_errors(report)]
+
+    assert "'reference_wer' is a required property" in messages
+    assert "'max_load_wer' is a required property" in messages
+    assert "'vram_growth_mb' is a required property" in messages
+
+
+def test_schema_allows_synthetic_batch_tuning_reports_without_wer_proof_fields():
+    _valid_report("results/2026-l4-batch-by-duration/result.json")
+
+
+def test_schema_requires_streaming_completeness_without_duration_bypass():
+    report = _valid_report("results/2026-l4-nemo-512-streams/result.json")
+    report["scenario"]["name"] = "streaming-regression-smoke"
+    report["scenario"].pop("duration_seconds")
+    report["quality"].pop("reference_wer")
+    report["quality"].pop("max_load_wer")
+    report["performance"].pop("rt_compliance_pct")
+    report["performance"].pop("lag_p95_ms")
+    report["resources"].pop("vram_growth_mb")
+
+    messages = [error.message for error in _schema_errors(report)]
+
+    assert "'duration_seconds' is a required property" in messages
+    assert "'reference_wer' is a required property" in messages
+    assert "'max_load_wer' is a required property" in messages
+    assert "'rt_compliance_pct' is a required property" in messages
+    assert "'lag_p95_ms' is a required property" in messages
+    assert "'vram_growth_mb' is a required property" in messages
+
+
+def test_t4_batch_report_does_not_fabricate_missing_vram_growth():
+    report = _valid_report("results/2026-t4-nemo-batch/result.json")
+
+    assert report["resources"]["vram_baseline_mb"] is None
+    assert report["resources"]["vram_highwater_mb"] is None
+    assert report["resources"]["vram_growth_mb"] is None
+
+
+def test_t4_batch_report_missing_vram_fails_quality_gate():
+    gates = _load_script("gates")
+    report = _valid_report("results/2026-t4-nemo-batch/result.json")
+    config = json.loads((BENCHMARKS_DIR / "config" / "quality-gates.json").read_text())
+
+    result = gates.evaluate_gates(report, config, scenario="batch")
+    vram_gate = next(g for g in result["gates"] if g["gate"] == "max_vram_growth_mb")
+
+    assert vram_gate["actual"] is None
+    assert vram_gate["passed"] is False
+    assert result["all_passed"] is False
+
+
+def test_t4_stream_report_records_missing_required_evidence_explicitly():
+    report = _valid_report("results/2026-t4-nemo-stream/result.json")
+
+    assert report["scenario"]["duration_seconds"] == 664.84
+    assert report["quality"]["reference_wer"] is None
+    assert report["quality"]["max_load_wer"] is None
+    assert report["performance"]["rt_compliance_pct"] is None
+    assert report["performance"]["lag_p95_ms"] is None
+    assert report["resources"]["vram_growth_mb"] is None
+
+
+def test_streaming_gate_reads_duration_from_scenario_metadata():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "streaming-realtime", "duration_seconds": 600},
+            "wer": {
+                "corpus_wer_pct": 3.0,
+                "reference_wer_pct": 3.0,
+                "max_load_corpus_wer_pct": 3.0,
+            },
+            "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0, "rt_compliance_pct": 100}],
+            "sustained_load": {"failures": 0, "vram_growth_mb": 0, "lag_p95_s": 1.0},
+        },
+        {
+            "streaming-realtime": {
+                "max_wer_pct": 4.0,
+                "max_failure_rate": 0.0,
+                "min_rt_compliance_pct": 95.0,
+                "wer_delta": {"max_absolute_pp": 0.3, "max_relative_pct": 5.0},
+                "max_vram_growth_mb": 100,
+                "min_sustained_duration_s": 600,
+                "max_stream_lag_p95_ms": 5000,
+            }
+        },
+        scenario="streaming-realtime",
+    )
+
+    duration_gate = next(g for g in result["gates"] if g["gate"] == "min_sustained_duration_s")
+    assert duration_gate["actual"] == 600
+    assert duration_gate["passed"] is True
+    assert result["all_passed"] is True
+
+
+def test_streaming_gate_fails_when_lag_exceeds_threshold():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "streaming-realtime"},
+            "wer": {"corpus_wer_pct": 3.0, "reference_wer_pct": 3.0},
+            "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0, "rt_compliance_pct": 100}],
+            "sustained_load": {"failures": 0, "wall_s": 600, "vram_growth_mb": 0, "lag_p95_s": 6.0},
+        },
+        {
+            "streaming-realtime": {
+                "max_wer_pct": 4.0,
+                "max_failure_rate": 0.0,
+                "min_rt_compliance_pct": 95.0,
+                "wer_delta": {"max_absolute_pp": 0.3, "max_relative_pct": 5.0},
+                "max_vram_growth_mb": 100,
+                "min_sustained_duration_s": 600,
+                "max_stream_lag_p95_ms": 5000,
+            }
+        },
+        scenario="streaming-realtime",
+    )
+
+    lag_gate = next(g for g in result["gates"] if g["gate"] == "max_stream_lag_p95_ms")
+    assert lag_gate["actual"] == 6000
+    assert lag_gate["passed"] is False
+    assert result["all_passed"] is False
+
+
+def test_gate_fails_when_max_load_wer_is_missing():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "batch"},
+            "wer": {"corpus_wer_pct": 1.6, "reference_wer_pct": 1.57},
+            "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0}],
+            "resources": {"vram_growth_mb": 0},
+        },
+        {
+            "batch": {
+                "max_wer_pct": 2.5,
+                "max_failure_rate": 0.0,
+                "min_rtfx": 1.0,
+                "wer_delta": {"max_absolute_pp": 0.3, "max_relative_pct": 5.0},
+                "max_vram_growth_mb": 100,
+            }
+        },
+        scenario="batch",
+    )
+
+    load_gate = next(g for g in result["gates"] if g["gate"] == "max_load_wer_pct")
+    load_delta_gate = next(g for g in result["gates"] if g["gate"] == "max_load_wer_delta")
+    assert load_gate["actual"] is None
+    assert load_gate["passed"] is False
+    assert load_delta_gate["actual"] is None
+    assert load_delta_gate["passed"] is False
+    assert result["all_passed"] is False
+
+
+def test_gate_fails_when_max_load_wer_regresses():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "batch"},
+            "wer": {
+                "corpus_wer_pct": 1.6,
+                "reference_wer_pct": 1.57,
+                "max_load_corpus_wer_pct": 2.1,
+            },
+            "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0}],
+            "resources": {"vram_growth_mb": 0},
+        },
+        {
+            "batch": {
+                "max_wer_pct": 2.5,
+                "max_failure_rate": 0.0,
+                "min_rtfx": 1.0,
+                "wer_delta": {"max_absolute_pp": 0.3, "max_relative_pct": 5.0},
+                "max_vram_growth_mb": 100,
+            }
+        },
+        scenario="batch",
+    )
+
+    c1_gate = next(g for g in result["gates"] if g["gate"] == "wer_delta")
+    load_delta_gate = next(g for g in result["gates"] if g["gate"] == "max_load_wer_delta")
+    assert c1_gate["passed"] is True
+    assert load_delta_gate["actual"] == 0.53
+    assert load_delta_gate["passed"] is False
+    assert result["all_passed"] is False
+
+
+def test_combined_scenario_skips_max_load_wer_gates():
+    gates = _load_script("gates")
+
+    result = gates.evaluate_gates(
+        {
+            "scenario": {"mode": "combined"},
+            "wer": {"corpus_wer_pct": 2.5},
+            "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0}],
+            "resources": {"vram_growth_mb": 0},
+        },
+        {
+            "batch": {"max_wer_pct": 2.5, "max_failure_rate": 0.0},
+            "streaming-realtime": {"max_wer_pct": 4.0, "max_failure_rate": 0.0},
+            "combined": {"max_wer_pct": 3.0, "max_failure_rate": 0.0},
+        },
+        scenario="combined",
+    )
+
+    gate_names = [g["gate"] for g in result["gates"]]
+    assert "max_load_wer_pct" not in gate_names
+    assert "max_load_wer_delta" not in gate_names
+    assert result["all_passed"] is True
 
 
 def test_combined_exit_status_sees_nested_sweep_failures():
@@ -122,6 +361,60 @@ def test_combined_exit_status_sees_nested_sweep_failures():
     assert not bench_combined._has_combined_entry_failures(
         {"batch": {"failures": 0}, "stream": {"failures": 0}}
     )
+
+
+def test_run_benchmark_auto_selects_stream_runtime_mode():
+    run_benchmark = _load_script("run_benchmark")
+
+    mode, run_batch, run_streaming = run_benchmark.resolve_benchmark_selection("auto", "stream")
+
+    assert mode == "streaming"
+    assert run_batch is False
+    assert run_streaming is True
+
+
+def test_run_benchmark_compose_probe_upgrades_batch_to_both(monkeypatch, tmp_path):
+    run_benchmark = _load_script("run_benchmark")
+
+    probe_calls = []
+    original_detect = run_benchmark.detect_server
+
+    def fake_detect(url, **kwargs):
+        probe_calls.append(url)
+        if ":8001" in url:
+            return {"healthy": True, "mode": "streaming", "models": [],
+                    "uptime_s": 1, "batch_url": None,
+                    "stream_url": f"ws://localhost:8001", "raw": {}}
+        return {"healthy": True, "mode": "batch", "models": [],
+                "uptime_s": 1, "batch_url": f"http://localhost:8000",
+                "stream_url": None, "raw": {"mode": "batch"}}
+
+    def fake_run_script(script_name, args, label):
+        outdir = str(tmp_path)
+        for a in args:
+            if a.startswith(outdir):
+                import json
+                Path(a).write_text(json.dumps({
+                    "concurrency_sweep": [{"total": 1, "failures": 0, "rtfx": 2.0}],
+                    "wer": {"corpus_wer_pct": 1.0, "reference_wer_pct": 1.0,
+                            "max_load_corpus_wer_pct": 1.0},
+                    "resources": {"vram_growth_mb": 0},
+                }))
+                break
+        return 0
+
+    monkeypatch.setattr(run_benchmark, "detect_server", fake_detect)
+    monkeypatch.setattr(run_benchmark, "run_script", fake_run_script)
+    monkeypatch.setattr(run_benchmark, "run_gates", lambda *a, **kw: (True, []))
+    monkeypatch.setattr(
+        sys, "argv",
+        ["run_benchmark.py", "--server", "http://localhost:8000",
+         "--output-dir", str(tmp_path)],
+    )
+
+    exit_code = run_benchmark.main()
+
+    assert any(":8001" in u for u in probe_calls), "Should probe compose streaming port"
 
 
 def test_check_regression_treats_missing_metrics_as_failure():
@@ -184,6 +477,67 @@ def test_bench_batch_zero_max_samples_means_full_dataset(monkeypatch, tmp_path):
     import asyncio
 
     asyncio.run(bench_batch.main())
+
+    assert captured["dataset_name"] == "librispeech-test-clean"
+    assert captured["max_samples"] == 0
+
+
+def test_bench_stream_default_uses_full_registry_dataset(monkeypatch, tmp_path):
+    bench_stream = _load_script("bench_stream")
+    captured = {}
+
+    def fake_load_dataset_manifest(dataset_name, max_samples=0, cache_dir=None):
+        captured["dataset_name"] = dataset_name
+        captured["max_samples"] = max_samples
+        return [{"utt_id": "sample", "wav_path": str(tmp_path / "sample.wav"), "reference": "reference"}], {
+            "sample": "reference"
+        }
+
+    async def fake_run_sweep(*_args, **_kwargs):
+        return [], 0.0
+
+    monkeypatch.setattr(bench_stream, "load_dataset_manifest", fake_load_dataset_manifest)
+    monkeypatch.setattr(bench_stream, "run_sweep", fake_run_sweep)
+    monkeypatch.setattr(
+        bench_stream,
+        "summarize_sweep",
+        lambda _results, _wall, concurrency: {
+            "concurrency": concurrency,
+            "rtfx": 0,
+            "sess_per_min": 0,
+            "failures": 0,
+        },
+    )
+    monkeypatch.setattr(bench_stream, "collect_system_info", lambda: {})
+    monkeypatch.setattr(bench_stream, "collect_gpu_memory_used_mb", lambda: 0)
+
+    import benchmarks.scripts.gates as gates
+
+    monkeypatch.setattr(gates, "evaluate_gates", lambda *_args, **_kwargs: {"all_passed": True, "gates": []})
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "bench_stream.py",
+            "--server",
+            "ws://localhost:8001",
+            "--concurrency",
+            "1",
+            "--sustained-rounds",
+            "1",
+            "--sustained-concurrency",
+            "1",
+            "--warmup",
+            "1",
+            "--skip-wer",
+            "--output",
+            str(tmp_path / "report.json"),
+        ],
+    )
+
+    import asyncio
+
+    asyncio.run(bench_stream.main())
 
     assert captured["dataset_name"] == "librispeech-test-clean"
     assert captured["max_samples"] == 0

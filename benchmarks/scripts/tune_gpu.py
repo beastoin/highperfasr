@@ -67,7 +67,7 @@ def _run_bench_batch(
     except subprocess.TimeoutExpired:
         log.warning(f"Batch bench timed out at c={concurrency}")
         return {"error": "timeout after 300s", "concurrency": concurrency}
-    if result.returncode != 0:
+    if result.returncode != 0 and not os.path.exists(output):
         log.warning(f"Batch bench failed at c={concurrency}: {result.stderr[-200:]}")
         return {"error": result.stderr[-200:], "concurrency": concurrency}
 
@@ -107,7 +107,7 @@ async def _run_bench_stream(server: str, concurrency: int, endpoint: str = "/v1/
     except subprocess.TimeoutExpired:
         log.warning(f"Stream bench timed out at c={concurrency}")
         return {"error": "timeout after 600s", "concurrency": concurrency}
-    if result.returncode != 0:
+    if result.returncode != 0 and not os.path.exists(output):
         log.warning(f"Stream bench failed at c={concurrency}: {result.stderr[-200:]}")
         return {"error": result.stderr[-200:], "concurrency": concurrency}
 

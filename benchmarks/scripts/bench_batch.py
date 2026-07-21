@@ -25,7 +25,13 @@ from pathlib import Path
 
 import aiohttp
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(SCRIPTS_DIR.parent.parent))
+
+from preflight import detect_server, resolve_batch_url, log_duration_estimate, log_preflight_summary, ensure_unbuffered
+
+ensure_unbuffered()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bench_batch")
@@ -35,6 +41,10 @@ DATA_DIR = Path("/tmp/librispeech-test-clean")
 WAV_DIR = DATA_DIR / "wav"
 REF_FILE = DATA_DIR / "references.tsv"
 MAX_SAMPLES = 200
+REFERENCE_WER_PCT = {
+    ("batch", "librispeech-test-clean"): 1.57,
+    ("streaming-realtime", "librispeech-test-clean"): 3.21,
+}
 
 
 def load_dataset_manifest(dataset_name: str, max_samples: int = 0, cache_dir=None):
@@ -180,6 +190,31 @@ def compute_wer(references, hypotheses):
     return wer_val, per_utt
 
 
+def summarize_wer_results(results, refs):
+    """Compute report-ready WER fields from successful benchmark results."""
+    ref_texts = []
+    hyp_texts = []
+    wer_failures = sum(1 for r in results if r["status"] != "ok")
+    for r in (r for r in results if r["status"] == "ok"):
+        utt_id = r["utt_id"]
+        if utt_id in refs:
+            ref_texts.append(refs[utt_id])
+            hyp_texts.append(r["text"])
+
+    if not ref_texts:
+        return None
+
+    wer_val, per_utt = compute_wer(ref_texts, hyp_texts)
+    high_wer_count = sum(1 for per_utt_wer in per_utt if per_utt_wer > 0.1)
+    return {
+        "corpus_wer_pct": round(wer_val * 100, 2),
+        "samples_evaluated": len(ref_texts),
+        "samples_failed": wer_failures,
+        "normalization": "whisper_english",
+        "high_wer_count": high_wer_count,
+    }
+
+
 def collect_system_info():
     """Collect system metadata for report reproducibility."""
     import platform as _platform
@@ -228,6 +263,51 @@ def collect_system_info():
             info["container_image"] = image
 
     return info
+
+
+def collect_gpu_memory_used_mb():
+    """Return max used GPU memory across visible GPUs, or None when unavailable."""
+    import subprocess as _sp
+
+    try:
+        output = _sp.check_output(
+            ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+            text=True,
+            timeout=5,
+        ).strip()
+    except Exception:
+        return None
+
+    values = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            values.append(int(line))
+        except ValueError:
+            return None
+    return max(values) if values else None
+
+
+def reference_wer_pct(mode, dataset_name, override=None, baseline_report=None):
+    """Resolve reference-model WER for WER delta gates."""
+    if override is not None:
+        return override
+    if baseline_report:
+        live_ref = baseline_report.get("wer", {}).get("reference_wer_pct")
+        if live_ref is not None:
+            return live_ref
+        quality_ref = baseline_report.get("quality", {}).get("reference_wer")
+        if quality_ref is not None:
+            return quality_ref
+        live_wer = baseline_report.get("wer", {}).get("corpus_wer_pct")
+        if live_wer is not None:
+            return live_wer
+        quality_wer = baseline_report.get("quality", {}).get("wer")
+        if quality_wer is not None:
+            return quality_wer
+    return REFERENCE_WER_PCT.get((mode, dataset_name))
 
 
 def get_wav_duration(wav_path):
@@ -369,6 +449,8 @@ async def main():
     parser.add_argument("--endpoint", default="/v1/transcriptions", help="Transcription endpoint path (default: /v1/transcriptions)")
     parser.add_argument("--smart", action="store_true", help="Smart mode: sweep high-to-low, early-stop on match")
     parser.add_argument("--baseline", default=None, help="Path to previous report JSON for smart comparison")
+    parser.add_argument("--reference-wer-pct", type=float, default=None,
+                        help="Reference model WER %% for WER delta gate")
     parser.add_argument("--dataset", default=None,
                         help="Use multi-corpus dataset (e.g., 'librispeech-test-clean', 'all')")
     parser.add_argument("--max-samples", type=int, default=0,
@@ -376,10 +458,21 @@ async def main():
     parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
     parser.add_argument("--trials", type=int, default=1,
                         help="Number of trial runs for statistical rigor (default: 1)")
+    parser.add_argument("--quick", action="store_true",
+                        help="Quick validation: 200 samples (use full corpus for publishable results)")
     args = parser.parse_args()
 
+    if args.quick:
+        if args.max_samples == 0:
+            args.max_samples = 200
+        log.info("Quick mode: 200 samples for fast validation (use --max-samples 0 for publishable results)")
+
     levels = [int(x) for x in args.concurrency.split(",")]
-    url = f"{args.server}{args.endpoint}"
+
+    server_info = detect_server(args.server)
+    log_preflight_summary(server_info, "batch")
+    server_base = resolve_batch_url(args.server, server_info)
+    url = f"{server_base}{args.endpoint}"
 
     baseline_report, baseline_sweep = None, {}
     if args.baseline:
@@ -416,6 +509,7 @@ async def main():
         "system": collect_system_info(),
         "command": " ".join(sys.argv),
     }
+    vram_start_mb = collect_gpu_memory_used_mb()
 
     # Step 2: Warmup
     warmup_c = min(16, len(manifest), max(args.warmup, 1))
@@ -425,28 +519,31 @@ async def main():
 
     # Step 3: WER evaluation (c=1 for deterministic ordering)
     if not args.skip_wer:
-        log.info("WER evaluation: c=1, 200 samples...")
+        total_audio = sum(e.get("duration_s", 5.0) for e in manifest)
+        log_duration_estimate(len(manifest), total_audio, mode="batch")
         wer_results, _ = await run_sweep(url, manifest, concurrency=1, target_count=len(manifest))
 
-        ok_results = [r for r in wer_results if r["status"] == "ok"]
-        ref_texts = []
-        hyp_texts = []
-        for r in ok_results:
-            utt_id = r["utt_id"]
-            if utt_id in refs:
-                ref_texts.append(refs[utt_id])
-                hyp_texts.append(r["text"])
+        wer_summary = summarize_wer_results(wer_results, refs)
 
-        if ref_texts:
-            wer_val, per_utt = compute_wer(ref_texts, hyp_texts)
-            report["wer"] = {
-                "corpus_wer_pct": round(wer_val * 100, 2),
-                "samples_evaluated": len(ref_texts),
-                "normalization": "whisper_english",
-            }
-            high_wer = [(ref_texts[i], hyp_texts[i], per_utt[i]) for i in range(len(per_utt)) if per_utt[i] > 0.1]
-            report["wer"]["high_wer_count"] = len(high_wer)
-            log.info(f"WER: {wer_val*100:.2f}% ({len(ref_texts)} samples, {len(high_wer)} with >10% WER)")
+        if wer_summary:
+            report["wer"] = wer_summary
+            report["wer"]["c1_corpus_wer_pct"] = report["wer"]["corpus_wer_pct"]
+            ref_wer = reference_wer_pct(
+                "batch", dataset_name, override=args.reference_wer_pct, baseline_report=baseline_report
+            )
+            if ref_wer is not None:
+                report["wer"]["reference_wer_pct"] = ref_wer
+            log.info(
+                f"WER: {report['wer']['corpus_wer_pct']:.2f}% "
+                f"({report['wer']['samples_evaluated']} samples, "
+                f"{report['wer']['high_wer_count']} with >10% WER)"
+            )
+
+            if report["wer"]["samples_failed"] > 0:
+                log.error(
+                    f"WER incomplete: {report['wer']['samples_failed']} of "
+                    f"{len(manifest)} eval items failed at c=1"
+                )
 
             if args.smart and baseline_report and "wer" in baseline_report:
                 base_wer = baseline_report["wer"]["corpus_wer_pct"]
@@ -499,6 +596,27 @@ async def main():
     sustained_summary["rounds"] = rounds
     sustained_summary["total_files"] = len(manifest) * rounds
     report["sustained_load"] = sustained_summary
+    if not args.skip_wer:
+        load_wer_summary = summarize_wer_results(sustained_results, refs)
+        if load_wer_summary:
+            report.setdefault("wer", {})
+            report["wer"]["max_load_corpus_wer_pct"] = load_wer_summary["corpus_wer_pct"]
+            report["wer"]["max_load_samples_evaluated"] = load_wer_summary["samples_evaluated"]
+            sustained_summary["wer_pct"] = load_wer_summary["corpus_wer_pct"]
+            log.info(
+                f"Max-load WER: {load_wer_summary['corpus_wer_pct']:.2f}% "
+                f"at c={sustained_c} ({load_wer_summary['samples_evaluated']} samples)"
+            )
+    vram_end_mb = collect_gpu_memory_used_mb()
+    if vram_start_mb is not None or vram_end_mb is not None:
+        report["resources"] = {
+            "vram_start_mb": vram_start_mb,
+            "vram_end_mb": vram_end_mb,
+            "vram_growth_mb": (
+                vram_end_mb - vram_start_mb if vram_start_mb is not None and vram_end_mb is not None else None
+            ),
+            "vram_peak_mb": max(v for v in (vram_start_mb, vram_end_mb) if v is not None),
+        }
     log.info(
         f"  Sustained: {sustained_summary['rps']} RPS, "
         f"{sustained_summary['total_files']} files, "
@@ -610,9 +728,9 @@ async def main():
         }
         log.info(f"Trials summary: peak RPS={report['trials']['peak_rps']}")
 
-    # Quality gate evaluation
+    # Quality gate evaluation (skipped in quick mode — gates require full sustained load)
     gates_path = Path(__file__).parent.parent / "config" / "quality-gates.json"
-    if gates_path.exists():
+    if gates_path.exists() and not args.quick:
         from benchmarks.scripts.gates import load_gates, evaluate_gates, exit_code_for_gates
 
         gates = load_gates(str(gates_path))
@@ -621,6 +739,8 @@ async def main():
         for g in gate_result["gates"]:
             status = "PASS" if g["passed"] else "FAIL"
             log.info(f"  Gate {status}: {g['gate']} — threshold={g['threshold']}, actual={g['actual']}")
+    elif args.quick:
+        log.info("Quick mode: skipping quality gates (use full corpus for gate enforcement)")
 
     # Save report
     with open(args.output, "w") as f:
@@ -628,8 +748,12 @@ async def main():
     log.info(f"Report saved to {args.output}")
 
     total_failures = report["summary"]["total_failures"]
+    wer_failures = report.get("wer", {}).get("samples_failed", 0)
     if total_failures > 0:
         log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
+        return 1
+    if wer_failures > 0:
+        log.error(f"FAIL: {wer_failures} WER eval items failed at c=1 — incomplete coverage")
         return 1
 
     if "quality_gates" in report and not report["quality_gates"]["all_passed"]:

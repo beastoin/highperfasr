@@ -2,7 +2,7 @@
 """
 Deterministic streaming ASR benchmark with WER.
 
-Downloads LibriSpeech test-clean (200 samples), streams audio chunks via WebSocket,
+Loads the frozen LibriSpeech test-clean benchmark corpus, streams audio chunks via WebSocket,
 computes WER using wer_utils (Whisper normalization), runs concurrency sweep and
 sustained load, and outputs a structured JSON report.
 
@@ -22,7 +22,13 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(SCRIPTS_DIR.parent.parent))
+
+from preflight import detect_server, resolve_stream_url, log_duration_estimate, log_preflight_summary, ensure_unbuffered
+
+ensure_unbuffered()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bench_stream")
@@ -51,11 +57,32 @@ def compute_wer(references, hypotheses):
     return _compute(references, hypotheses)
 
 
+def summarize_wer_results(results, refs):
+    """Compute report-ready WER fields through bench_batch's shared helper."""
+    from bench_batch import summarize_wer_results as _summarize
+
+    return _summarize(results, refs)
+
+
 def collect_system_info():
     """Collect system metadata for report reproducibility."""
     from bench_batch import collect_system_info as _collect
 
     return _collect()
+
+
+def collect_gpu_memory_used_mb():
+    """Collect max used GPU memory through bench_batch helper."""
+    from bench_batch import collect_gpu_memory_used_mb as _collect
+
+    return _collect()
+
+
+def reference_wer_pct(mode, dataset_name, override=None, baseline_report=None):
+    """Resolve reference-model WER through bench_batch helper."""
+    from bench_batch import reference_wer_pct as _reference
+
+    return _reference(mode, dataset_name, override=override, baseline_report=baseline_report)
 
 
 def manifest_from_wavs(wav_files, refs):
@@ -68,6 +95,16 @@ def manifest_from_wavs(wav_files, refs):
         }
         for wav in wav_files
     ]
+
+
+def load_dataset_manifest(dataset_name: str, max_samples: int = 0, cache_dir=None):
+    """Load streaming benchmark data from the shared corpus registry."""
+    from benchmarks.datasets.registry import load_dataset
+
+    manifest = load_dataset(dataset_name, cache_dir=cache_dir, max_samples=max_samples)
+    refs = {e["utt_id"]: e["reference"] for e in manifest if e.get("reference")}
+    log.info(f"Dataset '{dataset_name}': {len(manifest)} files, {len(refs)} references")
+    return manifest, refs
 
 
 def select_round_robin_entries(manifest, concurrency: int, target_count: int):
@@ -185,6 +222,7 @@ def summarize_sweep(results, wall_time, concurrency):
     failed = [r for r in results if r["status"] == "error"]
     latencies = sorted(r["elapsed"] for r in ok)
     total_audio = sum(r.get("audio_dur", 0) for r in ok)
+    lags = sorted(max(0, r.get("elapsed", 0) - r.get("audio_dur", 0)) for r in ok)
 
     summary = {
         "concurrency": concurrency,
@@ -207,6 +245,13 @@ def summarize_sweep(results, wall_time, concurrency):
         summary["mean_s"] = round(statistics.mean(latencies), 3)
         if len(latencies) > 1:
             summary["stddev_s"] = round(statistics.stdev(latencies), 3)
+
+    if lags:
+        summary["lag_p50_s"] = round(lags[int((len(lags) - 1) * 0.50)], 3)
+        summary["lag_p95_s"] = round(lags[int((len(lags) - 1) * 0.95)], 3)
+        summary["lag_p99_s"] = round(lags[int((len(lags) - 1) * 0.99)], 3)
+        realtime_ok = sum(1 for lag in lags if lag <= 1.0)
+        summary["rt_compliance_pct"] = round(realtime_ok / len(lags) * 100, 1)
 
     ttfbs = sorted(r["ttfb_s"] for r in ok if r.get("ttfb_s") is not None)
     if ttfbs:
@@ -262,6 +307,8 @@ async def main():
     parser.add_argument("--endpoint", default="/v1/stream", help="WebSocket endpoint path (default: /v1/stream)")
     parser.add_argument("--smart", action="store_true", help="Smart mode: sweep high-to-low, early-stop on match")
     parser.add_argument("--baseline", default=None, help="Path to previous report JSON for smart comparison")
+    parser.add_argument("--reference-wer-pct", type=float, default=None,
+                        help="Reference model WER %% for WER delta gate")
     parser.add_argument("--dataset", default=None,
                         help="Use multi-corpus dataset (e.g., 'librispeech-test-clean', 'all')")
     parser.add_argument("--max-samples", type=int, default=0,
@@ -269,10 +316,21 @@ async def main():
     parser.add_argument("--dataset-dir", type=Path, default=None, help="Dataset cache directory")
     parser.add_argument("--trials", type=int, default=1,
                         help="Number of trial runs for statistical rigor (default: 1)")
+    parser.add_argument("--quick", action="store_true",
+                        help="Quick validation: 200 samples, c=4-256 sweep (use full corpus for publishable results)")
     args = parser.parse_args()
 
+    if args.quick:
+        if args.max_samples == 0:
+            args.max_samples = 200
+        log.info("Quick mode: 200 samples for fast validation (use --max-samples 0 for publishable results)")
+
     levels = [int(x) for x in args.concurrency.split(",")]
-    ws_url = f"{args.server}{args.endpoint}"
+
+    server_info = detect_server(args.server)
+    log_preflight_summary(server_info, "streaming")
+    server_base = resolve_stream_url(args.server, server_info)
+    ws_url = f"{server_base}{args.endpoint}"
 
     baseline_report, baseline_sweep = None, {}
     if args.baseline:
@@ -290,16 +348,8 @@ async def main():
     log.info(f"Server: {args.server}")
     log.info(f"Chunk: {args.chunk_ms}ms, Concurrency levels: {levels}")
 
-    if args.dataset:
-        from benchmarks.datasets.registry import load_dataset
-        manifest = load_dataset(args.dataset, cache_dir=args.dataset_dir, max_samples=args.max_samples)
-        refs = {e["utt_id"]: e["reference"] for e in manifest if e.get("reference")}
-    else:
-        ensure_librispeech()
-        refs = load_references()
-        wav_dir = Path("/tmp/librispeech-test-clean/wav")
-        wav_files = sorted(wav_dir.glob("*.wav"))[:200]
-        manifest = manifest_from_wavs(wav_files, refs)
+    dataset_name = args.dataset or "librispeech-test-clean"
+    manifest, refs = load_dataset_manifest(dataset_name, max_samples=args.max_samples, cache_dir=args.dataset_dir)
     log.info(f"Using {len(manifest)} WAV files")
 
     report = {
@@ -309,11 +359,12 @@ async def main():
         "server": args.server,
         "chunk_ms": args.chunk_ms,
         "samples": len(manifest),
-        "dataset": args.dataset or "librispeech-test-clean",
+        "dataset": dataset_name,
         "smart_mode": args.smart,
         "system": collect_system_info(),
         "command": " ".join(sys.argv),
     }
+    vram_start_mb = collect_gpu_memory_used_mb()
 
     # Warmup
     warmup_c = min(4, len(manifest), max(args.warmup, 1))
@@ -322,24 +373,33 @@ async def main():
 
     # WER evaluation (c=1)
     if not args.skip_wer:
-        log.info("WER evaluation: c=1...")
+        total_audio = sum(e.get("duration_s", 5.0) for e in manifest)
+        log_duration_estimate(len(manifest), total_audio, mode="streaming")
         wer_results, _ = await run_sweep(ws_url, manifest, concurrency=1, chunk_ms=args.chunk_ms, target_count=len(manifest))
-        ok_results = [r for r in wer_results if r["status"] == "ok"]
+        wer_summary = summarize_wer_results(wer_results, refs)
 
-        ref_texts, hyp_texts = [], []
-        for r in ok_results:
-            if r["utt_id"] in refs:
-                ref_texts.append(refs[r["utt_id"]])
-                hyp_texts.append(r["text"])
-
-        if ref_texts:
-            wer_val, per_utt = compute_wer(ref_texts, hyp_texts)
+        if wer_summary:
             report["wer"] = {
-                "corpus_wer_pct": round(wer_val * 100, 2),
-                "samples_evaluated": len(ref_texts),
-                "normalization": "whisper_english",
+                "corpus_wer_pct": wer_summary["corpus_wer_pct"],
+                "c1_corpus_wer_pct": wer_summary["corpus_wer_pct"],
+                "samples_evaluated": wer_summary["samples_evaluated"],
+                "samples_failed": wer_summary.get("samples_failed", 0),
+                "normalization": wer_summary["normalization"],
             }
-            log.info(f"WER: {wer_val*100:.2f}%")
+            ref_wer = reference_wer_pct(
+                "streaming-realtime", report["dataset"],
+                override=args.reference_wer_pct,
+                baseline_report=baseline_report,
+            )
+            if ref_wer is not None:
+                report["wer"]["reference_wer_pct"] = ref_wer
+            log.info(f"WER: {report['wer']['corpus_wer_pct']:.2f}%")
+
+            if report["wer"]["samples_failed"] > 0:
+                log.error(
+                    f"WER incomplete: {report['wer']['samples_failed']} of "
+                    f"{len(manifest)} eval items failed at c=1"
+                )
 
             if args.smart and baseline_report and "wer" in baseline_report:
                 base_wer = baseline_report["wer"]["corpus_wer_pct"]
@@ -389,6 +449,33 @@ async def main():
     sustained_summary = summarize_sweep(sustained_results, sustained_wall, sc)
     sustained_summary["rounds"] = rounds
     report["sustained_load"] = sustained_summary
+    if not args.skip_wer:
+        load_wer_summary = summarize_wer_results(sustained_results, refs)
+        if load_wer_summary:
+            report.setdefault("wer", {})
+            report["wer"]["max_load_corpus_wer_pct"] = load_wer_summary["corpus_wer_pct"]
+            report["wer"]["max_load_samples_evaluated"] = load_wer_summary["samples_evaluated"]
+            sustained_summary["wer_pct"] = load_wer_summary["corpus_wer_pct"]
+            log.info(
+                f"Max-load WER: {load_wer_summary['corpus_wer_pct']:.2f}% "
+                f"at c={sc} ({load_wer_summary['samples_evaluated']} samples)"
+            )
+    if "rt_compliance_pct" in sustained_summary or "lag_p95_s" in sustained_summary:
+        report["streaming"] = {}
+        if "rt_compliance_pct" in sustained_summary:
+            report["streaming"]["rt_compliance_pct"] = sustained_summary["rt_compliance_pct"]
+        if "lag_p95_s" in sustained_summary:
+            report["streaming"]["lag_p95_ms"] = sustained_summary["lag_p95_s"] * 1000
+    vram_end_mb = collect_gpu_memory_used_mb()
+    if vram_start_mb is not None or vram_end_mb is not None:
+        report["resources"] = {
+            "vram_start_mb": vram_start_mb,
+            "vram_end_mb": vram_end_mb,
+            "vram_growth_mb": (
+                vram_end_mb - vram_start_mb if vram_start_mb is not None and vram_end_mb is not None else None
+            ),
+            "vram_peak_mb": max(v for v in (vram_start_mb, vram_end_mb) if v is not None),
+        }
 
     if args.smart and baseline_report and "sustained_load" in baseline_report:
         bl_s = baseline_report["sustained_load"]
@@ -469,9 +556,9 @@ async def main():
         }
         log.info(f"Trials summary: peak RTFx={report['trials']['peak_rtfx']}")
 
-    # Quality gate evaluation
+    # Quality gate evaluation (skipped in quick mode — gates require full sustained load)
     gates_path = Path(__file__).parent.parent / "config" / "quality-gates.json"
-    if gates_path.exists():
+    if gates_path.exists() and not args.quick:
         from benchmarks.scripts.gates import load_gates, evaluate_gates
 
         gates = load_gates(str(gates_path))
@@ -480,6 +567,8 @@ async def main():
         for g in gate_result["gates"]:
             status = "PASS" if g["passed"] else "FAIL"
             log.info(f"  Gate {status}: {g['gate']} — threshold={g['threshold']}, actual={g['actual']}")
+    elif args.quick:
+        log.info("Quick mode: skipping quality gates (use full corpus for gate enforcement)")
 
     with open(args.output, "w") as f:
         json.dump(report, f, indent=2)
@@ -487,8 +576,12 @@ async def main():
 
     total_failures = trial_total_failures if args.trials > 1 else (
         sum(s["failures"] for s in sweep_results) + sustained_summary["failures"])
+    wer_failures = report.get("wer", {}).get("samples_failed", 0)
     if total_failures > 0:
         log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
+        return 1
+    if wer_failures > 0:
+        log.error(f"FAIL: {wer_failures} WER eval items failed at c=1 — incomplete coverage")
         return 1
 
     if "quality_gates" in report and not report["quality_gates"]["all_passed"]:

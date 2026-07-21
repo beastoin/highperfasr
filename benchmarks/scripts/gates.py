@@ -15,6 +15,34 @@ def _extract_wer(report):
     return report.get("quality", {}).get("wer")
 
 
+def _extract_reference_wer(report):
+    """Extract reference WER % from either live-runner or v1alpha2 format."""
+    ref_wer = report.get("wer", {}).get("reference_wer_pct")
+    if ref_wer is not None:
+        return ref_wer
+    return report.get("quality", {}).get("reference_wer")
+
+
+def _extract_load_wer(report):
+    """Extract max-load WER % from either live-runner or v1alpha2 format."""
+    wer = report.get("wer", {})
+    for key in ("max_load_corpus_wer_pct", "load_corpus_wer_pct"):
+        if wer.get(key) is not None:
+            return wer[key]
+
+    quality = report.get("quality", {})
+    for key in ("max_load_wer", "load_wer"):
+        if quality.get(key) is not None:
+            return quality[key]
+
+    sustained = report.get("sustained_load", {})
+    for key in ("wer_pct", "corpus_wer_pct"):
+        if sustained.get(key) is not None:
+            return sustained[key]
+
+    return None
+
+
 def _extract_failure_rate(report):
     """Extract failure rate from either live-runner or v1alpha2 format."""
     rel = report.get("reliability", {})
@@ -58,10 +86,76 @@ def _extract_p99_ms(report):
     return None
 
 
+def _extract_sustained_duration_s(report):
+    """Extract sustained load wall-clock duration in seconds."""
+    sustained = report.get("sustained_load", {})
+    if "actual_duration_s" in sustained:
+        return sustained["actual_duration_s"]
+    if "duration_s" in sustained:
+        return sustained["duration_s"]
+    if "wall_s" in sustained:
+        return sustained["wall_s"]
+    scenario = report.get("scenario", {})
+    if "duration_seconds" in scenario:
+        return scenario["duration_seconds"]
+    return None
+
+
+def _extract_rt_compliance_pct(report):
+    """Extract realtime compliance % from live-runner or v1alpha2 format."""
+    streaming = report.get("streaming", {})
+    if "rt_compliance_pct" in streaming:
+        return streaming["rt_compliance_pct"]
+    perf = report.get("performance", {})
+    if "rt_compliance_pct" in perf:
+        return perf["rt_compliance_pct"]
+    sustained = report.get("sustained_load", {})
+    if "rt_compliance_pct" in sustained:
+        return sustained["rt_compliance_pct"]
+    sweep = report.get("concurrency_sweep", [])
+    values = [e["rt_compliance_pct"] for e in sweep if "rt_compliance_pct" in e]
+    return min(values) if values else None
+
+
+def _extract_stream_lag_p95_ms(report):
+    """Extract worst observed stream lag p95 in milliseconds."""
+    streaming = report.get("streaming", {})
+    if "lag_p95_ms" in streaming:
+        return streaming["lag_p95_ms"]
+    perf = report.get("performance", {})
+    if "lag_p95_ms" in perf:
+        return perf["lag_p95_ms"]
+    sustained = report.get("sustained_load", {})
+    if "lag_p95_ms" in sustained:
+        return sustained["lag_p95_ms"]
+    if "lag_p95_s" in sustained:
+        return sustained["lag_p95_s"] * 1000
+    sweep = report.get("concurrency_sweep", [])
+    values = []
+    for entry in sweep:
+        if "lag_p95_ms" in entry:
+            values.append(entry["lag_p95_ms"])
+        elif "lag_p95_s" in entry:
+            values.append(entry["lag_p95_s"] * 1000)
+    return max(values) if values else None
+
+
+_SCENARIO_ALIASES = {
+    "offline": "batch",
+    "soak": "streaming-realtime",
+    "streaming": "streaming-realtime",
+    "stream": "streaming-realtime",
+}
+
+
 def evaluate_gates(report, gates, scenario=None):
     if scenario is None:
         scenario = report.get("scenario", {}).get("mode", "batch")
-    gate = gates.get(scenario, gates.get("batch", {}))
+    scenario = _SCENARIO_ALIASES.get(scenario, scenario)
+    if scenario not in gates:
+        raise ValueError(f"Unknown scenario '{scenario}'. Available: {list(gates.keys())}. "
+                         f"Pass --scenario explicitly or add an alias to _SCENARIO_ALIASES.")
+    gate = gates[scenario]
     results = []
 
     wer = _extract_wer(report)
@@ -70,12 +164,44 @@ def evaluate_gates(report, gates, scenario=None):
         results.append({"gate": "max_wer_pct", "threshold": max_wer,
                         "actual": wer,
                         "passed": wer is not None and wer <= max_wer})
+        if scenario in ("batch", "streaming-realtime"):
+            load_wer = _extract_load_wer(report)
+            results.append({"gate": "max_load_wer_pct", "threshold": max_wer,
+                            "actual": load_wer,
+                            "passed": load_wer is not None and load_wer <= max_wer})
 
     fail_rate = _extract_failure_rate(report)
     max_fail = gate.get("max_failure_rate", 0.0)
     results.append({"gate": "max_failure_rate", "threshold": max_fail,
                     "actual": round(fail_rate, 4) if fail_rate is not None else None,
                     "passed": fail_rate is not None and fail_rate <= max_fail})
+
+    wer_delta_cfg = gate.get("wer_delta")
+    if wer_delta_cfg is not None:
+        ref_wer = _extract_reference_wer(report)
+        if wer is not None and ref_wer is not None:
+            delta = wer - ref_wer
+            max_delta = max(wer_delta_cfg["max_absolute_pp"], wer_delta_cfg["max_relative_pct"] / 100.0 * ref_wer)
+            results.append({"gate": "wer_delta", "threshold": round(max_delta, 3),
+                            "actual": round(delta, 3),
+                            "passed": delta <= max_delta})
+        else:
+            results.append({"gate": "wer_delta", "threshold": None,
+                            "actual": None, "passed": False})
+        if scenario in ("batch", "streaming-realtime"):
+            load_wer = _extract_load_wer(report)
+            if load_wer is not None and ref_wer is not None:
+                load_delta = load_wer - ref_wer
+                max_delta = max(
+                    wer_delta_cfg["max_absolute_pp"],
+                    wer_delta_cfg["max_relative_pct"] / 100.0 * ref_wer,
+                )
+                results.append({"gate": "max_load_wer_delta", "threshold": round(max_delta, 3),
+                                "actual": round(load_delta, 3),
+                                "passed": load_delta <= max_delta})
+            else:
+                results.append({"gate": "max_load_wer_delta", "threshold": None,
+                                "actual": None, "passed": False})
 
     sustained = report.get("sustained_load", {})
     if sustained:
@@ -96,6 +222,36 @@ def evaluate_gates(report, gates, scenario=None):
         results.append({"gate": "max_p99_ms", "threshold": max_p99,
                         "actual": round(p99_ms, 1) if p99_ms is not None else None,
                         "passed": p99_ms is not None and p99_ms <= max_p99})
+
+    max_vram_growth = gate.get("max_vram_growth_mb")
+    if max_vram_growth is not None:
+        vram_growth = report.get("resources", {}).get("vram_growth_mb")
+        if vram_growth is None:
+            vram_growth = report.get("sustained_load", {}).get("vram_growth_mb")
+        results.append({"gate": "max_vram_growth_mb", "threshold": max_vram_growth,
+                        "actual": round(vram_growth, 1) if vram_growth is not None else None,
+                        "passed": vram_growth is not None and vram_growth <= max_vram_growth})
+
+    min_rt_compliance = gate.get("min_rt_compliance_pct")
+    if min_rt_compliance is not None:
+        rt_compliance = _extract_rt_compliance_pct(report)
+        results.append({"gate": "min_rt_compliance_pct", "threshold": min_rt_compliance,
+                        "actual": round(rt_compliance, 1) if rt_compliance is not None else None,
+                        "passed": rt_compliance is not None and rt_compliance >= min_rt_compliance})
+
+    min_sustained_duration = gate.get("min_sustained_duration_s")
+    if min_sustained_duration is not None:
+        sustained_duration = _extract_sustained_duration_s(report)
+        results.append({"gate": "min_sustained_duration_s", "threshold": min_sustained_duration,
+                        "actual": round(sustained_duration, 1) if sustained_duration is not None else None,
+                        "passed": sustained_duration is not None and sustained_duration >= min_sustained_duration})
+
+    max_stream_lag_p95 = gate.get("max_stream_lag_p95_ms")
+    if max_stream_lag_p95 is not None:
+        stream_lag_p95 = _extract_stream_lag_p95_ms(report)
+        results.append({"gate": "max_stream_lag_p95_ms", "threshold": max_stream_lag_p95,
+                        "actual": round(stream_lag_p95, 1) if stream_lag_p95 is not None else None,
+                        "passed": stream_lag_p95 is not None and stream_lag_p95 <= max_stream_lag_p95})
 
     return {"scenario": scenario, "gates": results,
             "all_passed": all(g["passed"] for g in results)}
