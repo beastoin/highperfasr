@@ -1,0 +1,39 @@
+{
+  "scenario": "stream-concurrency",
+  "dataset": "librispeech-test-clean",
+  "gpu": "NVIDIA L4",
+  "model": "",
+  "git_sha": "1334cc3",
+  "timestamp": "2026-07-24T12:31:59Z",
+  "levels": [
+    {
+      "concurrency": 1,
+      "rtfx": 0.76,
+      "failures": 0,
+      "rps": 0.1,
+      "sessions_per_min": 6.1,
+      "p50_ms": 7083,
+      "p99_ms": 22310
+    },
+    {
+      "concurrency": 16,
+      "rtfx": 5.24,
+      "failures": 0,
+      "rps": 0.7,
+      "sessions_per_min": 41.8,
+      "p50_ms": 15859,
+      "p99_ms": 38638
+    },
+    {
+      "concurrency": 32,
+      "rtfx": 7.17,
+      "failures": 0,
+      "rps": 0.95,
+      "sessions_per_min": 57.2,
+      "p50_ms": 19001,
+      "p99_ms": 43920
+    }
+  ],
+  "wer": 1.73,
+  "normalization": "whisper_english"
+}

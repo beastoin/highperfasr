@@ -1,0 +1,271 @@
+<title>2026-l4-nemo-batch — HighPerfASR Benchmark</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>:root{
+  --ground:#080a10;--surface:#10131c;--elevated:#181c28;
+  --border:#1e2436;--border-focus:#00e5a0;
+  --accent:#00e5a0;--accent-dim:#00e5a033;--accent-glow:#00e5a066;
+  --blue:#5a7fff;--blue-dim:#5a7fff22;
+  --amber:#ffb347;--amber-dim:#ffb34722;
+  --error:#ff5757;--error-dim:#ff575722;
+  --text:#cdd4e0;--text2:#6b7394;--text3:#3d4560;
+  --mono:'SF Mono','Cascadia Code','JetBrains Mono','Fira Code',monospace;
+  --radius:6px;
+}
+@media(prefers-color-scheme:light){:root{
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --amber:#cc8800;--amber-dim:#cc880015;
+  --error:#d93636;--error-dim:#d9363615;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}}
+:root[data-theme="light"]{
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --amber:#cc8800;--amber-dim:#cc880015;
+  --error:#d93636;--error-dim:#d9363615;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}
+:root[data-theme="dark"]{
+  --ground:#080a10;--surface:#10131c;--elevated:#181c28;
+  --border:#1e2436;--border-focus:#00e5a0;
+  --accent:#00e5a0;--accent-dim:#00e5a033;--accent-glow:#00e5a066;
+  --blue:#5a7fff;--blue-dim:#5a7fff22;
+  --amber:#ffb347;--amber-dim:#ffb34722;
+  --error:#ff5757;--error-dim:#ff575722;
+  --text:#cdd4e0;--text2:#6b7394;--text3:#3d4560;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--ground);color:var(--text);font-size:13px;line-height:1.5;min-height:100vh}
+.topbar{display:flex;align-items:center;gap:16px;padding:12px 24px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--ground);z-index:10}
+.logo{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--text)}.logo em{color:var(--accent);font-style:normal}
+.topbar a{color:var(--accent);font-family:var(--mono);font-size:12px;text-decoration:none}
+.topbar a:hover{text-decoration:underline}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card-title{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin-bottom:12px}
+.metrics{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px}
+.metric{background:var(--elevated);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;min-width:120px;text-align:center;flex:1}
+.metric-val{font-family:var(--mono);font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.metric-label{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin-top:4px}
+.metric-note{font-size:10px;color:var(--text3);margin-top:2px;font-family:var(--mono)}
+.c-accent{color:var(--accent)}.c-blue{color:var(--blue)}.c-amber{color:var(--amber)}.c-error{color:var(--error)}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+th{text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2)}
+td{padding:6px 10px;border-bottom:1px solid var(--border)}
+.text-r{text-align:right}.text-c{text-align:center}
+.table-wrap{overflow-x:auto;margin-top:8px}
+.info-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px;font-family:var(--mono);font-size:12px}
+.info-item{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
+.info-label{color:var(--text2)}
+.chart-wrap{position:relative;height:240px;margin:16px 0}
+.chart-wrap canvas{width:100%;height:100%}
+.chart-tooltip{position:absolute;background:var(--elevated);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-family:var(--mono);font-size:11px;pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap;z-index:5}
+.footer{border-top:1px solid var(--border);padding:20px 24px;text-align:center;color:var(--text3);font-size:12px;margin-top:40px}
+.footer a{color:var(--text2);text-decoration:none;font-family:var(--mono)}
+.footer a:hover{color:var(--accent)}
+.nav-links{display:flex;flex-wrap:wrap;gap:8px;font-family:var(--mono);font-size:11px;margin-bottom:16px}
+.nav-links a{color:var(--accent);text-decoration:none;padding:2px 6px;border:1px solid var(--border);border-radius:4px}
+.nav-links a:hover{border-color:var(--accent)}
+.nav-links .current{color:var(--text);font-weight:700;padding:2px 6px;border:1px solid var(--accent);border-radius:4px;background:var(--accent-dim)}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-family:var(--mono);font-size:10px;font-weight:700}
+.badge-batch{background:var(--accent-dim);color:var(--accent)}
+.badge-stream{background:var(--blue-dim);color:var(--blue)}
+.repro{background:var(--elevated);border-radius:var(--radius);padding:12px 16px;font-family:var(--mono);font-size:11px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;color:var(--text2);margin-top:8px;border:1px solid var(--border)}
+.legend{display:flex;gap:16px;font-family:var(--mono);font-size:11px;margin-top:8px;justify-content:center}
+.legend-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+</style>
+<div class="topbar">
+  <div class="logo">High<em>Perf</em>ASR</div>
+  <span style="color:var(--text2);font-family:var(--mono);font-size:12px">2026-l4-nemo-batch</span>
+  <div style="flex:1"></div>
+  <a href="../index.html">&larr; All Results</a>
+  <a href="../dashboard.html">Dashboard</a>
+  <a href="https://github.com/beastoin/highperfasr">GitHub</a>
+</div>
+<div class="container">
+  <div style="margin-bottom:20px">
+    <h1 style="font-family:var(--mono);font-size:18px;font-weight:700;margin-bottom:4px">2026-l4-nemo-batch <span class="badge badge-batch">Batch</span></h1>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--text2)">nvidia/parakeet-tdt-0.6b-v3 &middot; LibriSpeech test-clean &middot; NVIDIA L4 &middot; 2026-07-10T00:00:00Z &middot; <a href="https://github.com/beastoin/highperfasr/commit/eb79ddf" style="color:var(--accent);font-family:var(--mono);font-size:12px;text-decoration:none" title="Code commit that produced this benchmark"><code>eb79ddf</code></a></div>
+    <div style="font-size:12px;color:var(--text3);margin-top:4px">REST batch transcription concurrency sweep c=1..512 with LibriSpeech test-clean</div>
+  </div>
+  <div class="metrics">
+          <div class="metric"><div class="metric-val c-accent">1.57%</div><div class="metric-label">WER</div></div>
+          <div class="metric"><div class="metric-val">19.5</div><div class="metric-label">Peak RPS</div></div>
+          <div class="metric"><div class="metric-val">178x</div><div class="metric-label">RTFx</div></div>
+          <div class="metric"><div class="metric-val c-accent">0</div><div class="metric-label">Failures</div><div class="metric-note">of 256</div></div>
+          <div class="metric"><div class="metric-val">256</div><div class="metric-label">Max Concurrency</div></div>
+        </div>
+  <div class="card"><div class="card-title">Concurrency Sweep</div><div class="chart-wrap" id="chart-2026-l4-nemo-batch"><canvas></canvas><div class="chart-tooltip"></div></div><div class="table-wrap"><table><thead><tr><th class="text-c">C</th><th class="text-r">RPS</th><th class="text-r">RTFx</th><th class="text-r">p50</th><th class="text-r">p99</th><th class="text-c">Failures</th></tr></thead><tbody><tr><td class="text-c">1</td><td class="text-r">1.4</td><td class="text-r">13x</td><td class="text-r">711ms</td><td class="text-r">1462ms</td><td class="text-c c-accent">0</td></tr><tr><td class="text-c">8</td><td class="text-r">7.7</td><td class="text-r">70x</td><td class="text-r">959ms</td><td class="text-r">2172ms</td><td class="text-c c-accent">0</td></tr><tr><td class="text-c">32</td><td class="text-r">13.5</td><td class="text-r">118x</td><td class="text-r">2207ms</td><td class="text-r">2608ms</td><td class="text-c c-accent">0</td></tr><tr><td class="text-c">64</td><td class="text-r">14.1</td><td class="text-r">124x</td><td class="text-r">4418ms</td><td class="text-r">5282ms</td><td class="text-c c-accent">0</td></tr><tr><td class="text-c">128</td><td class="text-r">14.4</td><td class="text-r">131x</td><td class="text-r">8646ms</td><td class="text-r">11864ms</td><td class="text-c c-accent">0</td></tr><tr><td class="text-c">256</td><td class="text-r">19.5</td><td class="text-r">178x</td><td class="text-r">10229ms</td><td class="text-r">13986ms</td><td class="text-c c-accent">0</td></tr><tr><td class="text-c">512</td><td class="text-r">19.2</td><td class="text-r">175x</td><td class="text-r">10615ms</td><td class="text-r">20784ms</td><td class="text-c c-accent">0</td></tr></tbody></table></div></div>
+  <div class="card"><div class="card-title">System Under Test</div><div class="info-grid"><div class="info-item"><span class="info-label">Model</span><span>nvidia/parakeet-tdt-0.6b-v3</span></div><div class="info-item"><span class="info-label">Params</span><span>0.6B</span></div><div class="info-item"><span class="info-label">GPU</span><span>NVIDIA L4</span></div><div class="info-item"><span class="info-label">GPU Memory</span><span>24 GB</span></div><div class="info-item"><span class="info-label">CPU</span><span>GKE n2d-standard-4</span></div><div class="info-item"><span class="info-label">RAM</span><span>26 GB</span></div><div class="info-item"><span class="info-label">CUDA</span><span>12.8</span></div><div class="info-item"><span class="info-label">PyTorch</span><span>2.6.0</span></div><div class="info-item"><span class="info-label">Framework</span><span>NeMo 2.5</span></div><div class="info-item"><span class="info-label">Container</span><span>nvcr.io/nvidia/nemo:26.02</span></div><div class="info-item"><span class="info-label">Dataset</span><span>LibriSpeech</span></div><div class="info-item"><span class="info-label">Split</span><span>test-clean</span></div><div class="info-item"><span class="info-label">Files</span><span>200</span></div><div class="info-item"><span class="info-label">Audio Hours</span><span>0.41</span></div><div class="info-item"><span class="info-label">Provider</span><span>gcp</span></div><div class="info-item"><span class="info-label">Region</span><span>us-central1</span></div><div class="info-item"><span class="info-label">Instance</span><span>g2-standard-4</span></div></div></div><div class="card"><div class="card-title">Reproduction</div><div class="repro">python3 benchmarks/scripts/bench_batch.py --server http://localhost:8000 --concurrency 1,8,32,64,128,256,512</div><div style="margin-top:8px;font-size:12px;color:var(--text2)">Run inside NGC nemo:26.02 container on GKE with L4 GPU. Parakeet TDT 0.6B with VRAM-aware batch sizing.</div></div><div class="card"><div class="card-title">Cost</div><div class="info-grid"><div class="info-item"><span class="info-label">Pricing</span><span>on-demand</span></div><div class="info-item"><span class="info-label">Instance $/hr</span><span>$0.7</span></div><div class="info-item"><span class="info-label">$/audio-hour</span><span>$0.0039</span></div></div></div>
+  <div style="margin-top:24px"><div class="nav-links"><a href="2026-l4-batch-by-duration.html">2026-l4-batch-by-duration</a><a href="2026-l4-dockerfile-stream.html">2026-l4-dockerfile-stream</a><a href="2026-l4-nemo-512-streams.html">2026-l4-nemo-512-streams</a><span class="current">2026-l4-nemo-batch</span><a href="2026-l4-streaming-comparison.html">2026-l4-streaming-comparison</a><a href="2026-t4-nemo-batch.html">2026-t4-nemo-batch</a><a href="2026-t4-nemo-stream.html">2026-t4-nemo-stream</a><a href="l4-batch-20260724T122749.html">l4-batch-20260724T122749</a><a href="l4-stream-20260724T123159.html">l4-stream-20260724T123159</a></div></div>
+</div>
+<div class="footer">
+  <a href="../index.html">All Results</a> &middot;
+  <a href="../dashboard.html">Interactive Dashboard</a> &middot;
+  <a href="https://github.com/beastoin/highperfasr">Repository</a>
+</div>
+<script>
+function drawBarLine(id, data, opts) {
+  const wrap = document.getElementById(id);
+  if (!wrap) return;
+  const canvas = wrap.querySelector('canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = wrap.getBoundingClientRect();
+  canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = {t:20, r:60, b:36, l:56};
+  const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+  const cs = getComputedStyle(document.documentElement);
+  const accent = cs.getPropertyValue('--accent').trim();
+  const blue = cs.getPropertyValue('--blue').trim();
+  const gridC = cs.getPropertyValue('--border').trim();
+  const textC = cs.getPropertyValue('--text2').trim();
+  ctx.clearRect(0, 0, W, H);
+
+  const n = data.x.length;
+  const barColor = opts.barColor === 'blue' ? blue : accent;
+  const lineColor = opts.lineColor === 'blue' ? blue : accent;
+  const maxBar = Math.max(...data.bars) * 1.15 || 1;
+  const maxLine = Math.max(...data.line) * 1.15 || 1;
+  const gap = plotW / n;
+  const barW = Math.min(gap * 0.45, 36);
+
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + plotH * (1 - i/4);
+    ctx.strokeStyle = gridC; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W-pad.r, y); ctx.stroke();
+    ctx.fillStyle = textC; ctx.font = '10px system-ui';
+    ctx.textAlign = 'right'; ctx.fillText((maxBar*i/4).toFixed(opts.barDecimals||1), pad.l-6, y+3);
+    ctx.textAlign = 'left';
+    const rv = maxLine*i/4;
+    ctx.fillText(opts.lineSuffix ? rv.toFixed(0)+opts.lineSuffix : rv.toFixed(1), W-pad.r+6, y+3);
+  }
+
+  data.x.forEach((lbl, i) => {
+    const bx = pad.l + gap*i + (gap-barW)/2;
+    const bh = (data.bars[i]/maxBar)*plotH;
+    ctx.fillStyle = barColor+'44'; ctx.fillRect(bx, pad.t+plotH-bh, barW, bh);
+    ctx.fillStyle = barColor; ctx.fillRect(bx, pad.t+plotH-bh, barW, 2);
+    ctx.fillStyle = textC; ctx.font='10px system-ui'; ctx.textAlign='center';
+    ctx.fillText(lbl, pad.l+gap*i+gap/2, H-pad.b+14);
+  });
+
+  ctx.beginPath(); ctx.strokeStyle = lineColor; ctx.lineWidth = 2;
+  data.x.forEach((_, i) => {
+    const x = pad.l+gap*i+gap/2, y = pad.t+plotH*(1-data.line[i]/maxLine);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  data.x.forEach((_, i) => {
+    const x = pad.l+gap*i+gap/2, y = pad.t+plotH*(1-data.line[i]/maxLine);
+    ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fillStyle=lineColor; ctx.fill();
+  });
+
+  ctx.fillStyle=textC; ctx.font='10px system-ui'; ctx.textAlign='center';
+  ctx.fillText(opts.xLabel||'Concurrency', pad.l+plotW/2, H-2);
+  ctx.save(); ctx.translate(12,pad.t+plotH/2); ctx.rotate(-Math.PI/2); ctx.fillText(opts.barLabel||'',0,0); ctx.restore();
+  ctx.save(); ctx.translate(W-8,pad.t+plotH/2); ctx.rotate(-Math.PI/2); ctx.fillText(opts.lineLabel||'',0,0); ctx.restore();
+
+  const tooltip = wrap.querySelector('.chart-tooltip');
+  if (tooltip) {
+    canvas.onmousemove = e => {
+      const idx = Math.floor((e.offsetX-pad.l)/gap);
+      if (idx>=0 && idx<n && e.offsetX>=pad.l) {
+        tooltip.style.opacity='1';
+        let html = (opts.xLabel||'c') + '=' + data.x[idx];
+        html += '<br>'+(opts.barLabel||'bar')+': '+data.bars[idx];
+        html += '<br>'+(opts.lineLabel||'line')+': '+data.line[idx];
+        if (data.extra) data.extra.forEach(e2 => { if(e2.vals[idx]!=null) html+='<br>'+e2.label+': '+e2.vals[idx]; });
+        tooltip.innerHTML = html;
+        tooltip.style.left = Math.min(pad.l+gap*idx+gap/2+10, W-150) + 'px';
+        tooltip.style.top = '10px';
+      } else tooltip.style.opacity='0';
+    };
+    canvas.onmouseleave = () => tooltip.style.opacity='0';
+  }
+}
+
+function drawDualLine(id, data, opts) {
+  const wrap = document.getElementById(id);
+  if (!wrap) return;
+  const canvas = wrap.querySelector('canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = wrap.getBoundingClientRect();
+  canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = {t:20, r:16, b:36, l:56};
+  const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+  const cs = getComputedStyle(document.documentElement);
+  const accent = cs.getPropertyValue('--accent').trim();
+  const blue = cs.getPropertyValue('--blue').trim();
+  const gridC = cs.getPropertyValue('--border').trim();
+  const textC = cs.getPropertyValue('--text2').trim();
+  ctx.clearRect(0, 0, W, H);
+
+  const n = data.x.length;
+  const maxY = Math.max(...data.line1, ...data.line2) * 1.15 || 1;
+
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + plotH * (1 - i/4);
+    ctx.strokeStyle = gridC; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W-pad.r, y); ctx.stroke();
+    ctx.fillStyle = textC; ctx.font = '10px system-ui';
+    ctx.textAlign = 'right'; ctx.fillText((maxY*i/4).toFixed(0) + (opts.ySuffix||''), pad.l-6, y+3);
+  }
+
+  const spacing = n > 1 ? plotW/(n-1) : plotW;
+  data.x.forEach((lbl, i) => {
+    ctx.fillStyle = textC; ctx.font='10px system-ui'; ctx.textAlign='center';
+    ctx.fillText(lbl, pad.l+spacing*i, H-pad.b+14);
+  });
+
+  [
+    {vals: data.line1, color: accent},
+    {vals: data.line2, color: blue}
+  ].forEach(series => {
+    ctx.beginPath(); ctx.strokeStyle = series.color; ctx.lineWidth = 2;
+    series.vals.forEach((v, i) => {
+      const x = pad.l+spacing*i, y = pad.t+plotH*(1-v/maxY);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    series.vals.forEach((v, i) => {
+      const x = pad.l+spacing*i, y = pad.t+plotH*(1-v/maxY);
+      ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fillStyle=series.color; ctx.fill();
+    });
+  });
+
+  ctx.fillStyle=textC; ctx.font='10px system-ui'; ctx.textAlign='center';
+  ctx.fillText(opts.xLabel||'Concurrency', pad.l+plotW/2, H-2);
+
+  const tooltip = wrap.querySelector('.chart-tooltip');
+  if (tooltip) {
+    canvas.onmousemove = e => {
+      const idx = Math.round((e.offsetX-pad.l)/spacing);
+      if (idx>=0 && idx<n && e.offsetX>=pad.l-10) {
+        tooltip.style.opacity='1';
+        tooltip.innerHTML = 'c='+data.x[idx]+'<br>'+(opts.label1||'A')+': '+data.line1[idx]+(opts.ySuffix||'')+'<br>'+(opts.label2||'B')+': '+data.line2[idx]+(opts.ySuffix||'');
+        tooltip.style.left = Math.min(pad.l+spacing*idx+10, W-150)+'px';
+        tooltip.style.top = '10px';
+      } else tooltip.style.opacity='0';
+    };
+    canvas.onmouseleave = () => tooltip.style.opacity='0';
+  }
+}
+
+const _ro = new ResizeObserver(() => {
+  document.querySelectorAll('.chart-wrap').forEach(w => { if (w._drawFn) w._drawFn(); });
+});
+document.querySelectorAll('.chart-wrap').forEach(w => _ro.observe(w));
+
+var d1={"x": ["1", "8", "32", "64", "128", "256", "512"], "bars": [1.4, 7.7, 13.5, 14.1, 14.4, 19.5, 19.2], "line": [13, 70, 118, 124, 131, 178, 175], "extra": [{"label": "p50", "vals": ["711ms", "959ms", "2207ms", "4418ms", "8646ms", "10229ms", "10615ms"]}, {"label": "p99", "vals": ["1462ms", "2172ms", "2608ms", "5282ms", "11864ms", "13986ms", "20784ms"]}]};var w1=document.getElementById('chart-2026-l4-nemo-batch');w1._drawFn=function(){drawBarLine('chart-2026-l4-nemo-batch',d1,{barLabel:'RPS',lineLabel:'RTFx',lineSuffix:'x',barDecimals:1})};requestAnimationFrame(w1._drawFn);_ro.observe(w1);
+</script>

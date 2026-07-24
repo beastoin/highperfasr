@@ -215,7 +215,7 @@ def summarize_wer_results(results, refs):
     }
 
 
-def collect_system_info():
+def collect_system_info(gpu_override=None):
     """Collect system metadata for report reproducibility."""
     import platform as _platform
     import subprocess as _sp
@@ -241,9 +241,12 @@ def collect_system_info():
     if git_sha:
         info["git_sha"] = git_sha
 
-    gpu = _run("nvidia-smi --query-gpu=name --format=csv,noheader")
-    if gpu:
-        info["gpu"] = gpu.split("\n")[0]
+    if gpu_override:
+        info["gpu"] = gpu_override
+    else:
+        gpu = _run("nvidia-smi --query-gpu=name --format=csv,noheader")
+        if gpu:
+            info["gpu"] = gpu.split("\n")[0]
 
     gpu_mem = _run("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits")
     if gpu_mem:
@@ -263,6 +266,63 @@ def collect_system_info():
             info["container_image"] = image
 
     return info
+
+
+def publish_results(report, output_path, publish_dir, mode="batch"):
+    """Copy report to an auto-named directory under publish_dir.
+
+    Naming convention: {gpu}-{mode}-{timestamp}
+    e.g. l4-batch-20260716T040510
+    """
+    import shutil
+
+    ts = report.get("timestamp", "")
+    if not ts:
+        raise ValueError("Report missing 'timestamp' — cannot publish without benchmark start time")
+    ts_slug = ts.replace(":", "").replace("-", "")[:15]
+
+    sys_info = report.get("system", {})
+    gpu_raw = sys_info.get("gpu", "gpu")
+    gpu_slug = gpu_raw.lower().split()[-1] if gpu_raw else "gpu"
+
+    dir_name = f"{gpu_slug}-{mode}-{ts_slug}"
+    dest = os.path.join(publish_dir, dir_name)
+    os.makedirs(dest, exist_ok=True)
+
+    report_dest = os.path.join(dest, "report.json")
+    shutil.copy2(output_path, report_dest)
+
+    sweep = report.get("concurrency_sweep", [])
+    if sweep:
+        sweep_out = {
+            "scenario": f"{mode}-concurrency",
+            "dataset": report.get("dataset", ""),
+            "gpu": sys_info.get("gpu", ""),
+            "model": report.get("command", "").split("--model")[-1].split()[0] if "--model" in report.get("command", "") else "",
+            "git_sha": sys_info.get("git_sha", ""),
+            "timestamp": ts,
+            "levels": [],
+        }
+        for s in sweep:
+            level = {"concurrency": s["concurrency"], "rtfx": s.get("rtfx", 0), "failures": s.get("failures", 0)}
+            if "rps" in s:
+                level["rps"] = s["rps"]
+            if "sess_per_min" in s:
+                level["sessions_per_min"] = s["sess_per_min"]
+            if "p50_s" in s:
+                level["p50_ms"] = round(s["p50_s"] * 1000)
+            if "p99_s" in s:
+                level["p99_ms"] = round(s["p99_s"] * 1000)
+            sweep_out["levels"].append(level)
+
+        if "wer" in report:
+            sweep_out["wer"] = report["wer"].get("corpus_wer_pct")
+            sweep_out["normalization"] = report["wer"].get("normalization", "")
+
+        with open(os.path.join(dest, "concurrency-sweep.json"), "w") as f:
+            json.dump(sweep_out, f, indent=2)
+
+    log.info(f"Published to {dest}/")
 
 
 def collect_gpu_memory_used_mb():
@@ -460,6 +520,10 @@ async def main():
                         help="Number of trial runs for statistical rigor (default: 1)")
     parser.add_argument("--quick", action="store_true",
                         help="Quick validation: 200 samples (use full corpus for publishable results)")
+    parser.add_argument("--publish", default=None, metavar="DIR",
+                        help="Publish results to DIR/<auto-named>/ using GPU-mode-timestamp naming")
+    parser.add_argument("--gpu", default=None, metavar="NAME",
+                        help="Override GPU name when nvidia-smi is unavailable (e.g. remote benchmarking)")
     args = parser.parse_args()
 
     if args.quick:
@@ -506,7 +570,7 @@ async def main():
         "samples": len(manifest),
         "dataset": dataset_name,
         "smart_mode": args.smart,
-        "system": collect_system_info(),
+        "system": collect_system_info(gpu_override=args.gpu),
         "command": " ".join(sys.argv),
     }
     vram_start_mb = collect_gpu_memory_used_mb()
@@ -746,6 +810,10 @@ async def main():
     with open(args.output, "w") as f:
         json.dump(report, f, indent=2)
     log.info(f"Report saved to {args.output}")
+
+    if args.publish:
+        publish_results(report, args.output, args.publish, mode="batch")
+
 
     total_failures = report["summary"]["total_failures"]
     wer_failures = report.get("wer", {}).get("samples_failed", 0)
