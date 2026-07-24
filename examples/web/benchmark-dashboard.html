@@ -656,6 +656,26 @@ function animateVal(elId, target, suffix='') {
 }
 
 // ===== SEMAPHORE =====
+function parseWavPcm(buf) {
+  if (buf.byteLength < 44) return { error: 'File too small to be a WAV.' };
+  const view = new DataView(buf);
+  const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+  if (riff !== 'RIFF') return { error: 'Not a WAV file (missing RIFF header).' };
+  if (view.getUint16(20, true) !== 1) return { error: 'WAV must be PCM (format 1). Got: ' + view.getUint16(20, true) };
+  if (view.getUint16(22, true) !== 1) return { error: 'WAV must be mono. Got channels: ' + view.getUint16(22, true) };
+  if (view.getUint32(24, true) !== 16000) return { error: 'WAV must be 16kHz. Got: ' + view.getUint32(24, true) + 'Hz' };
+  if (view.getUint16(34, true) !== 16) return { error: 'WAV must be 16-bit. Got: ' + view.getUint16(34, true) + '-bit' };
+  let off = 12;
+  while (off < buf.byteLength - 8) {
+    const id = String.fromCharCode(view.getUint8(off), view.getUint8(off+1), view.getUint8(off+2), view.getUint8(off+3));
+    const sz = view.getUint32(off + 4, true);
+    if (id === 'data') { off += 8; break; }
+    off += 8 + sz;
+  }
+  if (off >= buf.byteLength) return { error: 'WAV file has no data chunk.' };
+  return { pcm: new Uint8Array(buf).slice(off) };
+}
+
 function makeSem(n) {
   const sem = { count: 0, q: [] };
   sem.acquire = () => new Promise(r => { if (sem.count < n) { sem.count++; r(); } else sem.q.push(r); });
@@ -748,21 +768,9 @@ async function startStreaming() {
     const file = $id('streamFile').files[0];
     if (!file) return alert('Select a WAV file.');
     const buf = await file.arrayBuffer();
-    const view = new DataView(buf);
-    if(buf.byteLength<44||String.fromCharCode(view.getUint8(0),view.getUint8(1),view.getUint8(2),view.getUint8(3))!=='RIFF')
-      return alert('Streaming requires a WAV file.');
-    if(view.getUint16(20,true)!==1) return alert('WAV must be PCM (format 1). Got: '+view.getUint16(20,true));
-    if(view.getUint16(22,true)!==1) return alert('WAV must be mono. Got channels: '+view.getUint16(22,true));
-    if(view.getUint32(24,true)!==16000) return alert('WAV must be 16kHz. Got: '+view.getUint32(24,true)+'Hz');
-    if(view.getUint16(34,true)!==16) return alert('WAV must be 16-bit. Got: '+view.getUint16(34,true)+'-bit');
-    let dataOff=12;
-    while(dataOff<buf.byteLength-8){
-      const id=String.fromCharCode(view.getUint8(dataOff),view.getUint8(dataOff+1),view.getUint8(dataOff+2),view.getUint8(dataOff+3));
-      const sz=view.getUint32(dataOff+4,true);
-      if(id==='data'){dataOff+=8;break}
-      dataOff+=8+sz;
-    }
-    pcm = new Uint8Array(buf).slice(dataOff);
+    const parsed = parseWavPcm(buf);
+    if (parsed.error) return alert(parsed.error);
+    pcm = parsed.pcm;
   }
   S.streamRunning=true; S.streamSessions=[];
   $id('streamGoBtn').style.display='none'; $id('streamStopBtn').style.display='';
@@ -894,7 +902,7 @@ async function runSweep(){
   if(!levels.length) return alert('Invalid concurrency levels.');
   const rounds=parseInt($id('sweepRounds').value);
   const ctrl=new AbortController();
-  S.sweepAbort=ctrl; S.sweepRunning=true; S.sweepResults=[];
+  S.sweepAbort=ctrl; S.sweepRunning=true; S.sweepResults=[]; S.batchResults=[];
   $id('sweepGoBtn').style.display='none'; $id('sweepStopBtn').style.display='';
   $id('sweepTbody').innerHTML=''; $id('sweepLog').innerHTML=''; $id('sweepHeatmap').innerHTML='';
   $id('sweepVu').style.width='0%'; $id('sweepVuLbl').textContent='0%';
@@ -997,21 +1005,9 @@ async function streamAtC(url, files, conc, signal) {
     const start = performance.now();
     try {
       const buf = await file.arrayBuffer();
-      const raw = new Uint8Array(buf);
-      let pcm;
-      const view = new DataView(buf);
-      if (buf.byteLength >= 44 && String.fromCharCode(view.getUint8(0),view.getUint8(1),view.getUint8(2),view.getUint8(3)) === 'RIFF') {
-        let off = 12;
-        while (off < buf.byteLength - 8) {
-          const id = String.fromCharCode(view.getUint8(off),view.getUint8(off+1),view.getUint8(off+2),view.getUint8(off+3));
-          const sz = view.getUint32(off+4, true);
-          if (id === 'data') { off += 8; break; }
-          off += 8 + sz;
-        }
-        pcm = raw.slice(off);
-      } else {
-        pcm = raw;
-      }
+      const parsed = parseWavPcm(buf);
+      if (parsed.error) throw new Error(parsed.error);
+      const pcm = parsed.pcm;
 
       const text = await new Promise((resolve, reject) => {
         const ws = new WebSocket(`${wsUrl}/v1/stream`);
