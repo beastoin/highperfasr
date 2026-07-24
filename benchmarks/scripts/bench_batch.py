@@ -215,7 +215,7 @@ def summarize_wer_results(results, refs):
     }
 
 
-def collect_system_info():
+def collect_system_info(gpu_override=None):
     """Collect system metadata for report reproducibility."""
     import platform as _platform
     import subprocess as _sp
@@ -241,9 +241,12 @@ def collect_system_info():
     if git_sha:
         info["git_sha"] = git_sha
 
-    gpu = _run("nvidia-smi --query-gpu=name --format=csv,noheader")
-    if gpu:
-        info["gpu"] = gpu.split("\n")[0]
+    if gpu_override:
+        info["gpu"] = gpu_override
+    else:
+        gpu = _run("nvidia-smi --query-gpu=name --format=csv,noheader")
+        if gpu:
+            info["gpu"] = gpu.split("\n")[0]
 
     gpu_mem = _run("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits")
     if gpu_mem:
@@ -519,6 +522,8 @@ async def main():
                         help="Quick validation: 200 samples (use full corpus for publishable results)")
     parser.add_argument("--publish", default=None, metavar="DIR",
                         help="Publish results to DIR/<auto-named>/ using GPU-mode-timestamp naming")
+    parser.add_argument("--gpu", default=None, metavar="NAME",
+                        help="Override GPU name when nvidia-smi is unavailable (e.g. remote benchmarking)")
     args = parser.parse_args()
 
     if args.quick:
@@ -565,7 +570,7 @@ async def main():
         "samples": len(manifest),
         "dataset": dataset_name,
         "smart_mode": args.smart,
-        "system": collect_system_info(),
+        "system": collect_system_info(gpu_override=args.gpu),
         "command": " ".join(sys.argv),
     }
     vram_start_mb = collect_gpu_memory_used_mb()

@@ -1,0 +1,188 @@
+{
+  "schema_version": "v1alpha2-live",
+  "benchmark": "Batch ASR Benchmark",
+  "timestamp": "2026-07-24T11:04:04Z",
+  "server": "http://localhost:10320",
+  "samples": 200,
+  "dataset": "librispeech-test-clean",
+  "smart_mode": false,
+  "system": {
+    "python_version": "3.12.3",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "pytorch_version": "2.4.0+cu121",
+    "cuda_version": "12.1",
+    "git_sha": "750cdaf",
+    "gpu": "NVIDIA L4"
+  },
+  "command": "benchmarks/scripts/bench_batch.py --server http://localhost:10320 --endpoint /v1/transcribe --concurrency 1,8,16,32 --sustained-rounds 4 --max-samples 200 --gpu NVIDIA L4 --publish benchmarks/results --output /tmp/bench_batch_latest.json",
+  "wer": {
+    "corpus_wer_pct": 1.86,
+    "samples_evaluated": 200,
+    "samples_failed": 0,
+    "normalization": "whisper_english",
+    "high_wer_count": 16,
+    "c1_corpus_wer_pct": 1.86,
+    "reference_wer_pct": 1.57,
+    "max_load_corpus_wer_pct": 1.87,
+    "max_load_samples_evaluated": 800
+  },
+  "concurrency_sweep": [
+    {
+      "concurrency": 1,
+      "total": 200,
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 61.9,
+      "rps": 3.23,
+      "rtfx": 29.38,
+      "rtf": 0.034,
+      "total_audio_s": 1818.5,
+      "sess_per_min": 193.9,
+      "p50_s": 0.273,
+      "p99_s": 1.448,
+      "min_s": 0.252,
+      "max_s": 1.468,
+      "mean_s": 0.309,
+      "stddev_s": 0.172
+    },
+    {
+      "concurrency": 8,
+      "total": 200,
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 26.39,
+      "rps": 7.58,
+      "rtfx": 68.91,
+      "rtf": 0.015,
+      "total_audio_s": 1818.5,
+      "sess_per_min": 454.8,
+      "p50_s": 0.99,
+      "p99_s": 2.255,
+      "min_s": 0.661,
+      "max_s": 2.256,
+      "mean_s": 1.046,
+      "stddev_s": 0.288
+    },
+    {
+      "concurrency": 16,
+      "total": 200,
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 20.06,
+      "rps": 9.97,
+      "rtfx": 90.67,
+      "rtf": 0.011,
+      "total_audio_s": 1818.5,
+      "sess_per_min": 598.3,
+      "p50_s": 1.669,
+      "p99_s": 2.347,
+      "min_s": 0.424,
+      "max_s": 2.348,
+      "mean_s": 1.559,
+      "stddev_s": 0.408
+    },
+    {
+      "concurrency": 32,
+      "total": 200,
+      "ok": 200,
+      "failures": 0,
+      "wall_s": 16.79,
+      "rps": 11.91,
+      "rtfx": 108.29,
+      "rtf": 0.009,
+      "total_audio_s": 1818.5,
+      "sess_per_min": 714.6,
+      "p50_s": 2.431,
+      "p99_s": 3.664,
+      "min_s": 0.677,
+      "max_s": 3.665,
+      "mean_s": 2.548,
+      "stddev_s": 0.626
+    }
+  ],
+  "sustained_load": {
+    "concurrency": 64,
+    "total": 800,
+    "ok": 800,
+    "failures": 0,
+    "wall_s": 45.95,
+    "rps": 17.41,
+    "rtfx": 157.93,
+    "rtf": 0.006,
+    "total_audio_s": 7257.6,
+    "sess_per_min": 1044.5,
+    "p50_s": 3.453,
+    "p99_s": 5.409,
+    "min_s": 0.85,
+    "max_s": 5.416,
+    "mean_s": 3.568,
+    "stddev_s": 0.73,
+    "rounds": 4,
+    "total_files": 800,
+    "wer_pct": 1.87
+  },
+  "summary": {
+    "peak_rps": 11.91,
+    "peak_rtfx": 108.29,
+    "peak_concurrency": 32,
+    "max_concurrency_zero_fail": 32,
+    "sustained_rps": 17.41,
+    "sustained_rtfx": 157.93,
+    "total_failures": 0,
+    "wer_pct": 1.86
+  },
+  "quality_gates": {
+    "scenario": "batch",
+    "gates": [
+      {
+        "gate": "max_wer_pct",
+        "threshold": 2.5,
+        "actual": 1.86,
+        "passed": true
+      },
+      {
+        "gate": "max_load_wer_pct",
+        "threshold": 2.5,
+        "actual": 1.87,
+        "passed": true
+      },
+      {
+        "gate": "max_failure_rate",
+        "threshold": 0.0,
+        "actual": 0.0,
+        "passed": true
+      },
+      {
+        "gate": "wer_delta",
+        "threshold": 0.3,
+        "actual": 0.29,
+        "passed": true
+      },
+      {
+        "gate": "max_load_wer_delta",
+        "threshold": 0.3,
+        "actual": 0.3,
+        "passed": false
+      },
+      {
+        "gate": "sustained_failures",
+        "threshold": 0,
+        "actual": 0,
+        "passed": true
+      },
+      {
+        "gate": "min_rtfx",
+        "threshold": 1.0,
+        "actual": 108.29,
+        "passed": true
+      },
+      {
+        "gate": "max_vram_growth_mb",
+        "threshold": 100,
+        "actual": null,
+        "passed": false
+      }
+    ],
+    "all_passed": false
+  }
+}
