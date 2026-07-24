@@ -274,7 +274,9 @@ def publish_results(report, output_path, publish_dir, mode="batch"):
     import shutil
 
     ts = report.get("timestamp", "")
-    ts_slug = ts.replace(":", "").replace("-", "")[:15] if ts else time.strftime("%Y%m%dT%H%M%S", time.gmtime())
+    if not ts:
+        raise ValueError("Report missing 'timestamp' — cannot publish without benchmark start time")
+    ts_slug = ts.replace(":", "").replace("-", "")[:15]
 
     sys_info = report.get("system", {})
     gpu_raw = sys_info.get("gpu", "gpu")
