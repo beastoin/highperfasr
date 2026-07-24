@@ -397,6 +397,7 @@ tr:hover td{background:var(--elevated)}
         <button class="btn btn-sm" onclick="dlJSON()">JSON Report</button>
         <button class="btn btn-sm" onclick="dlCSV()">Transcript CSV</button>
         <button class="btn btn-sm" onclick="dlMD()">Markdown</button>
+        <button class="btn btn-sm" onclick="dlZIP()" style="background:var(--accent);color:var(--ground);font-weight:700">&#x1f4e6; Download All (ZIP)</button>
       </div>
     </div>
   </div>
@@ -1190,6 +1191,103 @@ function dlMD(){
 }
 function dlFile(content,name,mime){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:mime}));a.download=name;a.click();URL.revokeObjectURL(a.href);
+}
+
+function makeZip(files){
+  function crc32(buf){
+    let c=0xffffffff;
+    for(let i=0;i<buf.length;i++){c^=buf[i];for(let j=0;j<8;j++)c=(c>>>1)^(c&1?0xedb88320:0)}
+    return(c^0xffffffff)>>>0;
+  }
+  function dosTime(d){
+    const s=(d.getSeconds()>>1)|((d.getMinutes())<<5)|((d.getHours())<<11);
+    const dt=d.getDate()|((d.getMonth()+1)<<5)|((d.getFullYear()-1980)<<9);
+    return{time:s,date:dt};
+  }
+  const enc=new TextEncoder();
+  const entries=files.map(f=>{
+    const data=typeof f.content==='string'?enc.encode(f.content):f.content;
+    const name=enc.encode(f.name);
+    return{name,data,crc:crc32(data)};
+  });
+  const now=dosTime(new Date());
+  let localOff=0;
+  const localParts=[], centralParts=[];
+  for(const e of entries){
+    const header=new ArrayBuffer(30+e.name.length);
+    const hv=new DataView(header);
+    hv.setUint32(0,0x04034b50,true);
+    hv.setUint16(4,20,true);
+    hv.setUint16(8,0,true);
+    hv.setUint16(10,now.time,true);
+    hv.setUint16(12,now.date,true);
+    hv.setUint32(14,e.crc,true);
+    hv.setUint32(18,e.data.length,true);
+    hv.setUint32(22,e.data.length,true);
+    hv.setUint16(26,e.name.length,true);
+    new Uint8Array(header,30).set(e.name);
+    localParts.push(new Uint8Array(header),e.data);
+
+    const cdir=new ArrayBuffer(46+e.name.length);
+    const cv=new DataView(cdir);
+    cv.setUint32(0,0x02014b50,true);
+    cv.setUint16(4,20,true);
+    cv.setUint16(6,20,true);
+    cv.setUint16(10,0,true);
+    cv.setUint16(12,now.time,true);
+    cv.setUint16(14,now.date,true);
+    cv.setUint32(16,e.crc,true);
+    cv.setUint32(20,e.data.length,true);
+    cv.setUint32(24,e.data.length,true);
+    cv.setUint16(28,e.name.length,true);
+    cv.setUint32(42,localOff,true);
+    new Uint8Array(cdir,46).set(e.name);
+    centralParts.push(new Uint8Array(cdir));
+
+    localOff+=30+e.name.length+e.data.length;
+  }
+  const cdirSize=centralParts.reduce((s,p)=>s+p.length,0);
+  const eocd=new ArrayBuffer(22);
+  const ev=new DataView(eocd);
+  ev.setUint32(0,0x06054b50,true);
+  ev.setUint16(8,entries.length,true);
+  ev.setUint16(10,entries.length,true);
+  ev.setUint32(12,cdirSize,true);
+  ev.setUint32(16,localOff,true);
+  return new Blob([...localParts,...centralParts,new Uint8Array(eocd)],{type:'application/zip'});
+}
+
+function dlZIP(){
+  if(!S.batchResults.length&&!S.sweepResults.length) return;
+  const d={timestamp:new Date().toISOString(),server:$id('serverUrl').value,server_info:S.serverInfo,
+    results:S.batchResults.map(r=>({file:r.file,text:r.text,latency_ms:r.lat,status:r.status,error:r.error||null,
+      reference:S.refs[r.file]||null,wer:r.wer?{wer_pct:r.wer.wer,s:r.wer.s,i:r.wer.i,d:r.wer.d}:null})),
+    sweep:S.sweepResults};
+  let csv='file,reference,hypothesis,wer_pct,substitutions,insertions,deletions,latency_ms,status\n';
+  S.batchResults.forEach(r=>{
+    const ref=(S.refs[r.file]||'').replace(/"/g,'""');
+    const hyp=(r.text||'').replace(/"/g,'""');
+    csv+=`"${r.file}","${ref}","${hyp}",${r.wer?r.wer.wer.toFixed(2):''},${r.wer?r.wer.s:''},${r.wer?r.wer.i:''},${r.wer?r.wer.d:''},${r.lat.toFixed(0)},${r.status}\n`;
+  });
+  let md='# Benchmark Report\n\n';
+  md+=`**Server:** ${$id('serverUrl').value}  \n**Date:** ${new Date().toISOString()}\n\n`;
+  md+='## Summary\n| Metric | Value |\n|--------|-------|\n';
+  md+=`| Files | ${S.batchResults.length} |\n| WER | ${$id('rWer').textContent} |\n| Failures | ${S.batchResults.filter(r=>r.status==='error').length} |\n\n`;
+  if(S.sweepResults.length){
+    md+='## Concurrency Sweep\n| c | RPS | p50 | p99 | Wall | Fail |\n|---|-----|-----|-----|------|------|\n';
+    S.sweepResults.forEach(r=>{md+=`| ${r.c} | ${r.rps} | ${r.p50}ms | ${r.p99}ms | ${r.wall}s | ${r.failures} |\n`});
+    md+='\n';
+  }
+  md+='## Per-Utterance\n| File | Ref | Hyp | WER |\n|------|-----|-----|-----|\n';
+  S.batchResults.forEach(r=>{
+    md+=`| ${r.file} | ${(S.refs[r.file]||'').substring(0,60)} | ${(r.text||'').substring(0,60)} | ${r.wer?r.wer.wer.toFixed(1)+'%':'—'} |\n`;
+  });
+  const zip=makeZip([
+    {name:'benchmark-report.json',content:JSON.stringify(d,null,2)},
+    {name:'transcripts.csv',content:csv},
+    {name:'benchmark-report.md',content:md}
+  ]);
+  const a=document.createElement('a');a.href=URL.createObjectURL(zip);a.download='highperfasr-benchmark-'+new Date().toISOString().replace(/[:.]/g,'-').substring(0,19)+'.zip';a.click();URL.revokeObjectURL(a.href);
 }
 
 // ===== INIT =====
