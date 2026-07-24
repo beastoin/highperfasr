@@ -359,6 +359,17 @@ tr:last-child td{border-bottom:none}
 
 </div>
 
+<!-- IMPORT -->
+<div class="section-title">Load Report</div>
+<div style="margin-bottom:24px">
+  <div id="importDrop" style="border:2px dashed var(--border);border-radius:var(--radius);padding:32px;text-align:center;color:var(--text2);font-family:var(--mono);font-size:12px;cursor:pointer;transition:border-color .2s">
+    Drop a benchmark JSON here or click to browse<br>
+    <span style="font-size:10px;color:var(--text3)">Supports: bench_batch.py &middot; bench_stream.py &middot; tune_gpu.py &middot; run_benchmark.py &middot; dashboard export</span>
+    <input type="file" id="importFile" accept=".json" style="display:none" multiple>
+  </div>
+  <div id="importedRuns"></div>
+</div>
+
 <!-- ENVIRONMENT -->
 <div class="section-title">Test Environment</div>
 <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:32px">
@@ -635,4 +646,212 @@ const ro = new ResizeObserver(() => {
   document.querySelectorAll('.run-card.open .chart-wrap').forEach(w => drawChartFor(w.id));
 });
 document.querySelectorAll('.chart-wrap').forEach(w => ro.observe(w));
+
+// ===== REPORT IMPORTER =====
+let importCount = 0;
+const importDrop = document.getElementById('importDrop');
+const importFile = document.getElementById('importFile');
+importDrop.onclick = () => importFile.click();
+importDrop.ondragover = e => { e.preventDefault(); importDrop.style.borderColor = 'var(--accent)'; };
+importDrop.ondragleave = () => importDrop.style.borderColor = 'var(--border)';
+importDrop.ondrop = e => { e.preventDefault(); importDrop.style.borderColor = 'var(--border)'; handleFiles(e.dataTransfer.files); };
+importFile.onchange = e => handleFiles(e.target.files);
+
+function handleFiles(files) {
+  Array.from(files).forEach(f => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        renderImportedReport(data, f.name);
+      } catch(e) { alert('Invalid JSON: ' + e.message); }
+    };
+    reader.readAsText(f);
+  });
+}
+
+function detectFormat(d) {
+  if (d.schema_version === 'v1alpha2-live' && d.concurrency_sweep) return 'live-runner';
+  if (d.schema_version && d.sut) return 'v1alpha2';
+  if (d.benchmark === 'GPU Tuning Sweep') return 'tuning';
+  if (d.results && d.sweep) return 'dashboard';
+  if (d.concurrency_sweep || d.wer) return 'live-runner';
+  if (d.levels) return 'sweep-only';
+  return 'unknown';
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function renderImportedReport(d, filename) {
+  const fmt = detectFormat(d);
+  const id = 'imported-' + (++importCount);
+  const container = document.getElementById('importedRuns');
+
+  let title = '', metrics = '', sweepHtml = '', tuningHtml = '', info = '';
+  const ts = d.timestamp || d.generated_at || '';
+
+  if (fmt === 'live-runner') {
+    const bench = d.benchmark || 'Benchmark';
+    const wer = d.wer?.corpus_wer_pct;
+    const sweep = d.concurrency_sweep || [];
+    const best = sweep.reduce((a,b) => (b.rps||0) > (a.rps||0) ? b : a, {rps:0});
+    const fails = sweep.reduce((s,e) => s + (e.failures||0), 0);
+    const sys = d.system || {};
+    title = `${bench} — ${sys.gpu || 'GPU'}`;
+    info = `${d.dataset || 'dataset'} &middot; ${d.samples || '?'} samples &middot; ${sys.gpu || ''} &middot; ${ts.substring(0,10)}`;
+    metrics = `
+      <div class="run-m"><div class="run-m-val ${wer!=null&&wer<4?'c-accent':'c-blue'}">${wer!=null?wer.toFixed(2)+'%':'—'}</div><div class="run-m-label">WER</div></div>
+      <div class="run-m"><div class="run-m-val">${best.rps||'—'}</div><div class="run-m-label">Peak RPS</div></div>
+      <div class="run-m"><div class="run-m-val">${best.rtfx?best.rtfx+'x':'—'}</div><div class="run-m-label">RTFx</div></div>
+      <div class="run-m"><div class="run-m-val ${fails===0?'c-accent':'c-error'}">${fails}</div><div class="run-m-label">Failures</div></div>
+    `;
+    if (sweep.length) {
+      const isStream = sweep[0].sess_per_min != null && !sweep[0].rps;
+      sweepHtml = '<div class="table-wrap"><table><thead><tr><th class="text-c">C</th>';
+      if (isStream) sweepHtml += '<th class="text-r">RTFx</th><th class="text-r">Sess/min</th>';
+      else sweepHtml += '<th class="text-r">RPS</th><th class="text-r">RTFx</th><th class="text-r">p50</th><th class="text-r">p99</th>';
+      sweepHtml += '<th class="text-c">Fail</th></tr></thead><tbody>';
+      sweep.forEach(s => {
+        sweepHtml += '<tr><td class="text-c">' + s.concurrency + '</td>';
+        if (isStream) {
+          sweepHtml += '<td class="text-r">' + (s.rtfx||'—') + 'x</td>';
+          sweepHtml += '<td class="text-r">' + (s.sess_per_min||'—') + '</td>';
+        } else {
+          sweepHtml += '<td class="text-r">' + (s.rps||'—') + '</td>';
+          sweepHtml += '<td class="text-r">' + (s.rtfx?s.rtfx+'x':'—') + '</td>';
+          const p50 = s.p50_s != null ? Math.round(s.p50_s*1000)+'ms' : (s.p50_ms||'—')+'ms';
+          const p99 = s.p99_s != null ? Math.round(s.p99_s*1000)+'ms' : (s.p99_ms||'—')+'ms';
+          sweepHtml += '<td class="text-r">' + p50 + '</td><td class="text-r">' + p99 + '</td>';
+        }
+        sweepHtml += '<td class="text-c" style="color:var(--' + (s.failures?'error':'accent') + ')">' + (s.failures||0) + '</td></tr>';
+      });
+      sweepHtml += '</tbody></table></div>';
+    }
+    if (d.sustained_load) {
+      const sl = d.sustained_load;
+      sweepHtml += '<div style="margin-top:12px;font-size:12px;color:var(--text2);font-family:var(--mono)"><strong style="color:var(--text)">Sustained Load:</strong> c=' + (sl.concurrency||'?') + ' &middot; ' + (sl.rounds||'?') + ' rounds &middot; ' + (sl.rps||'?') + ' RPS &middot; failures=' + (sl.failures||0) + '</div>';
+    }
+  } else if (fmt === 'tuning') {
+    title = `GPU Tuning — ${d.mode||'?'} on ${d.gpu||'?'}`;
+    info = `${d.server||''} &middot; ${ts.substring(0,10)}`;
+    const maxC = d.max_concurrency || '—';
+    const bp = d.best_params || {};
+    metrics = `
+      <div class="run-m"><div class="run-m-val c-accent">${maxC}</div><div class="run-m-label">Max Concurrency</div></div>
+      <div class="run-m"><div class="run-m-val">${d.binary_search_trials?.length||'—'}</div><div class="run-m-label">Search Trials</div></div>
+    `;
+    if (d.binary_search_trials) {
+      sweepHtml = '<div class="table-wrap"><table><thead><tr><th class="text-c">C</th><th class="text-r">RPS</th><th class="text-r">RTFx</th><th class="text-r">p99</th><th class="text-c">Fail</th><th class="text-c">Result</th></tr></thead><tbody>';
+      d.binary_search_trials.forEach(t => {
+        const pass = t.passed != null ? t.passed : (t.failures === 0);
+        sweepHtml += `<tr><td class="text-c">${t.concurrency||t.c||'?'}</td><td class="text-r">${t.rps||'—'}</td><td class="text-r">${t.rtfx?t.rtfx+'x':'—'}</td><td class="text-r">${t.p99_s?Math.round(t.p99_s*1000)+'ms':'—'}</td><td class="text-c" style="color:var(--${t.failures?'error':'accent'})">${t.failures||0}</td><td class="text-c" style="color:var(--${pass?'accent':'error'})">${pass?'PASS':'FAIL'}</td></tr>`;
+      });
+      sweepHtml += '</tbody></table></div>';
+    }
+    if (d.param_sweep) {
+      tuningHtml = '<div style="margin-top:12px"><strong style="color:var(--text);font-size:12px">Parameter Sweep</strong>';
+      tuningHtml += '<div class="table-wrap"><table><thead><tr><th>Param</th><th>Value</th><th class="text-r">RPS</th><th class="text-r">RTFx</th><th class="text-c">Fail</th></tr></thead><tbody>';
+      d.param_sweep.forEach(p => {
+        tuningHtml += `<tr><td>${esc(p.param||'')}</td><td>${esc(String(p.value||''))}</td><td class="text-r">${p.rps||'—'}</td><td class="text-r">${p.rtfx?p.rtfx+'x':'—'}</td><td class="text-c">${p.failures||0}</td></tr>`;
+      });
+      tuningHtml += '</tbody></table></div></div>';
+    }
+    if (bp && Object.keys(bp).length) {
+      tuningHtml += '<div style="margin-top:8px;font-size:12px;color:var(--text2);font-family:var(--mono)"><strong style="color:var(--accent)">Best:</strong> ' + Object.entries(bp).map(([k,v])=>k+'='+v).join(', ') + '</div>';
+    }
+  } else if (fmt === 'dashboard') {
+    title = 'Dashboard Export';
+    info = `${d.server||''} &middot; ${d.results?.length||0} files &middot; ${ts.substring(0,10)}`;
+    const results = d.results || [];
+    const ok = results.filter(r => r.status === 'ok');
+    const fails = results.filter(r => r.status === 'error');
+    const wers = ok.filter(r => r.wer).map(r => r.wer.wer_pct);
+    const avgWer = wers.length ? (wers.reduce((a,b)=>a+b,0)/wers.length) : null;
+    metrics = `
+      <div class="run-m"><div class="run-m-val">${ok.length}</div><div class="run-m-label">Files OK</div></div>
+      <div class="run-m"><div class="run-m-val ${fails.length?'c-error':'c-accent'}">${fails.length}</div><div class="run-m-label">Failures</div></div>
+      <div class="run-m"><div class="run-m-val ${avgWer!=null&&avgWer<4?'c-accent':'c-blue'}">${avgWer!=null?avgWer.toFixed(2)+'%':'—'}</div><div class="run-m-label">Avg WER</div></div>
+    `;
+    if (results.length) {
+      sweepHtml = '<div class="table-wrap"><table><thead><tr><th>File</th><th class="text-r">Latency</th><th>Transcript</th><th class="text-r">WER</th><th class="text-c">S</th><th class="text-c">I</th><th class="text-c">D</th></tr></thead><tbody>';
+      results.slice(0,50).forEach(r => {
+        const w = r.wer;
+        sweepHtml += `<tr><td class="trunc" style="max-width:200px">${esc(r.file||'')}</td><td class="text-r">${r.latency_ms?Math.round(r.latency_ms)+'ms':'—'}</td><td class="trunc" style="max-width:300px">${esc((r.text||'').substring(0,60))}</td><td class="text-r">${w?w.wer_pct.toFixed(1)+'%':'—'}</td><td class="text-c">${w?w.s:'—'}</td><td class="text-c">${w?w.i:'—'}</td><td class="text-c">${w?w.d:'—'}</td></tr>`;
+      });
+      if (results.length > 50) sweepHtml += '<tr><td colspan="7" style="text-align:center;color:var(--text3)">...and ' + (results.length-50) + ' more</td></tr>';
+      sweepHtml += '</tbody></table></div>';
+    }
+    if (d.sweep?.length) {
+      sweepHtml += '<div style="margin-top:12px"><strong style="color:var(--text);font-size:12px">Concurrency Sweep</strong>';
+      sweepHtml += '<div class="table-wrap"><table><thead><tr><th class="text-c">C</th><th class="text-r">RPS</th><th class="text-r">p50</th><th class="text-r">p99</th><th class="text-r">Wall</th><th class="text-c">Fail</th></tr></thead><tbody>';
+      d.sweep.forEach(s => {
+        sweepHtml += `<tr><td class="text-c">${s.c}</td><td class="text-r">${s.rps}</td><td class="text-r">${s.p50}ms</td><td class="text-r">${s.p99}ms</td><td class="text-r">${s.wall}s</td><td class="text-c" style="color:var(--${s.failures?'error':'accent'})">${s.failures}</td></tr>`;
+      });
+      sweepHtml += '</tbody></table></div></div>';
+    }
+  } else if (fmt === 'v1alpha2') {
+    title = d.report_id || 'Benchmark';
+    const q = d.quality || {};
+    const p = d.performance || {};
+    const hw = d.hardware || {};
+    info = `${d.sut?.model_name||''} &middot; ${d.dataset?.name||''} ${d.dataset?.split||''} &middot; ${hw.gpu||''} &middot; ${ts.substring(0,10)}`;
+    metrics = `
+      <div class="run-m"><div class="run-m-val c-accent">${q.wer!=null?q.wer+'%':'—'}</div><div class="run-m-label">WER</div></div>
+      <div class="run-m"><div class="run-m-val">${p.rps||p.sessions_per_min||'—'}</div><div class="run-m-label">${p.rps?'RPS':'Sess/min'}</div></div>
+      <div class="run-m"><div class="run-m-val">${p.rtfx?p.rtfx+'x':'—'}</div><div class="run-m-label">RTFx</div></div>
+      <div class="run-m"><div class="run-m-val c-accent">${d.reliability?.failed||0}</div><div class="run-m-label">Failures</div></div>
+    `;
+  } else if (fmt === 'sweep-only') {
+    title = `Concurrency Sweep — ${d.gpu||'GPU'}`;
+    info = `${d.model||''} &middot; ${d.dataset||''} &middot; ${d.scenario||''}`;
+    const levels = d.levels || [];
+    const best = levels.reduce((a,b) => (b.rps||0) > (a.rps||0) ? b : a, {rps:0});
+    metrics = `
+      <div class="run-m"><div class="run-m-val c-accent">${d.wer!=null?d.wer+'%':(d.wer_at_c1!=null?d.wer_at_c1+'%':'—')}</div><div class="run-m-label">WER</div></div>
+      <div class="run-m"><div class="run-m-val">${best.rps||best.sessions_per_min||'—'}</div><div class="run-m-label">${best.rps?'Peak RPS':'Sess/min'}</div></div>
+    `;
+    sweepHtml = '<div class="table-wrap"><table><thead><tr><th class="text-c">C</th>';
+    const hasRps = levels[0]?.rps != null;
+    if (hasRps) sweepHtml += '<th class="text-r">RPS</th><th class="text-r">RTFx</th><th class="text-r">p50</th><th class="text-r">p99</th>';
+    else sweepHtml += '<th class="text-r">RTFx</th><th class="text-r">Sess/min</th>';
+    sweepHtml += '<th class="text-c">Fail</th></tr></thead><tbody>';
+    levels.forEach(l => {
+      sweepHtml += '<tr><td class="text-c">' + l.concurrency + '</td>';
+      if (hasRps) sweepHtml += `<td class="text-r">${l.rps}</td><td class="text-r">${l.rtfx}x</td><td class="text-r">${l.p50_ms||'—'}ms</td><td class="text-r">${l.p99_ms||'—'}ms</td>`;
+      else sweepHtml += `<td class="text-r">${l.rtfx}x</td><td class="text-r">${l.sessions_per_min||'—'}</td>`;
+      sweepHtml += `<td class="text-c" style="color:var(--${l.failures?'error':'accent'})">${l.failures}</td></tr>`;
+    });
+    sweepHtml += '</tbody></table></div>';
+  } else {
+    title = 'Unknown Format';
+    info = filename;
+    metrics = '<div class="run-m"><div class="run-m-val" style="font-size:11px">Unrecognized JSON schema</div></div>';
+    sweepHtml = '<pre style="font-size:11px;color:var(--text2);overflow-x:auto;max-height:300px">' + esc(JSON.stringify(d, null, 2)).substring(0, 3000) + '</pre>';
+  }
+
+  const fmtBadge = {
+    'live-runner': 'bench script', 'v1alpha2': 'v1alpha2', 'tuning': 'tune_gpu',
+    'dashboard': 'dashboard', 'sweep-only': 'sweep', 'unknown': '?'
+  }[fmt];
+
+  const card = document.createElement('div');
+  card.className = 'run-card open';
+  card.id = id;
+  card.innerHTML = `
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25BC;</span>
+      <span class="run-title">${esc(title)}</span>
+      <div class="run-chips">
+        <span class="chip" style="background:var(--blue-dim);color:var(--blue)">${fmtBadge}</span>
+        <span class="chip" style="background:var(--accent-dim);color:var(--accent)">${esc(filename)}</span>
+      </div>
+    </div>
+    <div class="run-body">
+      <div class="run-metrics">${metrics}</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">${info}</div>
+      ${sweepHtml}${tuningHtml}
+    </div>
+  `;
+  container.appendChild(card);
+}
 </script>
