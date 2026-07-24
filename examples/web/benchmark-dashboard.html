@@ -754,7 +754,15 @@ async function startStreaming() {
     if(view.getUint16(20,true)!==1) return alert('WAV must be PCM (format 1). Got: '+view.getUint16(20,true));
     if(view.getUint16(22,true)!==1) return alert('WAV must be mono. Got channels: '+view.getUint16(22,true));
     if(view.getUint32(24,true)!==16000) return alert('WAV must be 16kHz. Got: '+view.getUint32(24,true)+'Hz');
-    pcm = new Uint8Array(buf).slice(44);
+    if(view.getUint16(34,true)!==16) return alert('WAV must be 16-bit. Got: '+view.getUint16(34,true)+'-bit');
+    let dataOff=12;
+    while(dataOff<buf.byteLength-8){
+      const id=String.fromCharCode(view.getUint8(dataOff),view.getUint8(dataOff+1),view.getUint8(dataOff+2),view.getUint8(dataOff+3));
+      const sz=view.getUint32(dataOff+4,true);
+      if(id==='data'){dataOff+=8;break}
+      dataOff+=8+sz;
+    }
+    pcm = new Uint8Array(buf).slice(dataOff);
   }
   S.streamRunning=true; S.streamSessions=[];
   $id('streamGoBtn').style.display='none'; $id('streamStopBtn').style.display='';
@@ -894,8 +902,13 @@ async function runSweep(){
   const totalSteps=levels.length+1;
   let step=0;
 
-  sLog('l-info','WER eval: '+files.length+' files at c=1...');
-  const werR=await batchAtC(url,files,1,ctrl.signal);
+  const sweepType=$id('sweepType').value;
+  const runAtC = sweepType==='streaming'
+    ? (u,f,c,s) => streamAtC(u,f,c,s)
+    : (u,f,c,s) => batchAtC(u,f,c,s);
+
+  sLog('l-info','WER eval ('+sweepType+'): '+files.length+' files at c=1...');
+  const werR=await runAtC(url,files,1,ctrl.signal);
   if(werR.length>0&&S.batchResults.length===0) S.batchResults=werR;
   const wv=werR.filter(r=>r.wer);
   if(wv.length){
@@ -907,8 +920,8 @@ async function runSweep(){
   let maxRps=0;
   for(const c of levels){
     if(ctrl.signal.aborted) break;
-    sLog('l-info','c='+c+'...');
-    const res=await batchAtC(url,files,c,ctrl.signal);
+    sLog('l-info','c='+c+' ('+sweepType+')...');
+    const res=await runAtC(url,files,c,ctrl.signal);
     const ok=res.filter(r=>r.status==='ok');
     const fails=res.filter(r=>r.status==='error').length;
     const lats=ok.map(r=>r.lat).sort((a,b)=>a-b);
@@ -930,9 +943,9 @@ async function runSweep(){
 
   if(!ctrl.signal.aborted){
     const sc=levels[Math.floor(levels.length/2)]||4;
-    sLog('l-info','Sustained: c='+sc+', '+rounds+' rounds...');
+    sLog('l-info','Sustained ('+sweepType+'): c='+sc+', '+rounds+' rounds...');
     for(let r=0;r<rounds&&!ctrl.signal.aborted;r++){
-      await batchAtC(url,files,sc,ctrl.signal);
+      await runAtC(url,files,sc,ctrl.signal);
       sLog('l-info','  Round '+(r+1)+'/'+rounds+' done');
     }
     $id('sweepVu').style.width='100%'; $id('sweepVuLbl').textContent='100%';
@@ -967,6 +980,81 @@ async function batchAtC(url, files, conc, signal) {
   };
   await Promise.all(files.map((f,i)=>process(f,i)));
   results._wallMs=performance.now()-t0;
+  return results;
+}
+
+async function streamAtC(url, files, conc, signal) {
+  const wsUrl = url.replace(/^http/, 'ws');
+  const results = []; const t0 = performance.now();
+  const sem = makeSem(conc);
+  const chunkMs = 160;
+  const sampleRate = 16000;
+  const chunkBytes = Math.floor((sampleRate * chunkMs) / 1000) * 2;
+
+  const process = async (file, idx) => {
+    await sem.acquire();
+    if (signal.aborted) { sem.release(); return; }
+    const start = performance.now();
+    try {
+      const buf = await file.arrayBuffer();
+      const raw = new Uint8Array(buf);
+      let pcm;
+      const view = new DataView(buf);
+      if (buf.byteLength >= 44 && String.fromCharCode(view.getUint8(0),view.getUint8(1),view.getUint8(2),view.getUint8(3)) === 'RIFF') {
+        let off = 12;
+        while (off < buf.byteLength - 8) {
+          const id = String.fromCharCode(view.getUint8(off),view.getUint8(off+1),view.getUint8(off+2),view.getUint8(off+3));
+          const sz = view.getUint32(off+4, true);
+          if (id === 'data') { off += 8; break; }
+          off += 8 + sz;
+        }
+        pcm = raw.slice(off);
+      } else {
+        pcm = raw;
+      }
+
+      const text = await new Promise((resolve, reject) => {
+        const ws = new WebSocket(`${wsUrl}/v1/stream`);
+        let committed = '', finalText = '';
+        const timeout = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, 60000);
+        ws.onmessage = e => {
+          const msg = JSON.parse(e.data);
+          if (msg.status === 'opened') {
+            let offset = 0;
+            const sendChunk = () => {
+              if (offset >= pcm.length || ws.readyState !== WebSocket.OPEN) {
+                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({action:'close'}));
+                return;
+              }
+              ws.send(pcm.slice(offset, offset + chunkBytes));
+              offset += chunkBytes;
+              setTimeout(sendChunk, chunkMs);
+            };
+            sendChunk();
+          } else if (msg.status === 'closed') {
+            clearTimeout(timeout);
+            finalText = msg.final_text || committed;
+            ws.close();
+            resolve(finalText);
+          } else {
+            if (msg.final_transcript) committed = (committed + ' ' + msg.final_transcript).trim();
+          }
+        };
+        ws.onerror = () => { clearTimeout(timeout); reject(new Error('ws error')); };
+        ws.onclose = () => { clearTimeout(timeout); if (!finalText) resolve(committed); };
+      });
+
+      const lat = performance.now() - start;
+      const ref = S.refs[file.name];
+      const wer = ref ? computeWer(ref, text || '') : null;
+      results.push({idx, file: file.name, text: text || '', lat, status: 'ok', wer});
+    } catch (e) {
+      results.push({idx, file: file.name, text: '', lat: performance.now() - start, status: 'error', error: e.message, wer: null});
+    }
+    sem.release();
+  };
+  await Promise.all(files.map((f, i) => process(f, i)));
+  results._wallMs = performance.now() - t0;
   return results;
 }
 
