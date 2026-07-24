@@ -218,7 +218,7 @@ tr:last-child td{border-bottom:none}
 </div>
 
 <!-- BENCHMARK RUNS -->
-<div class="section-title">Benchmark Runs</div>
+<div class="section-title">Benchmark Runs <span style="font-size:10px;letter-spacing:0;text-transform:none;color:var(--text3)">&mdash; click to expand, or view <a href="runs/2026-l4-nemo-batch.html" style="color:var(--accent)">individual pages</a></span></div>
 <div class="runs">
 
   <!-- L4 Batch -->
@@ -231,6 +231,7 @@ tr:last-child td{border-bottom:none}
         <span class="chip chip-g">19.5 RPS</span>
         <span class="chip chip-g">178x RTFx</span>
         <span class="chip chip-g">0 fail</span>
+        <a href="runs/2026-l4-nemo-batch.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
       </div>
     </div>
     <div class="run-body">
@@ -262,6 +263,7 @@ tr:last-child td{border-bottom:none}
         <span class="chip chip-b">297 sess/min</span>
         <span class="chip chip-b">38.69x RTFx</span>
         <span class="chip chip-g">0 fail</span>
+        <a href="runs/2026-l4-nemo-512-streams.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
       </div>
     </div>
     <div class="run-body">
@@ -292,6 +294,7 @@ tr:last-child td{border-bottom:none}
         <span class="chip chip-g">235x RTFx</span>
         <span class="chip chip-g">14.9 RPS</span>
         <span class="chip chip-a">60s OOM@32</span>
+        <a href="runs/2026-l4-batch-by-duration.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
       </div>
     </div>
     <div class="run-body">
@@ -317,6 +320,7 @@ tr:last-child td{border-bottom:none}
         <span class="chip chip-a">7.17 RPS</span>
         <span class="chip chip-a">65.2x RTFx</span>
         <span class="chip chip-g">0 fail</span>
+        <a href="runs/2026-t4-nemo-batch.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
       </div>
     </div>
     <div class="run-body">
@@ -344,6 +348,7 @@ tr:last-child td{border-bottom:none}
         <span class="chip chip-a">22.17x RTFx</span>
         <span class="chip chip-a">256 streams</span>
         <span class="chip chip-g">0 fail</span>
+        <a href="runs/2026-t4-nemo-stream.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
       </div>
     </div>
     <div class="run-body">
@@ -357,6 +362,63 @@ tr:last-child td{border-bottom:none}
     </div>
   </div>
 
+  <!-- L4 Dockerfile Stream -->
+  <div class="run-card" id="run-l4-docker-stream">
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25B6;</span>
+      <span class="run-title">L4 Dockerfile Stream (Sweep + Soak)</span>
+      <div class="run-chips">
+        <span class="chip chip-b">WER 3.21%</span>
+        <span class="chip chip-b">252 sess/min</span>
+        <span class="chip chip-g">0 VRAM growth</span>
+        <a href="runs/2026-l4-dockerfile-stream.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
+      </div>
+    </div>
+    <div class="run-body">
+      <div class="run-metrics">
+        <div class="run-m"><div class="run-m-val c-blue">3.21%</div><div class="run-m-label">WER</div></div>
+        <div class="run-m"><div class="run-m-val">252.4</div><div class="run-m-label">Peak Sess/min</div></div>
+        <div class="run-m"><div class="run-m-val">32.88x</div><div class="run-m-label">Peak RTFx</div></div>
+        <div class="run-m"><div class="run-m-val c-accent">0 MB</div><div class="run-m-label">VRAM Growth</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">Dockerfile-built streaming server &middot; LibriSpeech test-clean &middot; 371s soak test &middot; NVIDIA L4 24GB</div>
+    </div>
+  </div>
+
+  <!-- L4 Streaming Comparison -->
+  <div class="run-card" id="run-l4-compare">
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25B6;</span>
+      <span class="run-title">L4 Streaming: HighPerfASR vs NeMo Fork</span>
+      <div class="run-chips">
+        <span class="chip chip-g">HPFASR 32.88x</span>
+        <span class="chip chip-b">NeMo 24.66x</span>
+        <a href="runs/2026-l4-streaming-comparison.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
+      </div>
+    </div>
+    <div class="run-body">
+      <div class="run-metrics">
+        <div class="run-m"><div class="run-m-val c-accent">32.88x</div><div class="run-m-label">HPFASR RTFx</div></div>
+        <div class="run-m"><div class="run-m-val c-blue">24.66x</div><div class="run-m-label">NeMo RTFx</div></div>
+        <div class="run-m"><div class="run-m-val">252.4</div><div class="run-m-label">HPFASR Sess/min</div></div>
+        <div class="run-m"><div class="run-m-val c-accent">3.21%</div><div class="run-m-label">WER (both)</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">Head-to-head streaming comparison &middot; LibriSpeech test-clean &middot; NVIDIA L4 24GB</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ALL RUNS INDEX -->
+<div class="section-title">Individual Run Pages</div>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:32px;font-family:var(--mono);font-size:12px">
+  <a href="runs/2026-l4-batch-by-duration.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">2026-l4-batch-by-duration</a>
+  <a href="runs/2026-l4-dockerfile-stream.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">2026-l4-dockerfile-stream</a>
+  <a href="runs/2026-l4-nemo-512-streams.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">2026-l4-nemo-512-streams</a>
+  <a href="runs/2026-l4-nemo-batch.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">2026-l4-nemo-batch</a>
+  <a href="runs/2026-l4-streaming-comparison.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">2026-l4-streaming-comparison</a>
+  <a href="runs/2026-t4-nemo-batch.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">2026-t4-nemo-batch</a>
+  <a href="runs/2026-t4-nemo-stream.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">2026-t4-nemo-stream</a>
 </div>
 
 <!-- IMPORT -->
