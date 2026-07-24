@@ -318,6 +318,8 @@ async def main():
                         help="Number of trial runs for statistical rigor (default: 1)")
     parser.add_argument("--quick", action="store_true",
                         help="Quick validation: 200 samples, c=4-256 sweep (use full corpus for publishable results)")
+    parser.add_argument("--publish", default=None, metavar="DIR",
+                        help="Publish results to DIR/<auto-named>/ using GPU-mode-timestamp naming")
     args = parser.parse_args()
 
     if args.quick:
@@ -573,6 +575,10 @@ async def main():
     with open(args.output, "w") as f:
         json.dump(report, f, indent=2)
     log.info(f"Report saved to {args.output}")
+
+    if args.publish:
+        from bench_batch import publish_results
+        publish_results(report, args.output, args.publish, mode="stream")
 
     total_failures = trial_total_failures if args.trials > 1 else (
         sum(s["failures"] for s in sweep_results) + sustained_summary["failures"])
