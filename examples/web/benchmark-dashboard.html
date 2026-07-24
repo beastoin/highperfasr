@@ -3,1400 +3,1113 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 :root {
-  --bg-primary: #f8f9fb;
-  --bg-surface: #ffffff;
-  --bg-elevated: #f0f2f5;
-  --bg-input: #ffffff;
-  --border: #d8dce6;
-  --border-focus: #4f8ff7;
-  --text-primary: #1a1d27;
-  --text-secondary: #5c6478;
-  --text-tertiary: #8891a5;
-  --accent: #4f8ff7;
-  --accent-hover: #3a7de6;
-  --accent-bg: #eef4ff;
-  --success: #16a34a;
-  --success-bg: #f0fdf4;
-  --warning: #d97706;
-  --warning-bg: #fffbeb;
-  --error: #dc2626;
-  --error-bg: #fef2f2;
-  --diff-ins: #dcfce7;
-  --diff-del: #fee2e2;
-  --diff-sub: #fef3c7;
-  --shadow: 0 1px 3px rgba(0,0,0,0.08);
-  --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
-  --radius: 8px;
-  --radius-sm: 5px;
-  --mono: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --ground: #080a10; --surface: #10131c; --elevated: #181c28;
+  --border: #1e2436; --border-focus: #00e5a0;
+  --accent: #00e5a0; --accent-dim: #00e5a033; --accent-glow: #00e5a066;
+  --blue: #5a7fff; --blue-dim: #5a7fff22;
+  --error: #ff5757; --error-dim: #ff575722;
+  --warn: #ffb347; --warn-dim: #ffb34722;
+  --text: #cdd4e0; --text2: #6b7394; --text3: #3d4560;
+  --mono: 'SF Mono','Cascadia Code','JetBrains Mono','Fira Code',monospace;
+  --vu-green: #00e5a0; --vu-yellow: #e5d000; --vu-red: #ff5757;
+  --radius: 6px;
+}
+@media(prefers-color-scheme:light){:root{
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --error:#d93636;--error-dim:#d9363615;
+  --warn:#cc8800;--warn-dim:#cc880015;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}}
+:root[data-theme="light"]{
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --error:#d93636;--error-dim:#d9363615;
+  --warn:#cc8800;--warn-dim:#cc880015;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}
+:root[data-theme="dark"]{
+  --ground:#080a10;--surface:#10131c;--elevated:#181c28;
+  --border:#1e2436;--border-focus:#00e5a0;
+  --accent:#00e5a0;--accent-dim:#00e5a033;--accent-glow:#00e5a066;
+  --blue:#5a7fff;--blue-dim:#5a7fff22;
+  --error:#ff5757;--error-dim:#ff575722;
+  --warn:#ffb347;--warn-dim:#ffb34722;
+  --text:#cdd4e0;--text2:#6b7394;--text3:#3d4560;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-primary: #0c0e14;
-    --bg-surface: #151822;
-    --bg-elevated: #1c2030;
-    --bg-input: #1c2030;
-    --border: #252a3a;
-    --border-focus: #4f8ff7;
-    --text-primary: #e1e7ef;
-    --text-secondary: #8891a5;
-    --text-tertiary: #5c6478;
-    --accent: #4f8ff7;
-    --accent-hover: #6ba1ff;
-    --accent-bg: #1a2744;
-    --success: #34d399;
-    --success-bg: #0d2818;
-    --warning: #fbbf24;
-    --warning-bg: #2a2008;
-    --error: #f87171;
-    --error-bg: #2a0f0f;
-    --diff-ins: #132a1a;
-    --diff-del: #2a1212;
-    --diff-sub: #2a2410;
-    --shadow: 0 1px 3px rgba(0,0,0,0.3);
-    --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
-  }
-}
-:root[data-theme="dark"] {
-  --bg-primary: #0c0e14;
-  --bg-surface: #151822;
-  --bg-elevated: #1c2030;
-  --bg-input: #1c2030;
-  --border: #252a3a;
-  --border-focus: #4f8ff7;
-  --text-primary: #e1e7ef;
-  --text-secondary: #8891a5;
-  --text-tertiary: #5c6478;
-  --accent: #4f8ff7;
-  --accent-hover: #6ba1ff;
-  --accent-bg: #1a2744;
-  --success: #34d399;
-  --success-bg: #0d2818;
-  --warning: #fbbf24;
-  --warning-bg: #2a2008;
-  --error: #f87171;
-  --error-bg: #2a0f0f;
-  --diff-ins: #132a1a;
-  --diff-del: #2a1212;
-  --diff-sub: #2a2410;
-  --shadow: 0 1px 3px rgba(0,0,0,0.3);
-  --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
-}
-:root[data-theme="light"] {
-  --bg-primary: #f8f9fb;
-  --bg-surface: #ffffff;
-  --bg-elevated: #f0f2f5;
-  --bg-input: #ffffff;
-  --border: #d8dce6;
-  --border-focus: #4f8ff7;
-  --text-primary: #1a1d27;
-  --text-secondary: #5c6478;
-  --text-tertiary: #8891a5;
-  --accent: #4f8ff7;
-  --accent-hover: #3a7de6;
-  --accent-bg: #eef4ff;
-  --success: #16a34a;
-  --success-bg: #f0fdf4;
-  --warning: #d97706;
-  --warning-bg: #fffbeb;
-  --error: #dc2626;
-  --error-bg: #fef2f2;
-  --diff-ins: #dcfce7;
-  --diff-del: #fee2e2;
-  --diff-sub: #fef3c7;
-  --shadow: 0 1px 3px rgba(0,0,0,0.08);
-  --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
-}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--ground);color:var(--text);font-size:13px;line-height:1.5;min-height:100vh}
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font-size: 13px;
-  line-height: 1.5;
-  min-height: 100vh;
-}
+/* LED */
+@keyframes pulse-glow{0%,100%{box-shadow:0 0 4px var(--accent),0 0 8px var(--accent-dim)}50%{box-shadow:0 0 6px var(--accent),0 0 14px var(--accent-glow)}}
+.led{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.led-off{background:var(--error);box-shadow:0 0 4px var(--error)}
+.led-connecting{background:var(--warn);box-shadow:0 0 4px var(--warn);animation:pulse-glow 1.2s ease-in-out infinite}
+.led-on{background:var(--accent);animation:pulse-glow 2s ease-in-out infinite}
 
-/* Top bar */
-.topbar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 10px 20px;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border);
-  position: sticky; top: 0; z-index: 100;
-}
-.topbar h1 {
-  font-size: 15px; font-weight: 700;
-  white-space: nowrap; letter-spacing: -0.3px;
-}
-.topbar h1 span { color: var(--accent); }
-.server-input {
-  display: flex; align-items: center; gap: 8px; flex: 1; max-width: 500px;
-}
-.server-input input {
-  flex: 1; padding: 6px 10px; border: 1px solid var(--border);
-  border-radius: var(--radius-sm); background: var(--bg-input);
-  color: var(--text-primary); font-family: var(--mono); font-size: 12px;
-}
-.server-input input:focus { outline: none; border-color: var(--border-focus); }
-.status-pill {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600;
-  letter-spacing: 0.3px; text-transform: uppercase; white-space: nowrap;
-}
-.status-pill.offline { background: var(--error-bg); color: var(--error); }
-.status-pill.online { background: var(--success-bg); color: var(--success); }
-.status-pill.connecting { background: var(--warning-bg); color: var(--warning); }
-.status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* Topbar */
+.topbar{display:flex;align-items:center;gap:10px;padding:8px 16px;background:var(--surface);border-bottom:1px solid var(--border)}
+.logo{font-family:var(--mono);font-size:14px;font-weight:800;letter-spacing:-.5px;white-space:nowrap}
+.logo em{font-style:normal;color:var(--accent)}
+.server-group{display:flex;align-items:center;gap:6px;flex:1;max-width:420px}
+.server-group input{flex:1;padding:5px 8px;background:var(--elevated);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:11px}
+.server-group input:focus{outline:none;border-color:var(--border-focus)}
+.mode-badge{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:10px;background:var(--accent-dim);color:var(--accent);font-weight:700;letter-spacing:.5px;text-transform:uppercase}
 
 /* Buttons */
-.btn {
-  padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--bg-surface); color: var(--text-primary); cursor: pointer;
-  font-size: 12px; font-weight: 600; white-space: nowrap; transition: all 0.15s;
-}
-.btn:hover { border-color: var(--accent); color: var(--accent); }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.btn-primary {
-  background: var(--accent); color: #fff; border-color: var(--accent);
-}
-.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
-.btn-sm { padding: 4px 10px; font-size: 11px; }
-.btn-danger { color: var(--error); border-color: var(--error); }
-.btn-danger:hover { background: var(--error-bg); }
+.btn{padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);cursor:pointer;font-size:11px;font-weight:600;font-family:var(--mono);transition:all .12s;white-space:nowrap}
+.btn:active{transform:scale(.97)}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn:disabled{opacity:.35;cursor:not-allowed;transform:none}
+.btn-go{background:var(--accent);color:#080a10;border-color:var(--accent);font-weight:800}
+.btn-go:hover{background:#00ffb3;border-color:#00ffb3;color:#080a10}
+.btn-stop{color:var(--error);border-color:var(--error)}
+.btn-stop:hover{background:var(--error-dim)}
+.btn-sm{padding:3px 8px;font-size:10px}
 
 /* Tabs */
-.tabs {
-  display: flex; gap: 0; border-bottom: 1px solid var(--border);
-  background: var(--bg-surface); padding: 0 20px;
-}
-.tab {
-  padding: 10px 18px; cursor: pointer; font-size: 13px; font-weight: 500;
-  color: var(--text-secondary); border-bottom: 2px solid transparent;
-  transition: all 0.15s;
-}
-.tab:hover { color: var(--text-primary); }
-.tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.tabs{display:flex;gap:0;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px}
+.tab{padding:8px 16px;cursor:pointer;font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text3);border-bottom:2px solid transparent;transition:all .12s;letter-spacing:.3px}
+.tab:hover{color:var(--text2)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 
-/* Main layout */
-.main { padding: 20px; max-width: 1400px; margin: 0 auto; }
-.panel { display: none; }
-.panel.active { display: block; }
+/* Layout */
+.main{padding:16px;max-width:1400px;margin:0 auto}
+.panel{display:none}.panel.active{display:block}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:14px;transition:box-shadow .2s}
+.card:hover{box-shadow:0 0 0 1px var(--border),0 2px 12px rgba(0,0,0,.15)}
+.card-title{font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:10px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:800px){.grid-2{grid-template-columns:1fr}}
 
-/* Cards */
-.card {
-  background: var(--bg-surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
-  box-shadow: var(--shadow);
-}
-.card-title {
-  font-size: 13px; font-weight: 700; margin-bottom: 12px;
-  text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);
-}
-
-/* Forms */
-.form-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.form-row:last-child { margin-bottom: 0; }
-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); min-width: 100px; }
-input[type="text"], input[type="number"], input[type="url"], select, textarea {
-  padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--bg-input); color: var(--text-primary); font-size: 13px; flex: 1;
-}
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--border-focus); }
-textarea { font-family: var(--mono); font-size: 12px; resize: vertical; min-height: 60px; }
-input[type="range"] { flex: 1; }
+/* Form */
+.form-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.form-row:last-child{margin-bottom:0}
+label{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text2);min-width:80px}
+input[type="text"],input[type="number"],input[type="url"],select,textarea{padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--elevated);color:var(--text);font-size:12px;flex:1}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--border-focus)}
+textarea{font-family:var(--mono);font-size:11px;resize:vertical;min-height:60px}
 
 /* Drop zone */
-.drop-zone {
-  border: 2px dashed var(--border); border-radius: var(--radius);
-  padding: 30px; text-align: center; color: var(--text-tertiary);
-  cursor: pointer; transition: all 0.2s;
-}
-.drop-zone:hover, .drop-zone.dragover {
-  border-color: var(--accent); background: var(--accent-bg); color: var(--accent);
-}
-.drop-zone input[type="file"] { display: none; }
+@keyframes scan-line{0%{top:-2px}100%{top:100%}}
+.drop-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:24px;text-align:center;color:var(--text3);cursor:pointer;transition:all .2s;position:relative;overflow:hidden;font-family:var(--mono);font-size:12px}
+.drop-zone:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.drop-zone.dragover{border-color:var(--accent);background:var(--accent-dim)}
+.drop-zone.dragover::after{content:'';position:absolute;left:0;width:100%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan-line .8s linear infinite}
+.drop-zone input[type="file"]{display:none}
 
-/* Stats bar */
-.stats-bar {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px;
-  margin-bottom: 16px;
-}
-.stat-card {
-  background: var(--bg-surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 12px; text-align: center;
-}
-.stat-value {
-  font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums;
-  font-family: var(--mono); letter-spacing: -0.5px;
-}
-.stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); margin-top: 2px; }
-.stat-value.good { color: var(--success); }
-.stat-value.warn { color: var(--warning); }
-.stat-value.bad { color: var(--error); }
+/* VU Meter */
+.vu-meter{height:6px;background:var(--elevated);border-radius:3px;overflow:hidden;position:relative}
+.vu-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--vu-green) 0%,var(--vu-green) 60%,var(--vu-yellow) 80%,var(--vu-red) 100%);transition:width .3s ease;position:relative}
+.vu-fill::after{content:'';position:absolute;right:0;top:0;width:2px;height:100%;background:#fff;opacity:.6;border-radius:1px}
+.vu-label{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:9px;font-weight:700;color:var(--text);text-shadow:0 0 4px var(--ground)}
+
+/* Stats */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px;text-align:center}
+.stat-val{font-family:var(--mono);font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.stat-lbl{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-top:2px}
+.c-good{color:var(--accent)}.c-warn{color:var(--warn)}.c-bad{color:var(--error)}.c-blue{color:var(--blue)}
 
 /* Tables */
-.table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-th {
-  text-align: left; padding: 8px 10px; font-size: 10px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary);
-  border-bottom: 2px solid var(--border); white-space: nowrap;
-}
-td {
-  padding: 7px 10px; border-bottom: 1px solid var(--border);
-  font-variant-numeric: tabular-nums;
-}
-tr:hover td { background: var(--bg-elevated); }
-.mono { font-family: var(--mono); font-size: 11px; }
-.text-right { text-align: right; }
-.text-center { text-align: center; }
-.truncate { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px}
+th{text-align:left;padding:6px 8px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);border-bottom:2px solid var(--border);white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}
+tr:hover td{background:var(--elevated)}
+.text-r{text-align:right}.text-c{text-align:center}
+.trunc{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* WER diff highlights */
-.wer-sub { background: var(--diff-sub); padding: 1px 3px; border-radius: 2px; }
-.wer-del { background: var(--diff-del); padding: 1px 3px; border-radius: 2px; text-decoration: line-through; }
-.wer-ins { background: var(--diff-ins); padding: 1px 3px; border-radius: 2px; }
+/* WER colors */
+.wer-s{background:var(--warn-dim);color:var(--warn);padding:1px 3px;border-radius:2px}
+.wer-d{background:var(--error-dim);color:var(--error);padding:1px 3px;border-radius:2px;text-decoration:line-through}
+.wer-i{background:var(--accent-dim);color:var(--accent);padding:1px 3px;border-radius:2px;text-decoration:underline}
 
-/* Gate badges */
-.gate-pass { color: var(--success); font-weight: 700; }
-.gate-fail { color: var(--error); font-weight: 700; }
-.gate-warn { color: var(--warning); font-weight: 700; }
+/* Waveform canvas */
+.waveform-wrap{position:relative;margin-bottom:8px}
+.waveform-wrap canvas{width:100%;height:60px;border-radius:var(--radius);display:block}
+.waveform-info{position:absolute;right:6px;bottom:4px;font-family:var(--mono);font-size:10px;color:var(--accent);opacity:.8}
 
-/* Progress */
-.progress-bar {
-  height: 4px; background: var(--bg-elevated); border-radius: 2px; overflow: hidden;
-}
-.progress-fill {
-  height: 100%; background: var(--accent); border-radius: 2px;
-  transition: width 0.3s ease;
-}
+/* Stream slots */
+.stream-slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+.stream-slot{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px;min-height:80px;transition:border-color .2s}
+.stream-slot.s-active{border-color:var(--accent)}
+.stream-slot.s-done{border-color:var(--blue)}
+.stream-slot.s-error{border-color:var(--error)}
+.stream-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-family:var(--mono);font-size:10px;color:var(--text3)}
+.stream-hdr .dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px}
+.stream-txt{font-family:var(--mono);font-size:11px;line-height:1.6;word-break:break-word}
+.stream-partial{color:var(--text3);transition:color .4s,opacity .4s}
+.stream-final{color:var(--text);font-weight:500}
 
-/* Streaming live view */
-.stream-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-.stream-slot {
-  background: var(--bg-surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 12px; min-height: 100px;
-}
-.stream-slot.active { border-color: var(--accent); }
-.stream-slot.done { border-color: var(--success); }
-.stream-slot.error { border-color: var(--error); }
-.stream-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 8px; font-size: 11px; color: var(--text-tertiary);
-}
-.stream-text { font-family: var(--mono); font-size: 12px; line-height: 1.6; word-break: break-word; }
-.stream-partial { color: var(--text-tertiary); font-style: italic; }
+/* Heatmap */
+.heatmap{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.heat-cell{width:90px;padding:8px;border-radius:var(--radius);text-align:center;font-family:var(--mono);font-size:11px;border:2px solid transparent;cursor:default;transition:all .15s}
+.heat-cell:hover{transform:scale(1.05)}
+.heat-cell .hc-c{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.heat-cell .hc-rps{font-size:16px;font-weight:800}
+.heat-cell .hc-detail{font-size:9px;margin-top:2px}
+
+/* Latency histogram */
+.histogram-wrap{position:relative;margin-bottom:8px}
+.histogram-wrap canvas{width:100%;height:80px;display:block;border-radius:var(--radius)}
 
 /* File list */
-.file-list { max-height: 200px; overflow-y: auto; }
-.file-item {
-  display: flex; align-items: center; gap: 8px; padding: 4px 8px;
-  border-radius: var(--radius-sm); font-size: 12px;
-}
-.file-item:hover { background: var(--bg-elevated); }
-.file-item .name { flex: 1; font-family: var(--mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-item .size { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.file-item .remove { cursor: pointer; color: var(--error); font-size: 14px; }
+.file-list{max-height:180px;overflow-y:auto}
+.file-item{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:var(--radius);font-family:var(--mono);font-size:11px}
+.file-item:hover{background:var(--elevated)}
+.file-item .fname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-item .fsize{color:var(--text3);font-variant-numeric:tabular-nums}
+.file-item .fremove{cursor:pointer;color:var(--error);font-size:13px}
 
-/* Grid helpers */
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+/* Expandable rows */
+.expand-row{cursor:pointer}
+.expand-row td:first-child::before{content:'>';display:inline-block;transition:transform .15s;margin-right:4px;color:var(--text3)}
+.expand-row.open td:first-child::before{transform:rotate(90deg)}
+.expand-detail{display:none}
+.expand-detail.open{display:table-row}
+.expand-detail td{padding:8px;background:var(--elevated);border-bottom:1px solid var(--border)}
 
-/* Log area */
-.log {
-  background: var(--bg-elevated); border-radius: var(--radius-sm);
-  padding: 10px; font-family: var(--mono); font-size: 11px;
-  max-height: 200px; overflow-y: auto; line-height: 1.8;
-  color: var(--text-secondary);
-}
-.log .error { color: var(--error); }
-.log .success { color: var(--success); }
-.log .info { color: var(--accent); }
+/* Log */
+.log{background:var(--elevated);border-radius:var(--radius);padding:8px;font-family:var(--mono);font-size:10px;max-height:180px;overflow-y:auto;line-height:1.8;color:var(--text2)}
+.log .l-err{color:var(--error)}.log .l-ok{color:var(--accent)}.log .l-info{color:var(--blue)}
 
-/* Report download */
-.download-bar {
-  display: flex; gap: 8px; margin-top: 12px; padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
+/* Downloads */
+.dl-bar{display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+
+/* Gate badges */
+.g-pass{color:var(--accent);font-weight:700}.g-fail{color:var(--error);font-weight:700}
 </style>
 
-<!-- Top Bar -->
+<!-- ===== TOPBAR ===== -->
 <div class="topbar">
-  <h1>HighPerf<span>ASR</span></h1>
-  <div class="server-input">
-    <input type="text" id="serverUrl" value="http://localhost:8000" placeholder="Server URL">
-    <button class="btn btn-primary btn-sm" id="connectBtn" onclick="connectServer()">Connect</button>
+  <div class="logo">High<em>Perf</em>ASR</div>
+  <div class="server-group">
+    <div class="led led-off" id="led"></div>
+    <input type="text" id="serverUrl" value="http://localhost:8000" spellcheck="false">
+    <button class="btn btn-sm" onclick="connectServer()">connect</button>
   </div>
-  <div class="status-pill offline" id="statusPill">
-    <span class="status-dot"></span>
-    <span id="statusText">Offline</span>
-  </div>
+  <span class="mode-badge" id="modeBadge" style="display:none"></span>
   <div style="flex:1"></div>
-  <span id="serverMode" style="font-size:11px;color:var(--text-tertiary)"></span>
+  <span id="uptimeLabel" style="font-family:var(--mono);font-size:10px;color:var(--text3)"></span>
 </div>
 
-<!-- Tabs -->
+<!-- ===== TABS ===== -->
 <div class="tabs">
   <div class="tab active" onclick="switchTab('batch')">Batch</div>
-  <div class="tab" onclick="switchTab('streaming')">Streaming</div>
+  <div class="tab" onclick="switchTab('stream')">Stream</div>
   <div class="tab" onclick="switchTab('sweep')">Sweep</div>
   <div class="tab" onclick="switchTab('report')">Report</div>
 </div>
 
 <div class="main">
 
-<!-- ===== BATCH PANEL ===== -->
+<!-- ===== BATCH ===== -->
 <div class="panel active" id="panel-batch">
   <div class="grid-2">
     <div>
       <div class="card">
-        <div class="card-title">Audio Input</div>
-        <div class="drop-zone" id="batchDropZone" onclick="document.getElementById('batchFileInput').click()">
-          <input type="file" id="batchFileInput" accept="audio/*,.wav,.flac,.mp3" multiple>
-          Drop audio files here or click to browse
+        <div class="card-title">Audio Source</div>
+        <div class="drop-zone" id="batchDrop" onclick="document.getElementById('batchFiles').click()">
+          <input type="file" id="batchFiles" accept="audio/*,.wav,.flac,.mp3" multiple>
+          drop audio files or click to browse
         </div>
-        <div style="text-align:center;margin:8px 0;color:var(--text-tertiary);font-size:11px">— or paste URL —</div>
+        <div style="text-align:center;margin:6px 0;font-family:var(--mono);font-size:10px;color:var(--text3)">or paste URL</div>
         <div class="form-row">
-          <input type="url" id="audioUrl" placeholder="https://example.com/audio.wav" style="flex:1">
-          <button class="btn btn-sm" onclick="addAudioUrl()">Add</button>
+          <input type="url" id="audioUrl" placeholder="https://...audio.wav" style="flex:1">
+          <button class="btn btn-sm" onclick="addAudioUrl()">+add</button>
         </div>
         <div class="file-list" id="batchFileList"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Reference Transcripts (optional)</div>
-        <textarea id="refTranscripts" placeholder="filename.wav|reference transcript text&#10;audio2.wav|another reference line&#10;&#10;Pipe-separated: filename|transcript"></textarea>
-        <div style="margin-top:6px">
-          <button class="btn btn-sm" onclick="loadPresetRefs()">Load LibriSpeech Samples</button>
+        <div class="waveform-wrap" id="batchWaveWrap" style="display:none">
+          <canvas id="batchWaveCanvas"></canvas>
+          <div class="waveform-info" id="batchWaveInfo"></div>
         </div>
       </div>
-
       <div class="card">
-        <div class="card-title">Settings</div>
+        <div class="card-title">Reference Transcripts</div>
+        <textarea id="refTranscripts" placeholder="filename.wav|reference text&#10;audio2.wav|another line"></textarea>
+        <div style="margin-top:4px"><button class="btn btn-sm" onclick="loadPresetRefs()">load LibriSpeech samples</button></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Config</div>
         <div class="form-row">
-          <label>Concurrency</label>
-          <input type="range" id="batchConcurrency" min="1" max="64" value="1" oninput="document.getElementById('concLabel').textContent=this.value">
-          <span id="concLabel" class="mono" style="min-width:24px;text-align:right">1</span>
+          <label>concurrency</label>
+          <input type="range" id="batchConc" min="1" max="64" value="1" oninput="$id('concLbl').textContent=this.value">
+          <span id="concLbl" style="font-family:var(--mono);font-size:12px;min-width:20px;text-align:right">1</span>
         </div>
-        <div class="form-row">
-          <label>Timestamps</label>
-          <select id="batchTimestamps" style="max-width:100px">
-            <option value="false">Off</option>
-            <option value="true">On</option>
-          </select>
-        </div>
-        <div style="margin-top:12px;display:flex;gap:8px">
-          <button class="btn btn-primary" id="batchRunBtn" onclick="runBatch()" disabled>Run Batch</button>
-          <button class="btn btn-danger btn-sm" id="batchStopBtn" onclick="stopBatch()" style="display:none">Stop</button>
+        <div style="margin-top:10px;display:flex;gap:6px">
+          <button class="btn btn-go" id="batchGoBtn" onclick="runBatch()" disabled>Run Batch</button>
+          <button class="btn btn-stop btn-sm" id="batchStopBtn" onclick="stopBatch()" style="display:none">Stop</button>
         </div>
       </div>
     </div>
-
     <div>
-      <div class="stats-bar">
-        <div class="stat-card"><div class="stat-value mono" id="batchCompleted">0</div><div class="stat-label">Completed</div></div>
-        <div class="stat-card"><div class="stat-value mono" id="batchFailed">0</div><div class="stat-label">Failed</div></div>
-        <div class="stat-card"><div class="stat-value mono" id="batchRps">—</div><div class="stat-label">RPS</div></div>
-        <div class="stat-card"><div class="stat-value mono" id="batchP50">—</div><div class="stat-label">p50 (ms)</div></div>
-        <div class="stat-card"><div class="stat-value mono" id="batchWer">—</div><div class="stat-label">WER %</div></div>
+      <div class="stats-row">
+        <div class="stat"><div class="stat-val" id="bDone">0</div><div class="stat-lbl">Done</div></div>
+        <div class="stat"><div class="stat-val" id="bFail">0</div><div class="stat-lbl">Fail</div></div>
+        <div class="stat"><div class="stat-val c-blue" id="bRps">—</div><div class="stat-lbl">RPS</div></div>
+        <div class="stat"><div class="stat-val" id="bP50">—</div><div class="stat-lbl">p50 ms</div></div>
+        <div class="stat"><div class="stat-val" id="bWer">—</div><div class="stat-lbl">WER %</div></div>
       </div>
-
+      <div class="card" style="padding:8px 14px">
+        <div class="vu-meter" style="position:relative">
+          <div class="vu-fill" id="batchVu" style="width:0%"></div>
+          <span class="vu-label" id="batchVuLbl">0%</span>
+        </div>
+      </div>
       <div class="card">
-        <div class="progress-bar"><div class="progress-fill" id="batchProgress" style="width:0%"></div></div>
+        <div class="card-title">Latency Distribution</div>
+        <div class="histogram-wrap"><canvas id="latencyHist"></canvas></div>
       </div>
-
       <div class="card">
         <div class="card-title">Results</div>
         <div class="table-wrap">
-          <table>
-            <thead><tr>
-              <th>#</th><th>File</th><th>Duration</th><th>Latency</th>
-              <th>Transcript</th><th>WER</th><th>Status</th>
-            </tr></thead>
-            <tbody id="batchResults"></tbody>
-          </table>
+          <table><thead><tr><th>#</th><th>File</th><th>Latency</th><th>Transcript</th><th>WER</th><th>St</th></tr></thead>
+          <tbody id="batchTbody"></tbody></table>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ===== STREAMING PANEL ===== -->
-<div class="panel" id="panel-streaming">
+<!-- ===== STREAM ===== -->
+<div class="panel" id="panel-stream">
   <div class="card">
-    <div class="card-title">Streaming Configuration</div>
+    <div class="card-title">Streaming Config</div>
     <div class="form-row">
-      <label>Input</label>
-      <select id="streamInputMode" onchange="toggleStreamInput()">
-        <option value="file">Audio File</option>
-        <option value="mic">Microphone</option>
-      </select>
+      <label>input</label>
+      <select id="streamMode" onchange="toggleStreamInput()"><option value="file">Audio File</option><option value="mic">Microphone</option></select>
     </div>
     <div class="form-row" id="streamFileRow">
-      <label>File</label>
-      <input type="file" id="streamFile" accept="audio/*,.wav">
+      <label>file</label>
+      <input type="file" id="streamFile" accept=".wav">
     </div>
     <div class="form-row">
-      <label>Streams</label>
-      <input type="range" id="streamCount" min="1" max="32" value="1" oninput="document.getElementById('streamCountLabel').textContent=this.value">
-      <span id="streamCountLabel" class="mono" style="min-width:24px;text-align:right">1</span>
+      <label>streams</label>
+      <input type="range" id="streamN" min="1" max="32" value="1" oninput="$id('streamNLbl').textContent=this.value">
+      <span id="streamNLbl" style="font-family:var(--mono);font-size:12px;min-width:20px;text-align:right">1</span>
     </div>
     <div class="form-row">
-      <label>Chunk (ms)</label>
-      <input type="number" id="streamChunkMs" value="160" min="40" max="1000" step="40" style="max-width:80px">
+      <label>chunk ms</label>
+      <input type="number" id="streamChunk" value="160" min="40" max="1000" step="40" style="max-width:70px">
     </div>
-    <div style="margin-top:12px;display:flex;gap:8px">
-      <button class="btn btn-primary" id="streamStartBtn" onclick="startStreaming()" disabled>Start Streaming</button>
-      <button class="btn btn-danger btn-sm" id="streamStopBtn" onclick="stopStreaming()" style="display:none">Stop All</button>
+    <div style="margin-top:10px;display:flex;gap:6px">
+      <button class="btn btn-go" id="streamGoBtn" onclick="startStreaming()" disabled>Start Streaming</button>
+      <button class="btn btn-stop btn-sm" id="streamStopBtn" onclick="stopStreaming()" style="display:none">Stop All</button>
     </div>
   </div>
-
-  <div class="stats-bar" style="margin-top:16px">
-    <div class="stat-card"><div class="stat-value mono" id="streamActive">0</div><div class="stat-label">Active</div></div>
-    <div class="stat-card"><div class="stat-value mono" id="streamDone">0</div><div class="stat-label">Done</div></div>
-    <div class="stat-card"><div class="stat-value mono" id="streamErrors">0</div><div class="stat-label">Errors</div></div>
-    <div class="stat-card"><div class="stat-value mono" id="streamRtfx">—</div><div class="stat-label">RTFx</div></div>
+  <div class="stats-row" style="margin-top:14px">
+    <div class="stat"><div class="stat-val c-good" id="sActive">0</div><div class="stat-lbl">Active</div></div>
+    <div class="stat"><div class="stat-val c-blue" id="sDone">0</div><div class="stat-lbl">Done</div></div>
+    <div class="stat"><div class="stat-val" id="sErr">0</div><div class="stat-lbl">Errors</div></div>
   </div>
-
   <div class="stream-slots" id="streamSlots"></div>
 </div>
 
-<!-- ===== SWEEP PANEL ===== -->
+<!-- ===== SWEEP ===== -->
 <div class="panel" id="panel-sweep">
   <div class="grid-2">
     <div>
       <div class="card">
         <div class="card-title">Dataset</div>
         <div class="form-row">
-          <label>Preset</label>
-          <select id="sweepPreset" onchange="onPresetChange()">
-            <option value="custom">Custom (uploaded files)</option>
-            <option value="librispeech-demo">LibriSpeech Demo (10 samples)</option>
-          </select>
+          <label>preset</label>
+          <select id="sweepPreset" onchange="onPresetChange()"><option value="custom">Custom files</option><option value="librispeech">LibriSpeech Demo</option></select>
         </div>
-        <div id="sweepCustomUpload">
-          <div class="drop-zone" style="padding:15px;margin-top:8px" onclick="document.getElementById('sweepFileInput').click()">
-            <input type="file" id="sweepFileInput" accept="audio/*,.wav,.flac,.mp3" multiple>
-            Drop audio files for sweep
+        <div id="sweepUpload">
+          <div class="drop-zone" style="padding:12px;margin-top:6px" onclick="document.getElementById('sweepFileIn').click()">
+            <input type="file" id="sweepFileIn" accept="audio/*,.wav,.flac,.mp3" multiple>
+            drop sweep files
           </div>
-          <div class="file-list" id="sweepFileList" style="margin-top:8px"></div>
+          <div class="file-list" id="sweepFileList" style="margin-top:6px"></div>
         </div>
       </div>
-
       <div class="card">
-        <div class="card-title">Sweep Configuration</div>
+        <div class="card-title">Sweep Config</div>
         <div class="form-row">
-          <label>Mode</label>
-          <select id="sweepMode">
-            <option value="batch">Batch</option>
-            <option value="streaming">Streaming</option>
-          </select>
+          <label>mode</label>
+          <select id="sweepType"><option value="batch">Batch</option><option value="streaming">Streaming</option></select>
         </div>
         <div class="form-row">
-          <label>Concurrency</label>
-          <input type="text" id="sweepLevels" value="1,4,8,16,32" placeholder="1,4,8,16,32,64" style="font-family:var(--mono);font-size:12px">
+          <label>levels</label>
+          <input type="text" id="sweepLevels" value="1,4,8,16,32" style="font-family:var(--mono);font-size:11px">
         </div>
         <div class="form-row">
-          <label>Sustained rounds</label>
-          <input type="number" id="sweepRounds" value="2" min="1" max="10" style="max-width:60px">
+          <label>rounds</label>
+          <input type="number" id="sweepRounds" value="2" min="1" max="10" style="max-width:50px">
         </div>
-        <div style="margin-top:12px;display:flex;gap:8px">
-          <button class="btn btn-primary" id="sweepRunBtn" onclick="runSweep()" disabled>Run Sweep</button>
-          <button class="btn btn-danger btn-sm" id="sweepStopBtn" onclick="stopSweep()" style="display:none">Stop</button>
+        <div style="margin-top:10px;display:flex;gap:6px">
+          <button class="btn btn-go" id="sweepGoBtn" onclick="runSweep()" disabled>Run Sweep</button>
+          <button class="btn btn-stop btn-sm" id="sweepStopBtn" onclick="stopSweep()" style="display:none">Stop</button>
         </div>
       </div>
     </div>
-
     <div>
-      <div class="card">
-        <div class="card-title">Sweep Progress</div>
-        <div class="progress-bar"><div class="progress-fill" id="sweepProgress" style="width:0%"></div></div>
-        <div id="sweepStatus" style="margin-top:8px;font-size:12px;color:var(--text-secondary)">Ready</div>
+      <div class="card" style="padding:8px 14px">
+        <div class="vu-meter" style="position:relative"><div class="vu-fill" id="sweepVu" style="width:0%"></div><span class="vu-label" id="sweepVuLbl">0%</span></div>
+        <div id="sweepStatus" style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--text2)">Ready</div>
       </div>
-
+      <div class="card">
+        <div class="card-title">Heatmap</div>
+        <div class="heatmap" id="sweepHeatmap"></div>
+      </div>
       <div class="card">
         <div class="card-title">Results</div>
         <div class="table-wrap">
-          <table>
-            <thead><tr><th>c</th><th>RPS</th><th>p50</th><th>p99</th><th>Wall (s)</th><th>Fail</th></tr></thead>
-            <tbody id="sweepResults"></tbody>
-          </table>
+          <table><thead><tr><th>c</th><th>RPS</th><th>p50</th><th>p99</th><th>Wall</th><th>Fail</th></tr></thead>
+          <tbody id="sweepTbody"></tbody></table>
         </div>
       </div>
-
-      <div class="card">
-        <div class="card-title">Log</div>
-        <div class="log" id="sweepLog"></div>
-      </div>
+      <div class="card"><div class="card-title">Log</div><div class="log" id="sweepLog"></div></div>
     </div>
   </div>
 </div>
 
-<!-- ===== REPORT PANEL ===== -->
+<!-- ===== REPORT ===== -->
 <div class="panel" id="panel-report">
   <div class="card">
     <div class="card-title">Benchmark Report</div>
-    <div id="reportEmpty" style="text-align:center;padding:40px;color:var(--text-tertiary)">
-      Run a batch test or sweep to generate a report.
-    </div>
-    <div id="reportContent" style="display:none">
-      <div class="stats-bar">
-        <div class="stat-card"><div class="stat-value mono" id="rptTotalFiles">0</div><div class="stat-label">Files</div></div>
-        <div class="stat-card"><div class="stat-value mono" id="rptWer">—</div><div class="stat-label">WER %</div></div>
-        <div class="stat-card"><div class="stat-value mono" id="rptPeakRps">—</div><div class="stat-label">Peak RPS</div></div>
-        <div class="stat-card"><div class="stat-value mono" id="rptFailures">0</div><div class="stat-label">Failures</div></div>
+    <div id="rptEmpty" style="text-align:center;padding:30px;color:var(--text3);font-family:var(--mono)">Run a benchmark to generate a report.</div>
+    <div id="rptContent" style="display:none">
+      <div class="stats-row">
+        <div class="stat"><div class="stat-val" id="rFiles">0</div><div class="stat-lbl">Files</div></div>
+        <div class="stat"><div class="stat-val" id="rWer">—</div><div class="stat-lbl">WER %</div></div>
+        <div class="stat"><div class="stat-val c-blue" id="rRps">—</div><div class="stat-lbl">Peak RPS</div></div>
+        <div class="stat"><div class="stat-val" id="rFail">0</div><div class="stat-lbl">Failures</div></div>
       </div>
-
-      <div class="card-title" style="margin-top:16px">Quality Gates</div>
-      <div class="table-wrap" style="margin-bottom:16px">
-        <table>
-          <thead><tr><th>Gate</th><th>Threshold</th><th>Actual</th><th>Result</th></tr></thead>
-          <tbody id="rptGates"></tbody>
-        </table>
+      <div class="card-title" style="margin-top:14px">Quality Gates</div>
+      <div class="table-wrap" style="margin-bottom:14px">
+        <table><thead><tr><th>Gate</th><th>Threshold</th><th>Actual</th><th>Result</th></tr></thead>
+        <tbody id="rptGates"></tbody></table>
       </div>
-
       <div class="card-title">Per-Utterance Transcripts</div>
-      <div style="margin-bottom:8px">
-        <input type="text" id="rptFilter" placeholder="Filter by filename..." oninput="filterTranscripts()" style="max-width:300px">
-      </div>
+      <div style="margin-bottom:6px"><input type="text" id="rptFilter" placeholder="filter by filename..." oninput="filterReport()" style="max-width:260px"></div>
       <div class="table-wrap">
-        <table>
-          <thead><tr><th>#</th><th>File</th><th>Reference</th><th>Hypothesis</th><th>WER</th><th>S</th><th>I</th><th>D</th></tr></thead>
-          <tbody id="rptTranscripts"></tbody>
-        </table>
+        <table><thead><tr><th></th><th>File</th><th>Reference</th><th>Hypothesis</th><th>WER</th><th>S</th><th>I</th><th>D</th></tr></thead>
+        <tbody id="rptTbody"></tbody></table>
       </div>
-
-      <div class="download-bar">
-        <button class="btn btn-sm" onclick="downloadJSON()">Download JSON Report</button>
-        <button class="btn btn-sm" onclick="downloadCSV()">Download Transcript CSV</button>
-        <button class="btn btn-sm" onclick="downloadMarkdown()">Download Markdown</button>
+      <div class="dl-bar">
+        <button class="btn btn-sm" onclick="dlJSON()">JSON Report</button>
+        <button class="btn btn-sm" onclick="dlCSV()">Transcript CSV</button>
+        <button class="btn btn-sm" onclick="dlMD()">Markdown</button>
       </div>
     </div>
   </div>
 </div>
-
-</div><!-- /main -->
+</div>
 
 <script>
-// ===== STATE =====
-const state = {
-  connected: false,
-  serverInfo: null,
-  batchFiles: [],
-  batchResults: [],
-  batchRunning: false,
-  batchAbort: null,
-  streamingSessions: [],
-  streamingRunning: false,
-  sweepFiles: [],
-  sweepResults: [],
-  sweepRunning: false,
-  sweepAbort: null,
-  references: {},
-  reportData: null,
-};
-
-// ===== LIBRISPEECH DEMO REFERENCES =====
-const LIBRISPEECH_DEMO_REFS = {
-  '1089-134686-0000.flac': 'he hoped there would be stew for dinner turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flour fattened sauce',
-  '1089-134686-0001.flac': 'stuff it into you his belly counselled him',
-  '1089-134686-0002.flac': 'after early nightfall the yellow lamps would light up here and there the squalid quarter of the brothels',
-  '1089-134686-0003.flac': 'hello bertie any good in your mind',
-  '1089-134686-0004.flac': 'number ten fresh nelly is waiting on you good night husband',
-  '1221-135766-0000.flac': 'god as a direct consequence of the sin which man thus punished had died',
-  '1221-135766-0001.flac': 'no great man lives in vain the history of the world is but the biography of great men',
-  '1221-135766-0002.flac': 'the survey of certain books which were never combated and are now combated',
-  '1221-135766-0003.flac': 'the survey of certain books which were never completed though they are now completed',
-  '1221-135766-0004.flac': 'he had written them to refute a book which had never been read',
-};
-
-// ===== SERVER CONNECTION =====
-async function connectServer() {
-  const url = document.getElementById('serverUrl').value.replace(/\/+$/, '');
-  setPill('connecting', 'Connecting...');
-  try {
-    const r = await fetch(`${url}/health`, { signal: AbortSignal.timeout(5000) });
-    const data = await r.json();
-    if (data.status === 'ok' || data.ready) {
-      state.connected = true;
-      state.serverInfo = data;
-      setPill('online', data.mode || 'Online');
-      document.getElementById('serverMode').textContent =
-        `mode: ${data.mode || '?'} · uptime: ${Math.round(data.uptime_seconds || 0)}s`;
-      enableControls(true);
-    } else {
-      throw new Error('Server not ready');
-    }
-  } catch (e) {
-    state.connected = false;
-    setPill('offline', 'Offline');
-    document.getElementById('serverMode').textContent = e.message;
-    enableControls(false);
-  }
-}
-
-function setPill(cls, text) {
-  const pill = document.getElementById('statusPill');
-  pill.className = `status-pill ${cls}`;
-  document.getElementById('statusText').textContent = text;
-}
-
-function enableControls(on) {
-  document.getElementById('batchRunBtn').disabled = !on;
-  document.getElementById('streamStartBtn').disabled = !on;
-  document.getElementById('sweepRunBtn').disabled = !on;
-}
-
-// ===== TAB SWITCHING =====
-function switchTab(name) {
-  document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('active', t.textContent.toLowerCase() === name);
-  });
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.getElementById(`panel-${name}`).classList.add('active');
-}
-
-// ===== FILE MANAGEMENT =====
-function setupDropZone(zoneId, inputId, list, listId) {
-  const zone = document.getElementById(zoneId);
-  const input = document.getElementById(inputId);
-  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
-  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault(); zone.classList.remove('dragover');
-    addFiles(Array.from(e.dataTransfer.files), list, listId);
-  });
-  input.addEventListener('change', () => {
-    addFiles(Array.from(input.files), list, listId);
-    input.value = '';
-  });
-}
-
-function addFiles(files, list, listId) {
-  files.forEach(f => {
-    if (!list.find(x => x.name === f.name)) list.push(f);
-  });
-  renderFileList(list, listId);
-}
-
-function renderFileList(list, listId) {
-  const el = document.getElementById(listId);
-  el.innerHTML = list.map((f, i) => `
-    <div class="file-item">
-      <span class="name">${esc(f.name)}</span>
-      <span class="size">${(f.size / 1024).toFixed(0)} KB</span>
-      <span class="remove" onclick="removeFile(${i}, '${listId}')">&times;</span>
-    </div>
-  `).join('');
-}
-
-function removeFile(i, listId) {
-  const list = listId === 'batchFileList' ? state.batchFiles : state.sweepFiles;
-  list.splice(i, 1);
-  renderFileList(list, listId);
-}
-
-async function addAudioUrl() {
-  const url = document.getElementById('audioUrl').value.trim();
-  if (!url) return;
-  try {
-    const r = await fetch(url);
-    const blob = await r.blob();
-    const name = url.split('/').pop() || 'audio.wav';
-    const file = new File([blob], name, { type: blob.type || 'audio/wav' });
-    state.batchFiles.push(file);
-    renderFileList(state.batchFiles, 'batchFileList');
-    document.getElementById('audioUrl').value = '';
-  } catch (e) {
-    alert(`Failed to fetch: ${e.message}\n\nCORS may be blocking. Try downloading the file and uploading it instead.`);
-  }
-}
-
-// ===== REFERENCES =====
-function parseReferences() {
-  const text = document.getElementById('refTranscripts').value.trim();
-  state.references = {};
-  if (!text) return;
-  text.split('\n').forEach(line => {
-    const parts = line.split('|');
-    if (parts.length >= 2) {
-      state.references[parts[0].trim()] = parts.slice(1).join('|').trim();
-    }
-  });
-}
-
-function loadPresetRefs() {
-  const lines = Object.entries(LIBRISPEECH_DEMO_REFS)
-    .map(([k, v]) => `${k}|${v}`).join('\n');
-  document.getElementById('refTranscripts').value = lines;
-  parseReferences();
-}
-
-// ===== WER COMPUTATION =====
-function computeWer(ref, hyp) {
-  const normalize = s => s.toLowerCase().replace(/[^a-z0-9'\s]/g, '').replace(/\s+/g, ' ').trim();
-  const rWords = normalize(ref).split(' ').filter(Boolean);
-  const hWords = normalize(hyp).split(' ').filter(Boolean);
-  if (rWords.length === 0) return { wer: hWords.length > 0 ? 100 : 0, s: 0, i: hWords.length, d: 0, ops: [] };
-
-  const n = rWords.length, m = hWords.length;
-  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-  const bt = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(''));
-
-  for (let i = 0; i <= n; i++) { dp[i][0] = i; bt[i][0] = 'D'; }
-  for (let j = 0; j <= m; j++) { dp[0][j] = j; bt[0][j] = 'I'; }
-  bt[0][0] = '';
-
-  for (let i = 1; i <= n; i++) {
-    for (let j = 1; j <= m; j++) {
-      if (rWords[i - 1] === hWords[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1];
-        bt[i][j] = 'C';
-      } else {
-        const sub = dp[i - 1][j - 1] + 1;
-        const del = dp[i - 1][j] + 1;
-        const ins = dp[i][j - 1] + 1;
-        dp[i][j] = Math.min(sub, del, ins);
-        if (dp[i][j] === sub) bt[i][j] = 'S';
-        else if (dp[i][j] === del) bt[i][j] = 'D';
-        else bt[i][j] = 'I';
-      }
-    }
-  }
-
-  let s = 0, ins = 0, d = 0;
-  let i = n, j = m;
-  const ops = [];
-  while (i > 0 || j > 0) {
-    const op = bt[i][j];
-    if (op === 'C') { ops.unshift({ op: 'C', ref: rWords[i - 1], hyp: hWords[j - 1] }); i--; j--; }
-    else if (op === 'S') { ops.unshift({ op: 'S', ref: rWords[i - 1], hyp: hWords[j - 1] }); s++; i--; j--; }
-    else if (op === 'D') { ops.unshift({ op: 'D', ref: rWords[i - 1], hyp: '' }); d++; i--; }
-    else { ops.unshift({ op: 'I', ref: '', hyp: hWords[j - 1] }); ins++; j--; }
-  }
-
-  return { wer: ((s + ins + d) / n * 100), s, i: ins, d, ops };
-}
-
-function renderWerDiff(ops) {
-  return ops.map(o => {
-    if (o.op === 'C') return esc(o.hyp);
-    if (o.op === 'S') return `<span class="wer-sub" title="S: ${esc(o.ref)} → ${esc(o.hyp)}">${esc(o.hyp)}</span>`;
-    if (o.op === 'D') return `<span class="wer-del" title="D: ${esc(o.ref)}">${esc(o.ref)}</span>`;
-    if (o.op === 'I') return `<span class="wer-ins" title="I: ${esc(o.hyp)}">${esc(o.hyp)}</span>`;
-  }).join(' ');
-}
-
+const $id = id => document.getElementById(id);
 function esc(s) {
+  if (!s) return '';
   const d = document.createElement('div'); d.textContent = s;
   return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// ===== BATCH BENCHMARK =====
-async function runBatch() {
-  if (state.batchFiles.length === 0) return alert('Add audio files first.');
-  parseReferences();
-  const url = document.getElementById('serverUrl').value.replace(/\/+$/, '');
-  const concurrency = parseInt(document.getElementById('batchConcurrency').value);
-  const timestamps = document.getElementById('batchTimestamps').value === 'true';
-  const controller = new AbortController();
-  state.batchAbort = controller;
-  state.batchRunning = true;
-  state.batchResults = [];
+// ===== STATE =====
+const S = {
+  connected: false, serverInfo: null,
+  batchFiles: [], batchResults: [], batchRunning: false, batchAbort: null,
+  streamSessions: [], streamRunning: false,
+  sweepFiles: [], sweepResults: [], sweepRunning: false, sweepAbort: null,
+  refs: {}, reportData: null,
+  latencyBuckets: new Array(20).fill(0),
+};
 
-  document.getElementById('batchRunBtn').style.display = 'none';
-  document.getElementById('batchStopBtn').style.display = '';
-  document.getElementById('batchResults').innerHTML = '';
-  document.getElementById('batchProgress').style.width = '0%';
+const LIBREFS = {
+  '1089-134686-0000.flac':'he hoped there would be stew for dinner turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flour fattened sauce',
+  '1089-134686-0001.flac':'stuff it into you his belly counselled him',
+  '1089-134686-0002.flac':'after early nightfall the yellow lamps would light up here and there the squalid quarter of the brothels',
+  '1089-134686-0003.flac':'hello bertie any good in your mind',
+  '1089-134686-0004.flac':'number ten fresh nelly is waiting on you good night husband',
+  '1221-135766-0000.flac':'god as a direct consequence of the sin which man thus punished had died',
+  '1221-135766-0001.flac':'no great man lives in vain the history of the world is but the biography of great men',
+  '1221-135766-0002.flac':'the survey of certain books which were never combated and are now combated',
+  '1221-135766-0003.flac':'the survey of certain books which were never completed though they are now completed',
+  '1221-135766-0004.flac':'he had written them to refute a book which had never been read',
+};
 
-  const files = [...state.batchFiles];
-  const total = files.length;
-  let completed = 0, failed = 0;
-  const latencies = [];
-  const t0 = performance.now();
+// ===== SERVER =====
+async function connectServer() {
+  const url = $id('serverUrl').value.replace(/\/+$/, '');
+  setLed('connecting');
+  try {
+    const r = await fetch(`${url}/health`, { signal: AbortSignal.timeout(5000) });
+    const d = await r.json();
+    if (d.status === 'ok' || d.ready) {
+      S.connected = true; S.serverInfo = d;
+      setLed('on');
+      $id('modeBadge').textContent = d.mode || '?';
+      $id('modeBadge').style.display = '';
+      $id('uptimeLabel').textContent = `up ${Math.round(d.uptime_seconds || 0)}s`;
+      enableAll(true);
+    } else throw new Error('not ready');
+  } catch (e) {
+    S.connected = false; setLed('off');
+    $id('modeBadge').style.display = 'none';
+    $id('uptimeLabel').textContent = e.message;
+    enableAll(false);
+  }
+}
 
-  const semaphore = { count: 0, waiters: [] };
-  const acquire = () => new Promise(resolve => {
-    if (semaphore.count < concurrency) { semaphore.count++; resolve(); }
-    else semaphore.waiters.push(resolve);
+function setLed(state) {
+  const el = $id('led');
+  el.className = 'led ' + (state === 'on' ? 'led-on' : state === 'connecting' ? 'led-connecting' : 'led-off');
+}
+
+function enableAll(on) {
+  $id('batchGoBtn').disabled = !on;
+  $id('streamGoBtn').disabled = !on;
+  $id('sweepGoBtn').disabled = !on;
+}
+
+// ===== TABS =====
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase() === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  $id('panel-' + name).classList.add('active');
+}
+
+// ===== FILES =====
+function setupDrop(zoneId, inputId, list, listId) {
+  const z = $id(zoneId), inp = $id(inputId);
+  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('dragover'); });
+  z.addEventListener('dragleave', () => z.classList.remove('dragover'));
+  z.addEventListener('drop', e => { e.preventDefault(); z.classList.remove('dragover'); addFiles(Array.from(e.dataTransfer.files), list, listId); });
+  inp.addEventListener('change', () => { addFiles(Array.from(inp.files), list, listId); inp.value = ''; });
+}
+function addFiles(files, list, listId) {
+  files.forEach(f => { if (!list.find(x => x.name === f.name)) list.push(f); });
+  renderFileList(list, listId);
+  if (listId === 'batchFileList' && list.length > 0) drawWaveform(list[0], 'batchWaveCanvas', 'batchWaveWrap', 'batchWaveInfo');
+}
+function renderFileList(list, listId) {
+  $id(listId).innerHTML = list.map((f, i) =>
+    `<div class="file-item"><span class="fname">${esc(f.name)}</span><span class="fsize">${(f.size/1024).toFixed(0)}K</span><span class="fremove" onclick="rmFile(${i},'${listId}')">&times;</span></div>`
+  ).join('');
+}
+function rmFile(i, listId) {
+  const list = listId === 'batchFileList' ? S.batchFiles : S.sweepFiles;
+  list.splice(i, 1); renderFileList(list, listId);
+}
+
+async function addAudioUrl() {
+  const url = $id('audioUrl').value.trim();
+  if (!url) return;
+  try {
+    const r = await fetch(url);
+    const blob = await r.blob();
+    const name = url.split('/').pop().split('?')[0] || 'audio.wav';
+    S.batchFiles.push(new File([blob], name, { type: blob.type || 'audio/wav' }));
+    renderFileList(S.batchFiles, 'batchFileList');
+    $id('audioUrl').value = '';
+    drawWaveform(S.batchFiles[S.batchFiles.length - 1], 'batchWaveCanvas', 'batchWaveWrap', 'batchWaveInfo');
+  } catch (e) { alert('Fetch failed: ' + e.message + '\n\nCORS may be blocking.'); }
+}
+
+// ===== WAVEFORM =====
+async function drawWaveform(file, canvasId, wrapId, infoId) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await file.arrayBuffer();
+    const audio = await ctx.decodeAudioData(buf);
+    const data = audio.getChannelData(0);
+    const canvas = $id(canvasId);
+    const wrap = $id(wrapId);
+    wrap.style.display = '';
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = 60;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    const c = canvas.getContext('2d');
+    c.scale(dpr, dpr);
+    const style = getComputedStyle(document.documentElement);
+    c.fillStyle = style.getPropertyValue('--elevated').trim();
+    c.fillRect(0, 0, w, h);
+    c.strokeStyle = style.getPropertyValue('--accent').trim();
+    c.lineWidth = 1;
+    c.beginPath();
+    const step = Math.ceil(data.length / w);
+    for (let x = 0; x < w; x++) {
+      let min = 1, max = -1;
+      for (let j = 0; j < step; j++) {
+        const v = data[x * step + j] || 0;
+        if (v < min) min = v; if (v > max) max = v;
+      }
+      c.moveTo(x, (1 + min) * h / 2);
+      c.lineTo(x, (1 + max) * h / 2);
+    }
+    c.stroke();
+    $id(infoId).textContent = audio.duration.toFixed(1) + 's · ' + audio.sampleRate + 'Hz';
+    ctx.close();
+  } catch (e) {
+    $id(wrapId).style.display = 'none';
+  }
+}
+
+// ===== REFS =====
+function parseRefs() {
+  S.refs = {};
+  const text = $id('refTranscripts').value.trim();
+  if (!text) return;
+  text.split('\n').forEach(l => {
+    const p = l.split('|');
+    if (p.length >= 2) S.refs[p[0].trim()] = p.slice(1).join('|').trim();
   });
-  const release = () => {
-    semaphore.count--;
-    if (semaphore.waiters.length) { semaphore.count++; semaphore.waiters.shift()(); }
-  };
+}
+function loadPresetRefs() {
+  $id('refTranscripts').value = Object.entries(LIBREFS).map(([k,v]) => k+'|'+v).join('\n');
+  parseRefs();
+}
 
-  const processFile = async (file, idx) => {
-    await acquire();
-    if (controller.signal.aborted) { release(); return; }
+// ===== WER =====
+function computeWer(ref, hyp) {
+  const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9'\s]/g,'').replace(/\s+/g,' ').trim();
+  const rw = norm(ref).split(' ').filter(Boolean);
+  const hw = norm(hyp).split(' ').filter(Boolean);
+  if (!rw.length) return { wer: hw.length ? 100 : 0, s:0, i:hw.length, d:0, ops:[] };
+  const n=rw.length, m=hw.length;
+  const dp=Array.from({length:n+1},()=>new Array(m+1).fill(0));
+  const bt=Array.from({length:n+1},()=>new Array(m+1).fill(''));
+  for(let i=0;i<=n;i++){dp[i][0]=i;bt[i][0]='D'}
+  for(let j=0;j<=m;j++){dp[0][j]=j;bt[0][j]='I'}
+  bt[0][0]='';
+  for(let i=1;i<=n;i++)for(let j=1;j<=m;j++){
+    if(rw[i-1]===hw[j-1]){dp[i][j]=dp[i-1][j-1];bt[i][j]='C'}
+    else{const s=dp[i-1][j-1]+1,d=dp[i-1][j]+1,ins=dp[i][j-1]+1;dp[i][j]=Math.min(s,d,ins);bt[i][j]=dp[i][j]===s?'S':dp[i][j]===d?'D':'I'}
+  }
+  let s=0,ins=0,d=0,i=n,j=m;const ops=[];
+  while(i>0||j>0){const o=bt[i][j];
+    if(o==='C'){ops.unshift({op:'C',r:rw[i-1],h:hw[j-1]});i--;j--}
+    else if(o==='S'){ops.unshift({op:'S',r:rw[i-1],h:hw[j-1]});s++;i--;j--}
+    else if(o==='D'){ops.unshift({op:'D',r:rw[i-1],h:''});d++;i--}
+    else{ops.unshift({op:'I',r:'',h:hw[j-1]});ins++;j--}
+  }
+  return{wer:(s+ins+d)/n*100,s,i:ins,d,ops};
+}
+
+function renderDiff(ops) {
+  return ops.map(o => {
+    if(o.op==='C') return esc(o.h);
+    if(o.op==='S') return `<span class="wer-s" title="sub: ${esc(o.r)} → ${esc(o.h)}">${esc(o.h)}</span>`;
+    if(o.op==='D') return `<span class="wer-d" title="del: ${esc(o.r)}">${esc(o.r)}</span>`;
+    if(o.op==='I') return `<span class="wer-i" title="ins: ${esc(o.h)}">${esc(o.h)}</span>`;
+  }).join(' ');
+}
+
+// ===== LATENCY HISTOGRAM =====
+function updateHistogram(latency) {
+  const maxBucket = 2000;
+  const bucketSize = maxBucket / S.latencyBuckets.length;
+  const idx = Math.min(Math.floor(latency / bucketSize), S.latencyBuckets.length - 1);
+  S.latencyBuckets[idx]++;
+  drawHistogram();
+}
+function drawHistogram() {
+  const canvas = $id('latencyHist');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = 80;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const c = canvas.getContext('2d');
+  c.scale(dpr, dpr);
+  const style = getComputedStyle(document.documentElement);
+  c.fillStyle = style.getPropertyValue('--elevated').trim();
+  c.fillRect(0, 0, w, h);
+  const maxVal = Math.max(...S.latencyBuckets, 1);
+  const barW = w / S.latencyBuckets.length - 2;
+  const accent = style.getPropertyValue('--accent').trim();
+  const blue = style.getPropertyValue('--blue').trim();
+  S.latencyBuckets.forEach((v, i) => {
+    const barH = (v / maxVal) * (h - 16);
+    const x = i * (w / S.latencyBuckets.length) + 1;
+    c.fillStyle = i < 12 ? accent : i < 16 ? style.getPropertyValue('--warn').trim() : style.getPropertyValue('--error').trim();
+    c.globalAlpha = 0.7;
+    c.fillRect(x, h - barH - 8, barW, barH);
+    c.globalAlpha = 1;
+  });
+  c.fillStyle = style.getPropertyValue('--text3').trim();
+  c.font = '9px ' + style.getPropertyValue('--mono').trim();
+  c.fillText('0ms', 2, h - 1);
+  c.fillText('1000ms', w * 0.5 - 15, h - 1);
+  c.fillText('2000ms', w - 35, h - 1);
+}
+
+// ===== ANIMATED COUNTER =====
+function animateVal(elId, target, suffix='') {
+  const el = $id(elId); if (!el) return;
+  const current = parseFloat(el.textContent) || 0;
+  if (Math.abs(current - target) < 0.1) { el.textContent = target + suffix; return; }
+  const start = performance.now();
+  const dur = 300;
+  function tick(now) {
+    const t = Math.min((now - start) / dur, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    el.textContent = (current + (target - current) * ease).toFixed(target % 1 ? 1 : 0) + suffix;
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// ===== SEMAPHORE =====
+function makeSem(n) {
+  const sem = { count: 0, q: [] };
+  sem.acquire = () => new Promise(r => { if (sem.count < n) { sem.count++; r(); } else sem.q.push(r); });
+  sem.release = () => { sem.count--; if (sem.q.length) { sem.count++; sem.q.shift()(); } };
+  return sem;
+}
+
+// ===== BATCH =====
+async function runBatch() {
+  if (!S.batchFiles.length) return alert('Add audio files first.');
+  parseRefs();
+  const url = $id('serverUrl').value.replace(/\/+$/,'');
+  const conc = parseInt($id('batchConc').value);
+  const ctrl = new AbortController();
+  S.batchAbort = ctrl; S.batchRunning = true; S.batchResults = [];
+  S.latencyBuckets.fill(0);
+  $id('batchGoBtn').style.display='none'; $id('batchStopBtn').style.display='';
+  $id('batchTbody').innerHTML=''; $id('batchVu').style.width='0%'; $id('batchVuLbl').textContent='0%';
+  const files=[...S.batchFiles], total=files.length;
+  let done=0, fail=0;
+  const lats=[];
+  const t0=performance.now();
+  const sem=makeSem(conc);
+
+  const process = async (file, idx) => {
+    await sem.acquire();
+    if (ctrl.signal.aborted) { sem.release(); return; }
     const start = performance.now();
     try {
-      const form = new FormData();
-      form.append('file', file);
-      const ep = `${url}/v1/transcriptions${timestamps ? '?timestamps=true' : ''}`;
-      const r = await fetch(ep, { method: 'POST', body: form, signal: controller.signal });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const form = new FormData(); form.append('file', file);
+      const r = await fetch(`${url}/v1/transcriptions`, { method:'POST', body:form, signal:ctrl.signal });
+      if (!r.ok) throw new Error('HTTP '+r.status);
       const data = await r.json();
-      const latency = performance.now() - start;
-      latencies.push(latency);
-
-      const ref = state.references[file.name];
-      let werResult = null;
-      if (ref) werResult = computeWer(ref, data.text || '');
-
-      const result = { idx, file: file.name, text: data.text || '', latency, status: 'ok', wer: werResult };
-      state.batchResults.push(result);
-      completed++;
-      addBatchRow(result);
-    } catch (e) {
-      if (e.name === 'AbortError') { release(); return; }
-      const result = { idx, file: file.name, text: '', latency: performance.now() - start, status: 'error', error: e.message, wer: null };
-      state.batchResults.push(result);
-      failed++;
-      addBatchRow(result);
+      const lat = performance.now()-start;
+      lats.push(lat);
+      updateHistogram(lat);
+      const ref = S.refs[file.name];
+      const wer = ref ? computeWer(ref, data.text||'') : null;
+      const res = {idx,file:file.name,text:data.text||'',lat,status:'ok',wer};
+      S.batchResults.push(res); done++;
+      addBatchRow(res);
+    } catch(e) {
+      if (e.name==='AbortError') { sem.release(); return; }
+      S.batchResults.push({idx,file:file.name,text:'',lat:performance.now()-start,status:'error',error:e.message,wer:null});
+      fail++;
     }
-    release();
-
-    const pct = ((completed + failed) / total * 100).toFixed(0);
-    document.getElementById('batchProgress').style.width = `${pct}%`;
-    document.getElementById('batchCompleted').textContent = completed;
-    document.getElementById('batchFailed').textContent = failed;
-    document.getElementById('batchFailed').className = `stat-value mono ${failed > 0 ? 'bad' : ''}`;
-
-    const elapsed = (performance.now() - t0) / 1000;
-    document.getElementById('batchRps').textContent = (completed / elapsed).toFixed(1);
-    if (latencies.length) {
-      const sorted = [...latencies].sort((a, b) => a - b);
-      document.getElementById('batchP50').textContent = sorted[Math.floor(sorted.length * 0.5)].toFixed(0);
+    sem.release();
+    const pct = ((done+fail)/total*100);
+    $id('batchVu').style.width = pct+'%';
+    $id('batchVuLbl').textContent = pct.toFixed(0)+'%';
+    animateVal('bDone', done);
+    $id('bFail').textContent = fail;
+    $id('bFail').className = 'stat-val' + (fail ? ' c-bad' : '');
+    const elapsed = (performance.now()-t0)/1000;
+    animateVal('bRps', parseFloat((done/elapsed).toFixed(1)));
+    if (lats.length) {
+      const sorted=[...lats].sort((a,b)=>a-b);
+      $id('bP50').textContent = sorted[Math.floor(sorted.length*.5)].toFixed(0);
     }
-
-    // Corpus WER
-    const werResults = state.batchResults.filter(r => r.wer);
-    if (werResults.length) {
-      const totalErrors = werResults.reduce((s, r) => s + r.wer.s + r.wer.i + r.wer.d, 0);
-      const totalWords = werResults.reduce((s, r) => {
-        const ref = state.references[r.file] || '';
-        return s + ref.toLowerCase().replace(/[^a-z0-9'\s]/g, '').trim().split(/\s+/).filter(Boolean).length;
-      }, 0);
-      const corpusWer = totalWords > 0 ? (totalErrors / totalWords * 100).toFixed(2) : '—';
-      document.getElementById('batchWer').textContent = corpusWer;
+    const werR = S.batchResults.filter(r=>r.wer);
+    if (werR.length) {
+      const tErr = werR.reduce((s,r)=>s+r.wer.s+r.wer.i+r.wer.d,0);
+      const tWds = werR.reduce((s,r)=>{const ref=S.refs[r.file]||'';return s+(ref.toLowerCase().replace(/[^a-z0-9'\s]/g,'').trim().split(/\s+/).filter(Boolean).length)},0);
+      if(tWds) $id('bWer').textContent = (tErr/tWds*100).toFixed(2);
     }
   };
 
-  const promises = files.map((f, i) => processFile(f, i));
-  await Promise.all(promises);
-
-  state.batchRunning = false;
-  document.getElementById('batchRunBtn').style.display = '';
-  document.getElementById('batchStopBtn').style.display = 'none';
+  await Promise.all(files.map((f,i) => process(f,i)));
+  S.batchRunning=false;
+  $id('batchGoBtn').style.display=''; $id('batchStopBtn').style.display='none';
   buildReport();
 }
-
-function stopBatch() {
-  if (state.batchAbort) state.batchAbort.abort();
-  state.batchRunning = false;
-  document.getElementById('batchRunBtn').style.display = '';
-  document.getElementById('batchStopBtn').style.display = 'none';
-}
+function stopBatch() { if(S.batchAbort) S.batchAbort.abort(); S.batchRunning=false; $id('batchGoBtn').style.display=''; $id('batchStopBtn').style.display='none'; }
 
 function addBatchRow(r) {
-  const tbody = document.getElementById('batchResults');
-  const tr = document.createElement('tr');
-  const werCell = r.wer ? `${r.wer.wer.toFixed(1)}%` : '—';
-  const werClass = r.wer ? (r.wer.wer < 5 ? 'good' : r.wer.wer < 15 ? 'warn' : 'bad') : '';
-  tr.innerHTML = `
-    <td class="mono text-center">${r.idx + 1}</td>
-    <td class="mono truncate" title="${esc(r.file)}">${esc(r.file)}</td>
-    <td class="mono text-right">${r.duration ? r.duration.toFixed(1) + 's' : '—'}</td>
-    <td class="mono text-right">${r.latency.toFixed(0)}ms</td>
-    <td class="truncate" title="${esc(r.text)}">${esc(r.text).substring(0, 80)}${r.text.length > 80 ? '...' : ''}</td>
-    <td class="mono text-right ${werClass}">${werCell}</td>
-    <td class="text-center">${r.status === 'ok' ? '<span class="gate-pass">OK</span>' : '<span class="gate-fail">ERR</span>'}</td>
-  `;
-  tbody.appendChild(tr);
+  const tb=$id('batchTbody'), tr=document.createElement('tr');
+  const wc = r.wer ? (r.wer.wer<5?'c-good':r.wer.wer<15?'c-warn':'c-bad') : '';
+  tr.innerHTML=`<td class="text-c">${r.idx+1}</td><td class="trunc" title="${esc(r.file)}">${esc(r.file)}</td><td class="text-r">${r.lat.toFixed(0)}ms</td><td class="trunc" title="${esc(r.text)}">${esc(r.text).substring(0,60)}</td><td class="text-r ${wc}">${r.wer?r.wer.wer.toFixed(1)+'%':'—'}</td><td class="text-c">${r.status==='ok'?'<span class="g-pass">OK</span>':'<span class="g-fail">ERR</span>'}</td>`;
+  tb.appendChild(tr);
 }
 
 // ===== STREAMING =====
 async function startStreaming() {
-  const url = document.getElementById('serverUrl').value.replace(/\/+$/, '').replace(/^http/, 'ws');
-  const count = parseInt(document.getElementById('streamCount').value);
-  const chunkMs = parseInt(document.getElementById('streamChunkMs').value);
-  const inputMode = document.getElementById('streamInputMode').value;
-
-  let pcmData = null;
-  if (inputMode === 'file') {
-    const file = document.getElementById('streamFile').files[0];
-    if (!file) return alert('Select an audio file.');
+  const wsUrl = $id('serverUrl').value.replace(/\/+$/,'').replace(/^http/,'ws');
+  const n = parseInt($id('streamN').value);
+  const chunkMs = parseInt($id('streamChunk').value);
+  const mode = $id('streamMode').value;
+  let pcm = null;
+  if (mode === 'file') {
+    const file = $id('streamFile').files[0];
+    if (!file) return alert('Select a WAV file.');
     const buf = await file.arrayBuffer();
     const view = new DataView(buf);
-    if (buf.byteLength < 44 || String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3)) !== 'RIFF') {
-      return alert('Streaming requires a WAV file (PCM16, mono, 16kHz). This file does not appear to be a WAV.');
-    }
-    const audioFmt = view.getUint16(20, true);
-    const channels = view.getUint16(22, true);
-    const sRate = view.getUint32(24, true);
-    if (audioFmt !== 1) return alert('WAV must be PCM format (not compressed). Got format code: ' + audioFmt);
-    if (channels !== 1) return alert('WAV must be mono (1 channel). Got: ' + channels);
-    if (sRate !== 16000) return alert('WAV must be 16kHz sample rate. Got: ' + sRate + 'Hz');
-    const dataOffset = 44;
-    pcmData = new Uint8Array(buf).slice(dataOffset);
+    if(buf.byteLength<44||String.fromCharCode(view.getUint8(0),view.getUint8(1),view.getUint8(2),view.getUint8(3))!=='RIFF')
+      return alert('Streaming requires a WAV file.');
+    if(view.getUint16(20,true)!==1) return alert('WAV must be PCM (format 1). Got: '+view.getUint16(20,true));
+    if(view.getUint16(22,true)!==1) return alert('WAV must be mono. Got channels: '+view.getUint16(22,true));
+    if(view.getUint32(24,true)!==16000) return alert('WAV must be 16kHz. Got: '+view.getUint32(24,true)+'Hz');
+    pcm = new Uint8Array(buf).slice(44);
   }
-
-  state.streamingRunning = true;
-  state.streamingSessions = [];
-  document.getElementById('streamStartBtn').style.display = 'none';
-  document.getElementById('streamStopBtn').style.display = '';
-
-  const slotsEl = document.getElementById('streamSlots');
-  slotsEl.innerHTML = '';
-
-  for (let i = 0; i < count; i++) {
-    const slot = document.createElement('div');
-    slot.className = 'stream-slot';
-    slot.id = `stream-${i}`;
-    slot.innerHTML = `
-      <div class="stream-header">
-        <span>Stream #${i + 1}</span>
-        <span id="stream-status-${i}">connecting...</span>
-      </div>
-      <div class="stream-text" id="stream-text-${i}"></div>
-    `;
-    slotsEl.appendChild(slot);
-    startOneStream(i, url, pcmData, chunkMs, inputMode);
+  S.streamRunning=true; S.streamSessions=[];
+  $id('streamGoBtn').style.display='none'; $id('streamStopBtn').style.display='';
+  const slots=$id('streamSlots'); slots.innerHTML='';
+  for(let i=0;i<n;i++){
+    const el=document.createElement('div');
+    el.className='stream-slot'; el.id='ss-'+i;
+    el.innerHTML=`<div class="stream-hdr"><span><span class="dot" id="ss-dot-${i}" style="background:var(--text3)"></span>Stream #${i+1}</span><span id="ss-st-${i}">connecting</span></div><canvas id="ss-wave-${i}" width="280" height="24" style="width:100%;height:24px;border-radius:3px;display:block;margin-bottom:4px"></canvas><div class="stream-txt" id="ss-txt-${i}"></div>`;
+    slots.appendChild(el);
+    launchStream(i, wsUrl, pcm, chunkMs, mode);
   }
 }
 
-async function startOneStream(idx, wsUrl, pcmData, chunkMs, inputMode) {
+function launchStream(idx, wsUrl, pcm, chunkMs, mode) {
   const ws = new WebSocket(`${wsUrl}/v1/stream`);
-  const session = { ws, idx, startTime: null, finalText: '', committedText: '', closed: false };
-  state.streamingSessions.push(session);
+  const sess = {ws, idx, committed:'', closed:false, waveX:0};
+  S.streamSessions.push(sess);
 
   ws.onopen = () => {
-    document.getElementById(`stream-status-${idx}`).textContent = 'opened';
-    document.getElementById(`stream-${idx}`).classList.add('active');
+    $id('ss-dot-'+idx).style.background='var(--accent)';
+    $id('ss-'+idx).classList.add('s-active');
+    $id('ss-st-'+idx).textContent='opened';
     updateStreamStats();
   };
 
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    const textEl = document.getElementById(`stream-text-${idx}`);
-    if (msg.status === 'opened') {
-      session.startTime = performance.now();
-      if (inputMode === 'file' && pcmData) sendAudioChunks(ws, pcmData, chunkMs);
-      else if (inputMode === 'mic') startMicStream(ws, chunkMs);
-    } else if (msg.status === 'closed') {
-      session.finalText = msg.final_text || session.committedText;
-      session.closed = true;
-      textEl.innerHTML = `<strong>${esc(session.finalText)}</strong>`;
-      document.getElementById(`stream-${idx}`).classList.remove('active');
-      document.getElementById(`stream-${idx}`).classList.add('done');
-      document.getElementById(`stream-status-${idx}`).textContent = 'done';
+  ws.onmessage = e => {
+    const msg=JSON.parse(e.data);
+    const txt=$id('ss-txt-'+idx);
+    if(msg.status==='opened'){
+      sess.startTime=performance.now();
+      if(mode==='file'&&pcm) sendChunks(ws, pcm, chunkMs, idx);
+      else if(mode==='mic') startMic(ws, chunkMs);
+    } else if(msg.status==='closed'){
+      sess.closed=true;
+      const finalText = msg.final_text || sess.committed;
+      txt.innerHTML=`<span class="stream-final">${esc(finalText)}</span>`;
+      $id('ss-'+idx).classList.remove('s-active');
+      $id('ss-'+idx).classList.add('s-done');
+      $id('ss-dot-'+idx).style.background='var(--blue)';
+      $id('ss-st-'+idx).textContent='done';
       updateStreamStats();
     } else {
-      if (msg.final_transcript) session.committedText = (session.committedText + ' ' + msg.final_transcript).trim();
-      let html = esc(session.committedText);
-      if (msg.partial_transcript) html += ` <span class="stream-partial">${esc(msg.partial_transcript)}</span>`;
-      textEl.innerHTML = html;
+      if(msg.final_transcript) sess.committed=(sess.committed+' '+msg.final_transcript).trim();
+      let html='<span class="stream-final">'+esc(sess.committed)+'</span>';
+      if(msg.partial_transcript) html+=' <span class="stream-partial">'+esc(msg.partial_transcript)+'</span>';
+      txt.innerHTML=html;
+      drawStreamWave(idx);
     }
   };
 
   ws.onerror = () => {
-    document.getElementById(`stream-${idx}`).classList.remove('active');
-    document.getElementById(`stream-${idx}`).classList.add('error');
-    document.getElementById(`stream-status-${idx}`).textContent = 'error';
+    $id('ss-'+idx).classList.remove('s-active');
+    $id('ss-'+idx).classList.add('s-error');
+    $id('ss-dot-'+idx).style.background='var(--error)';
+    $id('ss-st-'+idx).textContent='error';
     updateStreamStats();
   };
-
   ws.onclose = () => updateStreamStats();
 }
 
-async function sendAudioChunks(ws, pcmData, chunkMs) {
-  const sampleRate = 16000;
-  const chunkBytes = Math.floor((sampleRate * chunkMs) / 1000) * 2;
-  let offset = 0;
-  while (offset < pcmData.length && ws.readyState === WebSocket.OPEN) {
-    const chunk = pcmData.slice(offset, offset + chunkBytes);
-    ws.send(chunk);
-    offset += chunkBytes;
-    await new Promise(r => setTimeout(r, chunkMs));
-  }
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ action: 'close' }));
-  }
+function drawStreamWave(idx) {
+  const canvas=$id('ss-wave-'+idx); if(!canvas) return;
+  const sess=S.streamSessions.find(s=>s.idx===idx); if(!sess) return;
+  const c=canvas.getContext('2d');
+  const w=canvas.width, h=canvas.height;
+  const style=getComputedStyle(document.documentElement);
+  if(sess.waveX===0){c.fillStyle=style.getPropertyValue('--elevated').trim();c.fillRect(0,0,w,h)}
+  c.strokeStyle=style.getPropertyValue('--accent').trim();
+  c.lineWidth=1;
+  const x=sess.waveX % w;
+  if(x===0){c.fillStyle=style.getPropertyValue('--elevated').trim();c.fillRect(0,0,w,h)}
+  const y = h/2 + (Math.random()-0.5)*h*0.6;
+  c.beginPath();c.moveTo(x,h/2);c.lineTo(x+1,y);c.stroke();
+  sess.waveX+=2;
 }
 
-async function startMicStream(ws, chunkMs) {
+async function sendChunks(ws, pcm, chunkMs, idx) {
+  const chunkBytes=Math.floor((16000*chunkMs)/1000)*2;
+  let off=0;
+  while(off<pcm.length && ws.readyState===WebSocket.OPEN){
+    ws.send(pcm.slice(off,off+chunkBytes));
+    off+=chunkBytes;
+    drawStreamWave(idx);
+    await new Promise(r=>setTimeout(r,chunkMs));
+  }
+  if(ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({action:'close'}));
+}
+
+async function startMic(ws, chunkMs) {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
-    const ctx = new AudioContext({ sampleRate: 16000 });
-    const source = ctx.createMediaStreamSource(stream);
-    const rawSize = Math.floor(16000 * chunkMs / 1000);
-    const bufSize = Math.max(256, Math.pow(2, Math.ceil(Math.log2(rawSize))));
-    const processor = ctx.createScriptProcessor(bufSize, 1, 1);
-    processor.onaudioprocess = (e) => {
-      if (ws.readyState !== WebSocket.OPEN) { stream.getTracks().forEach(t => t.stop()); ctx.close(); return; }
-      const float32 = e.inputBuffer.getChannelData(0);
-      const int16 = new Int16Array(float32.length);
-      for (let i = 0; i < float32.length; i++) int16[i] = Math.max(-32768, Math.min(32767, Math.round(float32[i] * 32767)));
-      ws.send(int16.buffer);
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{sampleRate:16000,channelCount:1}});
+    const ctx=new AudioContext({sampleRate:16000});
+    const src=ctx.createMediaStreamSource(stream);
+    const rawSize=Math.floor(16000*chunkMs/1000);
+    const bufSize=Math.max(256,Math.pow(2,Math.ceil(Math.log2(rawSize))));
+    const proc=ctx.createScriptProcessor(bufSize,1,1);
+    proc.onaudioprocess=e=>{
+      if(ws.readyState!==WebSocket.OPEN){stream.getTracks().forEach(t=>t.stop());ctx.close();return}
+      const f32=e.inputBuffer.getChannelData(0);
+      const i16=new Int16Array(f32.length);
+      for(let i=0;i<f32.length;i++) i16[i]=Math.max(-32768,Math.min(32767,Math.round(f32[i]*32767)));
+      ws.send(i16.buffer);
     };
-    source.connect(processor);
-    processor.connect(ctx.destination);
-  } catch (e) {
-    alert('Microphone access denied: ' + e.message);
-  }
+    src.connect(proc);proc.connect(ctx.destination);
+  } catch(e){alert('Mic error: '+e.message)}
 }
 
-function stopStreaming() {
-  state.streamingSessions.forEach(s => {
-    if (s.ws.readyState === WebSocket.OPEN) {
-      s.ws.send(JSON.stringify({ action: 'close' }));
-    }
-  });
-  state.streamingRunning = false;
-  document.getElementById('streamStartBtn').style.display = '';
-  document.getElementById('streamStopBtn').style.display = 'none';
+function stopStreaming(){
+  S.streamSessions.forEach(s=>{if(s.ws.readyState===WebSocket.OPEN) s.ws.send(JSON.stringify({action:'close'}))});
+  S.streamRunning=false; $id('streamGoBtn').style.display=''; $id('streamStopBtn').style.display='none';
 }
 
-function updateStreamStats() {
-  const sessions = state.streamingSessions;
-  const active = sessions.filter(s => s.ws.readyState === WebSocket.OPEN).length;
-  const done = sessions.filter(s => s.closed).length;
-  const errors = sessions.filter(s => s.ws.readyState === WebSocket.CLOSED && !s.closed).length;
-  document.getElementById('streamActive').textContent = active;
-  document.getElementById('streamDone').textContent = done;
-  document.getElementById('streamErrors').textContent = errors;
+function updateStreamStats(){
+  const ss=S.streamSessions;
+  $id('sActive').textContent=ss.filter(s=>s.ws.readyState===WebSocket.OPEN).length;
+  $id('sDone').textContent=ss.filter(s=>s.closed).length;
+  $id('sErr').textContent=ss.filter(s=>s.ws.readyState===WebSocket.CLOSED&&!s.closed).length;
 }
 
-function toggleStreamInput() {
-  const mode = document.getElementById('streamInputMode').value;
-  document.getElementById('streamFileRow').style.display = mode === 'file' ? '' : 'none';
-}
+function toggleStreamInput(){$id('streamFileRow').style.display=$id('streamMode').value==='file'?'':'none'}
 
 // ===== SWEEP =====
-async function runSweep() {
-  const files = state.sweepFiles.length > 0 ? [...state.sweepFiles] : [...state.batchFiles];
-  if (files.length === 0) return alert('Add audio files first (in Batch or Sweep tab).');
-  parseReferences();
+async function runSweep(){
+  const files=S.sweepFiles.length?[...S.sweepFiles]:[...S.batchFiles];
+  if(!files.length) return alert('Add audio files first.');
+  parseRefs();
+  const url=$id('serverUrl').value.replace(/\/+$/,'');
+  const levels=$id('sweepLevels').value.split(',').map(s=>parseInt(s.trim())).filter(n=>n>0&&n<=1024);
+  if(!levels.length) return alert('Invalid concurrency levels.');
+  const rounds=parseInt($id('sweepRounds').value);
+  const ctrl=new AbortController();
+  S.sweepAbort=ctrl; S.sweepRunning=true; S.sweepResults=[];
+  $id('sweepGoBtn').style.display='none'; $id('sweepStopBtn').style.display='';
+  $id('sweepTbody').innerHTML=''; $id('sweepLog').innerHTML=''; $id('sweepHeatmap').innerHTML='';
+  $id('sweepVu').style.width='0%'; $id('sweepVuLbl').textContent='0%';
 
-  const url = document.getElementById('serverUrl').value.replace(/\/+$/, '');
-  const mode = document.getElementById('sweepMode').value;
-  const levels = document.getElementById('sweepLevels').value.split(',').map(s => parseInt(s.trim())).filter(n => n > 0 && n <= 1024);
-  const rounds = parseInt(document.getElementById('sweepRounds').value);
-  const controller = new AbortController();
-  state.sweepAbort = controller;
-  state.sweepRunning = true;
-  state.sweepResults = [];
+  const totalSteps=levels.length+1;
+  let step=0;
 
-  document.getElementById('sweepRunBtn').style.display = 'none';
-  document.getElementById('sweepStopBtn').style.display = '';
-  document.getElementById('sweepResults').innerHTML = '';
-  document.getElementById('sweepLog').innerHTML = '';
-
-  const totalSteps = levels.length + 1; // sweep levels + sustained
-  let step = 0;
-
-  // WER evaluation first — also populates report data
-  sweepLog('info', `WER evaluation: ${files.length} files at c=1...`);
-  const werResults = await runBatchAtConcurrency(url, files, 1, controller.signal);
-  if (werResults.length > 0 && state.batchResults.length === 0) state.batchResults = werResults;
-  const werValid = werResults.filter(r => r.wer);
-  if (werValid.length) {
-    const totalErrors = werValid.reduce((s, r) => s + r.wer.s + r.wer.i + r.wer.d, 0);
-    const totalWords = werValid.reduce((s, r) => {
-      const ref = state.references[r.file] || '';
-      return s + ref.toLowerCase().replace(/[^a-z0-9'\s]/g, '').trim().split(/\s+/).filter(Boolean).length;
-    }, 0);
-    const corpusWer = totalWords > 0 ? (totalErrors / totalWords * 100).toFixed(2) : null;
-    if (corpusWer) sweepLog('success', `WER: ${corpusWer}%`);
+  sLog('l-info','WER eval: '+files.length+' files at c=1...');
+  const werR=await batchAtC(url,files,1,ctrl.signal);
+  if(werR.length>0&&S.batchResults.length===0) S.batchResults=werR;
+  const wv=werR.filter(r=>r.wer);
+  if(wv.length){
+    const tE=wv.reduce((s,r)=>s+r.wer.s+r.wer.i+r.wer.d,0);
+    const tW=wv.reduce((s,r)=>{const ref=S.refs[r.file]||'';return s+(ref.toLowerCase().replace(/[^a-z0-9'\s]/g,'').trim().split(/\s+/).filter(Boolean).length)},0);
+    if(tW) sLog('l-ok','WER: '+(tE/tW*100).toFixed(2)+'%');
   }
 
-  // Concurrency sweep
-  for (const c of levels) {
-    if (controller.signal.aborted) break;
-    sweepLog('info', `c=${c}...`);
-    const results = await runBatchAtConcurrency(url, files, c, controller.signal);
-    const ok = results.filter(r => r.status === 'ok');
-    const failed = results.filter(r => r.status === 'error').length;
-    const latencies = ok.map(r => r.latency).sort((a, b) => a - b);
-    const p50 = latencies.length ? latencies[Math.floor(latencies.length * 0.5)] : 0;
-    const p99 = latencies.length ? latencies[Math.floor(latencies.length * 0.99)] : 0;
-    const wallClockS = (results._wallClockMs || 1) / 1000;
-    const rps = ok.length / wallClockS;
-
-    const sweepRow = { c, rps: rps.toFixed(1), p50: p50.toFixed(0), p99: p99.toFixed(0), failures: failed, wallClockS: wallClockS.toFixed(1) };
-    state.sweepResults.push(sweepRow);
-    addSweepRow(sweepRow);
-    sweepLog('info', `  c=${c}: ${rps.toFixed(1)} RPS, ${failed} failures`);
-
+  let maxRps=0;
+  for(const c of levels){
+    if(ctrl.signal.aborted) break;
+    sLog('l-info','c='+c+'...');
+    const res=await batchAtC(url,files,c,ctrl.signal);
+    const ok=res.filter(r=>r.status==='ok');
+    const fails=res.filter(r=>r.status==='error').length;
+    const lats=ok.map(r=>r.lat).sort((a,b)=>a-b);
+    const p50=lats.length?lats[Math.floor(lats.length*.5)]:0;
+    const p99=lats.length?lats[Math.floor(lats.length*.99)]:0;
+    const wallS=(res._wallMs||1)/1000;
+    const rps=ok.length/wallS;
+    if(rps>maxRps)maxRps=rps;
+    const row={c,rps:rps.toFixed(1),p50:p50.toFixed(0),p99:p99.toFixed(0),wall:wallS.toFixed(1),failures:fails};
+    S.sweepResults.push(row);
+    addSweepRow(row);
+    addHeatCell(row,maxRps);
+    sLog('l-info','  c='+c+': '+rps.toFixed(1)+' RPS, '+fails+' failures');
     step++;
-    document.getElementById('sweepProgress').style.width = `${(step / totalSteps * 100).toFixed(0)}%`;
-    document.getElementById('sweepStatus').textContent = `Sweep: ${step}/${levels.length} levels done`;
+    const pct=step/totalSteps*100;
+    $id('sweepVu').style.width=pct+'%'; $id('sweepVuLbl').textContent=pct.toFixed(0)+'%';
+    $id('sweepStatus').textContent='Sweep: '+step+'/'+levels.length+' levels';
   }
 
-  // Sustained load
-  if (!controller.signal.aborted) {
-    const sustainedC = levels[Math.floor(levels.length / 2)] || 4;
-    sweepLog('info', `Sustained load: c=${sustainedC}, ${rounds} rounds...`);
-    for (let r = 0; r < rounds && !controller.signal.aborted; r++) {
-      await runBatchAtConcurrency(url, files, sustainedC, controller.signal);
-      sweepLog('info', `  Round ${r + 1}/${rounds} complete`);
+  if(!ctrl.signal.aborted){
+    const sc=levels[Math.floor(levels.length/2)]||4;
+    sLog('l-info','Sustained: c='+sc+', '+rounds+' rounds...');
+    for(let r=0;r<rounds&&!ctrl.signal.aborted;r++){
+      await batchAtC(url,files,sc,ctrl.signal);
+      sLog('l-info','  Round '+(r+1)+'/'+rounds+' done');
     }
-    document.getElementById('sweepProgress').style.width = '100%';
-    document.getElementById('sweepStatus').textContent = 'Complete';
+    $id('sweepVu').style.width='100%'; $id('sweepVuLbl').textContent='100%';
+    $id('sweepStatus').textContent='Complete';
   }
-
-  state.sweepRunning = false;
-  document.getElementById('sweepRunBtn').style.display = '';
-  document.getElementById('sweepStopBtn').style.display = 'none';
-  sweepLog('success', 'Sweep finished.');
+  S.sweepRunning=false;
+  $id('sweepGoBtn').style.display=''; $id('sweepStopBtn').style.display='none';
+  sLog('l-ok','Sweep finished.');
   buildReport();
 }
 
-async function runBatchAtConcurrency(url, files, concurrency, signal) {
-  const results = [];
-  const t0 = performance.now();
-  const semaphore = { count: 0, waiters: [] };
-  const acquire = () => new Promise(resolve => {
-    if (semaphore.count < concurrency) { semaphore.count++; resolve(); }
-    else semaphore.waiters.push(resolve);
-  });
-  const release = () => {
-    semaphore.count--;
-    if (semaphore.waiters.length) { semaphore.count++; semaphore.waiters.shift()(); }
-  };
-
-  const processFile = async (file, idx) => {
-    await acquire();
-    if (signal.aborted) { release(); return; }
-    const start = performance.now();
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      const r = await fetch(`${url}/v1/transcriptions`, { method: 'POST', body: form, signal });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
-      const latency = performance.now() - start;
-      const ref = state.references[file.name];
-      let werResult = null;
-      if (ref) werResult = computeWer(ref, data.text || '');
-      results.push({ idx, file: file.name, text: data.text || '', latency, status: 'ok', wer: werResult });
-    } catch (e) {
-      if (e.name !== 'AbortError') {
-        results.push({ idx, file: file.name, text: '', latency: performance.now() - start, status: 'error', error: e.message, wer: null });
-      }
+async function batchAtC(url, files, conc, signal) {
+  const results=[]; const t0=performance.now();
+  const sem=makeSem(conc);
+  const process=async(file,idx)=>{
+    await sem.acquire();
+    if(signal.aborted){sem.release();return}
+    const start=performance.now();
+    try{
+      const form=new FormData();form.append('file',file);
+      const r=await fetch(`${url}/v1/transcriptions`,{method:'POST',body:form,signal});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const data=await r.json();
+      const lat=performance.now()-start;
+      const ref=S.refs[file.name];
+      const wer=ref?computeWer(ref,data.text||''):null;
+      results.push({idx,file:file.name,text:data.text||'',lat,status:'ok',wer});
+    }catch(e){
+      if(e.name!=='AbortError') results.push({idx,file:file.name,text:'',lat:performance.now()-start,status:'error',error:e.message,wer:null});
     }
-    release();
+    sem.release();
   };
-
-  await Promise.all(files.map((f, i) => processFile(f, i)));
-  results._wallClockMs = performance.now() - t0;
+  await Promise.all(files.map((f,i)=>process(f,i)));
+  results._wallMs=performance.now()-t0;
   return results;
 }
 
-function addSweepRow(r) {
-  const tbody = document.getElementById('sweepResults');
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td class="mono text-center">${r.c}</td>
-    <td class="mono text-right">${r.rps}</td>
-    <td class="mono text-right">${r.p50}ms</td>
-    <td class="mono text-right">${r.p99}ms</td>
-    <td class="mono text-right">${r.wallClockS}s</td>
-    <td class="mono text-center ${r.failures > 0 ? 'gate-fail' : 'gate-pass'}">${r.failures}</td>
-  `;
-  tbody.appendChild(tr);
+function addSweepRow(r){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td class="text-c">${r.c}</td><td class="text-r">${r.rps}</td><td class="text-r">${r.p50}ms</td><td class="text-r">${r.p99}ms</td><td class="text-r">${r.wall}s</td><td class="text-c ${r.failures?'g-fail':'g-pass'}">${r.failures}</td>`;
+  $id('sweepTbody').appendChild(tr);
 }
 
-function sweepLog(cls, msg) {
-  const el = document.getElementById('sweepLog');
-  el.innerHTML += `<div class="${cls}">${new Date().toISOString().substr(11, 8)} ${esc(msg)}</div>`;
-  el.scrollTop = el.scrollHeight;
+function addHeatCell(row, maxRps) {
+  const rps = parseFloat(row.rps);
+  const intensity = maxRps > 0 ? rps / maxRps : 0;
+  const style = getComputedStyle(document.documentElement);
+  const hasFail = row.failures > 0;
+  const bg = hasFail
+    ? `rgba(255,87,87,${0.1 + intensity * 0.2})`
+    : `rgba(0,229,160,${0.05 + intensity * 0.25})`;
+  const border = hasFail ? 'var(--error)' : 'transparent';
+  const el = document.createElement('div');
+  el.className = 'heat-cell';
+  el.style.background = bg;
+  el.style.borderColor = border;
+  el.innerHTML = `<div class="hc-c">c=${row.c}</div><div class="hc-rps" style="color:${hasFail?'var(--error)':'var(--accent)'}">${row.rps}</div><div class="hc-detail">p50 ${row.p50}ms</div>`;
+  el.title = `c=${row.c} | RPS: ${row.rps} | p50: ${row.p50}ms | p99: ${row.p99}ms | wall: ${row.wall}s | fail: ${row.failures}`;
+  $id('sweepHeatmap').appendChild(el);
 }
 
-function stopSweep() {
-  if (state.sweepAbort) state.sweepAbort.abort();
-  state.sweepRunning = false;
-  document.getElementById('sweepRunBtn').style.display = '';
-  document.getElementById('sweepStopBtn').style.display = 'none';
-}
-
-function onPresetChange() {
-  const preset = document.getElementById('sweepPreset').value;
-  if (preset === 'librispeech-demo') {
-    loadPresetRefs();
-    document.getElementById('sweepCustomUpload').style.display = 'none';
-  } else {
-    document.getElementById('sweepCustomUpload').style.display = '';
-  }
+function sLog(cls,msg){const el=$id('sweepLog');el.innerHTML+=`<div class="${cls}">${new Date().toISOString().substr(11,8)} ${esc(msg)}</div>`;el.scrollTop=el.scrollHeight}
+function stopSweep(){if(S.sweepAbort)S.sweepAbort.abort();S.sweepRunning=false;$id('sweepGoBtn').style.display='';$id('sweepStopBtn').style.display='none'}
+function onPresetChange(){
+  if($id('sweepPreset').value==='librispeech'){loadPresetRefs();$id('sweepUpload').style.display='none'}
+  else $id('sweepUpload').style.display='';
 }
 
 // ===== REPORT =====
-function buildReport() {
-  const results = state.batchResults.length > 0 ? state.batchResults : [];
-  if (results.length === 0) return;
+function buildReport(){
+  const results=S.batchResults.length?S.batchResults:[];
+  if(!results.length) return;
+  $id('rptEmpty').style.display='none'; $id('rptContent').style.display='';
+  const ok=results.filter(r=>r.status==='ok');
+  const fails=results.filter(r=>r.status==='error');
+  $id('rFiles').textContent=results.length;
+  $id('rFail').textContent=fails.length;
+  $id('rFail').className='stat-val'+(fails.length?' c-bad':' c-good');
 
-  document.getElementById('reportEmpty').style.display = 'none';
-  document.getElementById('reportContent').style.display = '';
-
-  const ok = results.filter(r => r.status === 'ok');
-  const failed = results.filter(r => r.status === 'error');
-  const latencies = ok.map(r => r.latency).sort((a, b) => a - b);
-
-  document.getElementById('rptTotalFiles').textContent = results.length;
-  document.getElementById('rptFailures').textContent = failed.length;
-  document.getElementById('rptFailures').className = `stat-value mono ${failed.length > 0 ? 'bad' : 'good'}`;
-
-  if (state.sweepResults.length > 0) {
-    const peakRps = Math.max(...state.sweepResults.map(r => parseFloat(r.rps)));
-    document.getElementById('rptPeakRps').textContent = peakRps.toFixed(1);
-  } else if (results._wallClockMs) {
-    document.getElementById('rptPeakRps').textContent = (ok.length / (results._wallClockMs / 1000)).toFixed(1);
+  if(S.sweepResults.length){
+    $id('rRps').textContent=Math.max(...S.sweepResults.map(r=>parseFloat(r.rps))).toFixed(1);
+  } else if(results._wallMs){
+    $id('rRps').textContent=(ok.length/(results._wallMs/1000)).toFixed(1);
   }
 
-  // Corpus WER
-  const werResults = ok.filter(r => r.wer);
-  if (werResults.length) {
-    const totalErrors = werResults.reduce((s, r) => s + r.wer.s + r.wer.i + r.wer.d, 0);
-    const totalWords = werResults.reduce((s, r) => {
-      const ref = state.references[r.file] || '';
-      return s + ref.toLowerCase().replace(/[^a-z0-9'\s]/g, '').trim().split(/\s+/).filter(Boolean).length;
-    }, 0);
-    if (totalWords > 0) {
-      const wer = (totalErrors / totalWords * 100).toFixed(2);
-      document.getElementById('rptWer').textContent = wer + '%';
-      document.getElementById('rptWer').className = `stat-value mono ${parseFloat(wer) < 5 ? 'good' : parseFloat(wer) < 15 ? 'warn' : 'bad'}`;
+  const wR=ok.filter(r=>r.wer);
+  if(wR.length){
+    const tE=wR.reduce((s,r)=>s+r.wer.s+r.wer.i+r.wer.d,0);
+    const tW=wR.reduce((s,r)=>{const ref=S.refs[r.file]||'';return s+(ref.toLowerCase().replace(/[^a-z0-9'\s]/g,'').trim().split(/\s+/).filter(Boolean).length)},0);
+    if(tW){
+      const w=(tE/tW*100).toFixed(2);
+      $id('rWer').textContent=w+'%';
+      $id('rWer').className='stat-val '+(parseFloat(w)<5?'c-good':parseFloat(w)<15?'c-warn':'c-bad');
     }
   }
 
-  // Quality gates
-  const gatesBody = document.getElementById('rptGates');
-  gatesBody.innerHTML = '';
-  const werVal = document.getElementById('rptWer').textContent;
-  const gates = [
-    { name: 'WER', threshold: '< 4.0%', actual: werVal, pass: werVal !== '—' && parseFloat(werVal) < 4.0 },
-    { name: 'Failures', threshold: '0', actual: failed.length.toString(), pass: failed.length === 0 },
-  ];
-  gates.forEach(g => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${g.name}</td><td class="mono">${g.threshold}</td><td class="mono">${g.actual}</td>
-      <td class="${g.pass ? 'gate-pass' : 'gate-fail'}">${g.pass ? 'PASS' : 'FAIL'}</td>`;
-    gatesBody.appendChild(tr);
+  const gb=$id('rptGates'); gb.innerHTML='';
+  const werVal=$id('rWer').textContent;
+  [{name:'WER',thresh:'< 4.0%',actual:werVal,pass:werVal!=='—'&&parseFloat(werVal)<4},
+   {name:'Failures',thresh:'0',actual:fails.length+'',pass:fails.length===0}
+  ].forEach(g=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${g.name}</td><td>${g.thresh}</td><td>${g.actual}</td><td class="${g.pass?'g-pass':'g-fail'}">${g.pass?'PASS':'FAIL'}</td>`;
+    gb.appendChild(tr);
   });
 
-  // Per-utterance transcripts
-  state.reportData = results;
-  renderTranscripts(results);
+  S.reportData=results;
+  renderReport(results);
 }
 
-function renderTranscripts(results) {
-  const tbody = document.getElementById('rptTranscripts');
-  tbody.innerHTML = '';
-  results.forEach((r, i) => {
-    const tr = document.createElement('tr');
-    const ref = state.references[r.file] || '';
-    const hyp = r.text || '';
-    const werInfo = r.wer;
-    const diffHtml = werInfo ? renderWerDiff(werInfo.ops) : esc(hyp);
-    tr.innerHTML = `
-      <td class="mono text-center">${i + 1}</td>
-      <td class="mono truncate" title="${esc(r.file)}">${esc(r.file)}</td>
-      <td class="truncate" title="${esc(ref)}">${esc(ref).substring(0, 60)}${ref.length > 60 ? '...' : ''}</td>
-      <td style="max-width:350px;overflow:hidden">${diffHtml}</td>
-      <td class="mono text-right ${werInfo ? (werInfo.wer < 5 ? 'good' : werInfo.wer < 15 ? 'warn' : 'bad') : ''}">${werInfo ? werInfo.wer.toFixed(1) + '%' : '—'}</td>
-      <td class="mono text-center">${werInfo ? werInfo.s : '—'}</td>
-      <td class="mono text-center">${werInfo ? werInfo.i : '—'}</td>
-      <td class="mono text-center">${werInfo ? werInfo.d : '—'}</td>
-    `;
-    tbody.appendChild(tr);
+function renderReport(results){
+  const tb=$id('rptTbody'); tb.innerHTML='';
+  results.forEach((r,i)=>{
+    const ref=S.refs[r.file]||'';
+    const w=r.wer;
+    const diff=w?renderDiff(w.ops):esc(r.text);
+    const wc=w?(w.wer<5?'c-good':w.wer<15?'c-warn':'c-bad'):'';
+
+    const mainTr=document.createElement('tr');
+    mainTr.className='expand-row';
+    mainTr.onclick=()=>{mainTr.classList.toggle('open');mainTr.nextElementSibling.classList.toggle('open')};
+    mainTr.innerHTML=`<td class="text-c">${i+1}</td><td class="trunc" title="${esc(r.file)}">${esc(r.file)}</td><td class="trunc" title="${esc(ref)}">${esc(ref).substring(0,40)}</td><td class="trunc">${esc(r.text).substring(0,40)}</td><td class="text-r ${wc}">${w?w.wer.toFixed(1)+'%':'—'}</td><td class="text-c">${w?w.s:'—'}</td><td class="text-c">${w?w.i:'—'}</td><td class="text-c">${w?w.d:'—'}</td>`;
+    tb.appendChild(mainTr);
+
+    const detTr=document.createElement('tr');
+    detTr.className='expand-detail';
+    detTr.innerHTML=`<td colspan="8" style="font-size:12px;line-height:1.8"><strong>REF:</strong> ${esc(ref)}<br><strong>HYP:</strong> ${diff}</td>`;
+    tb.appendChild(detTr);
   });
 }
 
-function filterTranscripts() {
-  const q = document.getElementById('rptFilter').value.toLowerCase();
-  const filtered = (state.reportData || []).filter(r => r.file.toLowerCase().includes(q));
-  renderTranscripts(filtered);
+function filterReport(){
+  const q=$id('rptFilter').value.toLowerCase();
+  renderReport((S.reportData||[]).filter(r=>r.file.toLowerCase().includes(q)));
 }
 
 // ===== DOWNLOADS =====
-function downloadJSON() {
-  const data = {
-    timestamp: new Date().toISOString(),
-    server: document.getElementById('serverUrl').value,
-    server_info: state.serverInfo,
-    total_files: state.batchResults.length,
-    results: state.batchResults.map(r => ({
-      file: r.file, text: r.text, latency_ms: r.latency,
-      status: r.status, error: r.error || null,
-      reference: state.references[r.file] || null,
-      wer: r.wer ? { wer_pct: r.wer.wer, substitutions: r.wer.s, insertions: r.wer.i, deletions: r.wer.d } : null,
-    })),
-    sweep: state.sweepResults,
-  };
-  downloadFile(JSON.stringify(data, null, 2), 'benchmark-report.json', 'application/json');
+function dlJSON(){
+  const d={timestamp:new Date().toISOString(),server:$id('serverUrl').value,server_info:S.serverInfo,
+    results:S.batchResults.map(r=>({file:r.file,text:r.text,latency_ms:r.lat,status:r.status,error:r.error||null,
+      reference:S.refs[r.file]||null,wer:r.wer?{wer_pct:r.wer.wer,s:r.wer.s,i:r.wer.i,d:r.wer.d}:null})),
+    sweep:S.sweepResults};
+  dlFile(JSON.stringify(d,null,2),'benchmark-report.json','application/json');
 }
-
-function downloadCSV() {
-  let csv = 'file,reference,hypothesis,wer_pct,substitutions,insertions,deletions,latency_ms,status\n';
-  state.batchResults.forEach(r => {
-    const ref = (state.references[r.file] || '').replace(/"/g, '""');
-    const hyp = (r.text || '').replace(/"/g, '""');
-    csv += `"${r.file}","${ref}","${hyp}",${r.wer ? r.wer.wer.toFixed(2) : ''},${r.wer ? r.wer.s : ''},${r.wer ? r.wer.i : ''},${r.wer ? r.wer.d : ''},${r.latency.toFixed(0)},${r.status}\n`;
+function dlCSV(){
+  let csv='file,reference,hypothesis,wer_pct,substitutions,insertions,deletions,latency_ms,status\n';
+  S.batchResults.forEach(r=>{
+    const ref=(S.refs[r.file]||'').replace(/"/g,'""');
+    const hyp=(r.text||'').replace(/"/g,'""');
+    csv+=`"${r.file}","${ref}","${hyp}",${r.wer?r.wer.wer.toFixed(2):''},${r.wer?r.wer.s:''},${r.wer?r.wer.i:''},${r.wer?r.wer.d:''},${r.lat.toFixed(0)},${r.status}\n`;
   });
-  downloadFile(csv, 'transcripts.csv', 'text/csv');
+  dlFile(csv,'transcripts.csv','text/csv');
 }
-
-function downloadMarkdown() {
-  let md = `# Benchmark Report\n\n`;
-  md += `**Server:** ${document.getElementById('serverUrl').value}\n`;
-  md += `**Date:** ${new Date().toISOString()}\n\n`;
-  md += `## Summary\n`;
-  md += `| Metric | Value |\n|--------|-------|\n`;
-  md += `| Files | ${state.batchResults.length} |\n`;
-  md += `| WER | ${document.getElementById('rptWer').textContent} |\n`;
-  md += `| Failures | ${state.batchResults.filter(r => r.status === 'error').length} |\n\n`;
-
-  if (state.sweepResults.length) {
-    md += `## Concurrency Sweep\n`;
-    md += `| c | RPS | p50 | p99 | Wall (s) | Failures |\n|---|-----|-----|-----|----------|----------|\n`;
-    state.sweepResults.forEach(r => {
-      md += `| ${r.c} | ${r.rps} | ${r.p50}ms | ${r.p99}ms | ${r.wallClockS}s | ${r.failures} |\n`;
-    });
-    md += '\n';
+function dlMD(){
+  let md='# Benchmark Report\n\n';
+  md+=`**Server:** ${$id('serverUrl').value}  \n**Date:** ${new Date().toISOString()}\n\n`;
+  md+='## Summary\n| Metric | Value |\n|--------|-------|\n';
+  md+=`| Files | ${S.batchResults.length} |\n| WER | ${$id('rWer').textContent} |\n| Failures | ${S.batchResults.filter(r=>r.status==='error').length} |\n\n`;
+  if(S.sweepResults.length){
+    md+='## Concurrency Sweep\n| c | RPS | p50 | p99 | Wall | Fail |\n|---|-----|-----|-----|------|------|\n';
+    S.sweepResults.forEach(r=>{md+=`| ${r.c} | ${r.rps} | ${r.p50}ms | ${r.p99}ms | ${r.wall}s | ${r.failures} |\n`});
+    md+='\n';
   }
-
-  md += `## Per-Utterance Results\n`;
-  md += `| File | Reference | Hypothesis | WER |\n|------|-----------|------------|-----|\n`;
-  state.batchResults.slice(0, 50).forEach(r => {
-    const ref = (state.references[r.file] || '').substring(0, 50);
-    const hyp = (r.text || '').substring(0, 50);
-    md += `| ${r.file} | ${ref} | ${hyp} | ${r.wer ? r.wer.wer.toFixed(1) + '%' : '—'} |\n`;
+  md+='## Per-Utterance\n| File | Ref | Hyp | WER |\n|------|-----|-----|-----|\n';
+  S.batchResults.slice(0,50).forEach(r=>{
+    md+=`| ${r.file} | ${(S.refs[r.file]||'').substring(0,40)} | ${(r.text||'').substring(0,40)} | ${r.wer?r.wer.wer.toFixed(1)+'%':'—'} |\n`;
   });
-  if (state.batchResults.length > 50) md += `\n_...and ${state.batchResults.length - 50} more utterances (see CSV for full list)_\n`;
-
-  downloadFile(md, 'benchmark-report.md', 'text/markdown');
+  if(S.batchResults.length>50) md+=`\n_...${S.batchResults.length-50} more (see CSV)_\n`;
+  dlFile(md,'benchmark-report.md','text/markdown');
 }
-
-function downloadFile(content, filename, mime) {
-  const blob = new Blob([content], { type: mime });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
+function dlFile(content,name,mime){
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:mime}));a.download=name;a.click();URL.revokeObjectURL(a.href);
 }
 
 // ===== INIT =====
-setupDropZone('batchDropZone', 'batchFileInput', state.batchFiles, 'batchFileList');
-document.getElementById('sweepFileInput')?.addEventListener('change', function() {
-  addFiles(Array.from(this.files), state.sweepFiles, 'sweepFileList');
-  this.value = '';
-});
-
-// Auto-connect on load
-if (document.getElementById('serverUrl').value) {
-  setTimeout(connectServer, 500);
-}
+setupDrop('batchDrop','batchFiles',S.batchFiles,'batchFileList');
+$id('sweepFileIn')?.addEventListener('change',function(){addFiles(Array.from(this.files),S.sweepFiles,'sweepFileList');this.value=''});
+if($id('serverUrl').value) setTimeout(connectServer,500);
+drawHistogram();
 </script>
