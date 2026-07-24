@@ -1,0 +1,638 @@
+<title>HighPerfASR Benchmarks</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Open benchmark results for HighPerfASR speech recognition — WER, throughput, concurrency sweeps on L4 and T4 GPUs.">
+<style>
+:root{
+  --ground:#080a10;--surface:#10131c;--elevated:#181c28;
+  --border:#1e2436;--border-focus:#00e5a0;
+  --accent:#00e5a0;--accent-dim:#00e5a033;--accent-glow:#00e5a066;
+  --blue:#5a7fff;--blue-dim:#5a7fff22;
+  --amber:#ffb347;--amber-dim:#ffb34722;
+  --error:#ff5757;--error-dim:#ff575722;
+  --text:#cdd4e0;--text2:#6b7394;--text3:#3d4560;
+  --mono:'SF Mono','Cascadia Code','JetBrains Mono','Fira Code',monospace;
+  --radius:6px;
+}
+@media(prefers-color-scheme:light){:root{
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --amber:#cc8800;--amber-dim:#cc880015;
+  --error:#d93636;--error-dim:#d9363615;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}}
+:root[data-theme="light"]{
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --amber:#cc8800;--amber-dim:#cc880015;
+  --error:#d93636;--error-dim:#d9363615;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}
+:root[data-theme="dark"]{
+  --ground:#080a10;--surface:#10131c;--elevated:#181c28;
+  --border:#1e2436;--border-focus:#00e5a0;
+  --accent:#00e5a0;--accent-dim:#00e5a033;--accent-glow:#00e5a066;
+  --blue:#5a7fff;--blue-dim:#5a7fff22;
+  --amber:#ffb347;--amber-dim:#ffb34722;
+  --error:#ff5757;--error-dim:#ff575722;
+  --text:#cdd4e0;--text2:#6b7394;--text3:#3d4560;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--ground);color:var(--text);font-size:14px;line-height:1.6}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+
+.topbar{display:flex;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:10}
+.logo{font-family:var(--mono);font-size:16px;font-weight:700;letter-spacing:-0.5px;white-space:nowrap}
+.logo em{font-style:normal;color:var(--accent)}
+.topbar-sub{font-size:12px;color:var(--text2);font-family:var(--mono);text-transform:uppercase;letter-spacing:1px}
+.topbar-links{margin-left:auto;display:flex;gap:16px;font-size:13px;font-family:var(--mono)}
+
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.section-title{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--text2);margin-bottom:16px}
+
+/* Hero stats */
+.hero{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:32px}
+@media(max-width:700px){.hero{grid-template-columns:repeat(2,1fr)}}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;text-align:center;transition:border-color .2s}
+.stat-card:hover{border-color:var(--border-focus)}
+.stat-val{font-family:var(--mono);font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.stat-label{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-top:4px}
+.stat-sub{font-size:11px;color:var(--text3);margin-top:2px;font-family:var(--mono)}
+.c-accent{color:var(--accent)}.c-blue{color:var(--blue)}.c-amber{color:var(--amber)}
+
+/* GPU comparison */
+.gpu-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:32px}
+@media(max-width:700px){.gpu-grid{grid-template-columns:1fr}}
+.gpu-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;position:relative}
+.gpu-card h3{font-family:var(--mono);font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.gpu-badge{font-size:10px;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+.badge-l4{background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)}
+.badge-t4{background:var(--amber-dim);color:var(--amber);border:1px solid var(--amber)}
+.gpu-metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gpu-metric{padding:8px;border-radius:4px;background:var(--elevated)}
+.gpu-metric-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2)}
+.gpu-metric-val{font-family:var(--mono);font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.gpu-metric-note{font-size:11px;color:var(--text3);font-family:var(--mono)}
+.gpu-section-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);margin:12px 0 6px;font-family:var(--mono)}
+
+/* Run cards */
+.runs{display:flex;flex-direction:column;gap:16px;margin-bottom:32px}
+.run-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.run-header{padding:16px 20px;cursor:pointer;display:flex;align-items:center;gap:12px;user-select:none;transition:background .15s}
+.run-header:hover{background:var(--elevated)}
+.run-toggle{font-family:var(--mono);font-size:12px;color:var(--text3);transition:transform .2s;flex-shrink:0}
+.run-card.open .run-toggle{transform:rotate(90deg)}
+.run-title{font-family:var(--mono);font-size:14px;font-weight:600;flex:1}
+.run-chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.chip-g{background:var(--accent-dim);color:var(--accent)}.chip-b{background:var(--blue-dim);color:var(--blue)}.chip-a{background:var(--amber-dim);color:var(--amber)}
+.run-body{display:none;border-top:1px solid var(--border);padding:16px 20px}
+.run-card.open .run-body{display:block}
+.run-metrics{display:flex;gap:16px;margin-bottom:12px;flex-wrap:wrap}
+.run-m{text-align:center;min-width:80px}
+.run-m-val{font-family:var(--mono);font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.run-m-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2)}
+
+/* Charts */
+.chart-wrap{position:relative;height:220px;margin:12px 0;background:var(--elevated);border-radius:var(--radius);overflow:hidden}
+.chart-wrap canvas{display:block;width:100%;height:100%}
+.chart-tooltip{position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-family:var(--mono);font-size:11px;pointer-events:none;opacity:0;transition:opacity .15s;z-index:5;white-space:nowrap}
+
+/* Tables */
+.table-wrap{overflow-x:auto;margin:8px 0}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+th{text-align:left;padding:6px 10px;border-bottom:2px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600}
+td{padding:6px 10px;border-bottom:1px solid var(--border)}
+tr:last-child td{border-bottom:none}
+.text-r{text-align:right}.text-c{text-align:center}
+
+/* Duration table */
+.dur-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0}
+@media(max-width:600px){.dur-grid{grid-template-columns:repeat(2,1fr)}}
+.dur-cell{background:var(--elevated);border-radius:4px;padding:10px;text-align:center}
+.dur-label{font-family:var(--mono);font-size:12px;color:var(--text2)}
+.dur-val{font-family:var(--mono);font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.dur-note{font-size:10px;color:var(--text3);font-family:var(--mono)}
+.dur-warn{color:var(--error)}
+
+/* Environment */
+.env-grid{display:inline-grid;grid-template-columns:auto auto;gap:4px 16px;font-family:var(--mono);font-size:12px}
+.env-label{color:var(--text2)}
+
+.footer{border-top:1px solid var(--border);padding:20px 24px;text-align:center;color:var(--text3);font-size:12px}
+.footer a{color:var(--text2)}
+.footer-links{display:flex;justify-content:center;gap:24px;margin-bottom:8px;font-family:var(--mono);font-size:12px}
+</style>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">High<em>Perf</em>ASR</div>
+  <span class="topbar-sub">Benchmarks</span>
+  <div class="topbar-links">
+    <a href="dashboard.html">Interactive Dashboard</a>
+    <a href="https://github.com/beastoin/highperfasr">GitHub</a>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- HERO -->
+<div class="section-title">Headline Metrics</div>
+<div class="hero">
+  <div class="stat-card">
+    <div class="stat-val c-accent">1.57%</div>
+    <div class="stat-label">Best WER</div>
+    <div class="stat-sub">Batch L4 &middot; Whisper norm</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-val c-accent">235x</div>
+    <div class="stat-label">Peak RTFx</div>
+    <div class="stat-sub">L4 batch by-duration</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-val c-blue">512</div>
+    <div class="stat-label">Max Streams</div>
+    <div class="stat-sub">L4 streaming &middot; 0 failures</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-val">2</div>
+    <div class="stat-label">GPUs Tested</div>
+    <div class="stat-sub">NVIDIA L4 &middot; T4</div>
+  </div>
+</div>
+
+<!-- GPU COMPARISON -->
+<div class="section-title">GPU Comparison</div>
+<div class="gpu-grid">
+  <div class="gpu-card">
+    <h3><span class="gpu-badge badge-l4">L4</span> NVIDIA L4 24GB</h3>
+    <div class="gpu-section-label">Batch &middot; parakeet-tdt-0.6b-v3</div>
+    <div class="gpu-metric-grid">
+      <div class="gpu-metric"><div class="gpu-metric-label">WER</div><div class="gpu-metric-val c-accent">1.57%</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">Peak RPS</div><div class="gpu-metric-val">19.5</div><div class="gpu-metric-note">c=256</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">RTFx</div><div class="gpu-metric-val">178x</div><div class="gpu-metric-note">c=256</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">Failures</div><div class="gpu-metric-val c-accent">0</div><div class="gpu-metric-note">c=1..512</div></div>
+    </div>
+    <div class="gpu-section-label">Streaming &middot; nemotron-3.5-asr-streaming-0.6b</div>
+    <div class="gpu-metric-grid">
+      <div class="gpu-metric"><div class="gpu-metric-label">WER</div><div class="gpu-metric-val c-blue">3.21%</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">Max Concurrent</div><div class="gpu-metric-val c-blue">512</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">Sessions/min</div><div class="gpu-metric-val">297</div><div class="gpu-metric-note">c=512</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">RTFx</div><div class="gpu-metric-val">38.69x</div><div class="gpu-metric-note">c=512</div></div>
+    </div>
+    <div class="gpu-section-label">Duration Scaling (batch)</div>
+    <div class="dur-grid">
+      <div class="dur-cell"><div class="dur-label">10s audio</div><div class="dur-val c-accent">256+</div><div class="dur-note">6.12 RPS</div></div>
+      <div class="dur-cell"><div class="dur-label">30s audio</div><div class="dur-val c-accent">256+</div><div class="dur-note">7.70 RPS</div></div>
+      <div class="dur-cell"><div class="dur-label">60s audio</div><div class="dur-val dur-warn">24</div><div class="dur-note">OOM at c=32</div></div>
+      <div class="dur-cell"><div class="dur-label">120s audio</div><div class="dur-val">192</div><div class="dur-note">1.69 RPS</div></div>
+    </div>
+  </div>
+  <div class="gpu-card">
+    <h3><span class="gpu-badge badge-t4">T4</span> NVIDIA T4 16GB</h3>
+    <div class="gpu-section-label">Batch &middot; parakeet-tdt-0.6b-v3</div>
+    <div class="gpu-metric-grid">
+      <div class="gpu-metric"><div class="gpu-metric-label">WER</div><div class="gpu-metric-val c-amber">1.86%</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">Peak RPS</div><div class="gpu-metric-val">7.17</div><div class="gpu-metric-note">c=64</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">RTFx</div><div class="gpu-metric-val">65.2x</div><div class="gpu-metric-note">c=64</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">Failures</div><div class="gpu-metric-val c-accent">0</div><div class="gpu-metric-note">c=1..64</div></div>
+    </div>
+    <div class="gpu-section-label">Streaming &middot; nemotron-3.5-asr-streaming-0.6b</div>
+    <div class="gpu-metric-grid">
+      <div class="gpu-metric"><div class="gpu-metric-label">WER</div><div class="gpu-metric-val c-amber">3.19%</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">Max Concurrent</div><div class="gpu-metric-val c-amber">256</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">RTFx</div><div class="gpu-metric-val">22.17x</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">Failures</div><div class="gpu-metric-val c-accent">0</div><div class="gpu-metric-note">c=1..256</div></div>
+    </div>
+    <div class="gpu-section-label" style="margin-top:16px">Comparison</div>
+    <div style="font-size:12px;color:var(--text2);font-family:var(--mono);line-height:1.8">
+      L4 batch is <strong style="color:var(--text)">2.7x</strong> faster RPS vs T4<br>
+      L4 streaming handles <strong style="color:var(--text)">2x</strong> more concurrent streams<br>
+      WER within <strong style="color:var(--text)">0.3%</strong> across both GPUs
+    </div>
+  </div>
+</div>
+
+<!-- BENCHMARK RUNS -->
+<div class="section-title">Benchmark Runs</div>
+<div class="runs">
+
+  <!-- L4 Batch -->
+  <div class="run-card" id="run-l4-batch">
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25B6;</span>
+      <span class="run-title">L4 Batch Concurrency Sweep</span>
+      <div class="run-chips">
+        <span class="chip chip-g">WER 1.57%</span>
+        <span class="chip chip-g">19.5 RPS</span>
+        <span class="chip chip-g">178x RTFx</span>
+        <span class="chip chip-g">0 fail</span>
+      </div>
+    </div>
+    <div class="run-body">
+      <div class="run-metrics">
+        <div class="run-m"><div class="run-m-val c-accent">1.57%</div><div class="run-m-label">WER</div></div>
+        <div class="run-m"><div class="run-m-val">19.5</div><div class="run-m-label">Peak RPS</div></div>
+        <div class="run-m"><div class="run-m-val">178x</div><div class="run-m-label">RTFx</div></div>
+        <div class="run-m"><div class="run-m-val c-accent">0</div><div class="run-m-label">Failures</div></div>
+        <div class="run-m"><div class="run-m-val">256</div><div class="run-m-label">Max C</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">nvidia/parakeet-tdt-0.6b-v3 &middot; 200 LibriSpeech test-clean files &middot; NVIDIA L4 24GB</div>
+      <div class="chart-wrap" id="chart-l4-batch"><canvas></canvas><div class="chart-tooltip"></div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="text-c">C</th><th class="text-r">RPS</th><th class="text-r">RTFx</th><th class="text-r">p50</th><th class="text-r">p99</th><th class="text-c">Fail</th></tr></thead>
+          <tbody id="tbl-l4-batch"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- L4 Streaming -->
+  <div class="run-card" id="run-l4-stream">
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25B6;</span>
+      <span class="run-title">L4 Streaming 512-Stream Soak</span>
+      <div class="run-chips">
+        <span class="chip chip-b">WER 3.21%</span>
+        <span class="chip chip-b">297 sess/min</span>
+        <span class="chip chip-b">38.69x RTFx</span>
+        <span class="chip chip-g">0 fail</span>
+      </div>
+    </div>
+    <div class="run-body">
+      <div class="run-metrics">
+        <div class="run-m"><div class="run-m-val c-blue">3.21%</div><div class="run-m-label">WER</div></div>
+        <div class="run-m"><div class="run-m-val">297</div><div class="run-m-label">Sess/min</div></div>
+        <div class="run-m"><div class="run-m-val">38.69x</div><div class="run-m-label">RTFx</div></div>
+        <div class="run-m"><div class="run-m-val c-accent">0</div><div class="run-m-label">Failures</div></div>
+        <div class="run-m"><div class="run-m-val c-blue">512</div><div class="run-m-label">Max Streams</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">nvidia/nemotron-3.5-asr-streaming-0.6b &middot; 2620 LibriSpeech test-clean &middot; 10 min soak &middot; NVIDIA L4 24GB</div>
+      <div class="chart-wrap" id="chart-l4-stream"><canvas></canvas><div class="chart-tooltip"></div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th class="text-c">C</th><th class="text-r">RTFx</th><th class="text-r">Sess/min</th><th class="text-c">Fail</th></tr></thead>
+          <tbody id="tbl-l4-stream"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- L4 Duration -->
+  <div class="run-card" id="run-l4-dur">
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25B6;</span>
+      <span class="run-title">L4 Batch by Audio Duration</span>
+      <div class="run-chips">
+        <span class="chip chip-g">235x RTFx</span>
+        <span class="chip chip-g">14.9 RPS</span>
+        <span class="chip chip-a">60s OOM@32</span>
+      </div>
+    </div>
+    <div class="run-body">
+      <div class="run-metrics">
+        <div class="run-m"><div class="run-m-val">235x</div><div class="run-m-label">RTFx</div></div>
+        <div class="run-m"><div class="run-m-val">14.9</div><div class="run-m-label">Peak RPS</div></div>
+        <div class="run-m"><div class="run-m-val c-accent">0</div><div class="run-m-label">Failures</div></div>
+        <div class="run-m"><div class="run-m-val">3400</div><div class="run-m-label">Total Reqs</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">nvidia/parakeet-tdt-0.6b-v3 &middot; espeak-ng TTS &middot; 100 files per duration &middot; NVIDIA L4 24GB</div>
+      <div class="chart-wrap" id="chart-l4-dur"><canvas></canvas><div class="chart-tooltip"></div></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;font-family:var(--mono)">60s audio hard-capped at c=24 due to VRAM estimator bug (issue #19)</div>
+    </div>
+  </div>
+
+  <!-- T4 Batch -->
+  <div class="run-card" id="run-t4-batch">
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25B6;</span>
+      <span class="run-title">T4 Batch Concurrency Sweep</span>
+      <div class="run-chips">
+        <span class="chip chip-a">WER 1.86%</span>
+        <span class="chip chip-a">7.17 RPS</span>
+        <span class="chip chip-a">65.2x RTFx</span>
+        <span class="chip chip-g">0 fail</span>
+      </div>
+    </div>
+    <div class="run-body">
+      <div class="run-metrics">
+        <div class="run-m"><div class="run-m-val c-amber">1.86%</div><div class="run-m-label">WER</div></div>
+        <div class="run-m"><div class="run-m-val">7.17</div><div class="run-m-label">Peak RPS</div></div>
+        <div class="run-m"><div class="run-m-val">65.2x</div><div class="run-m-label">RTFx</div></div>
+        <div class="run-m"><div class="run-m-val c-accent">0</div><div class="run-m-label">Failures</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">nvidia/parakeet-tdt-0.6b-v3 &middot; LibriSpeech test-clean &middot; NVIDIA T4 16GB</div>
+      <div style="font-size:12px;color:var(--text2);font-family:var(--mono);line-height:1.8">
+        Max safe concurrency: <strong style="color:var(--amber)">c=64</strong> (T4 crashes at higher levels due to VRAM)<br>
+        torch.compile disabled on T4 (unsupported architecture)
+      </div>
+    </div>
+  </div>
+
+  <!-- T4 Streaming -->
+  <div class="run-card" id="run-t4-stream">
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25B6;</span>
+      <span class="run-title">T4 Streaming Concurrency Sweep</span>
+      <div class="run-chips">
+        <span class="chip chip-a">WER 3.19%</span>
+        <span class="chip chip-a">22.17x RTFx</span>
+        <span class="chip chip-a">256 streams</span>
+        <span class="chip chip-g">0 fail</span>
+      </div>
+    </div>
+    <div class="run-body">
+      <div class="run-metrics">
+        <div class="run-m"><div class="run-m-val c-amber">3.19%</div><div class="run-m-label">WER</div></div>
+        <div class="run-m"><div class="run-m-val">22.17x</div><div class="run-m-label">RTFx</div></div>
+        <div class="run-m"><div class="run-m-val c-amber">256</div><div class="run-m-label">Max Streams</div></div>
+        <div class="run-m"><div class="run-m-val c-accent">0</div><div class="run-m-label">Failures</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">nvidia/nemotron-3.5-asr-streaming-0.6b &middot; LibriSpeech test-clean &middot; NVIDIA T4 16GB</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ENVIRONMENT -->
+<div class="section-title">Test Environment</div>
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;margin-bottom:32px">
+  <div class="env-grid">
+    <span class="env-label">Container</span><span>nvcr.io/nvidia/nemo:26.02</span>
+    <span class="env-label">CUDA</span><span>12.8 &middot; Driver 570.86.15</span>
+    <span class="env-label">PyTorch</span><span>2.6.0</span>
+    <span class="env-label">Framework</span><span>NeMo 2.5</span>
+    <span class="env-label">Python</span><span>3.12</span>
+    <span class="env-label">Platform</span><span>GKE &middot; n2d-standard-4 (batch) &middot; g2-standard-4 (L4)</span>
+    <span class="env-label">Dataset</span><span>LibriSpeech test-clean (CC-BY-4.0)</span>
+    <span class="env-label">WER Norm</span><span>Whisper EnglishTextNormalizer</span>
+  </div>
+</div>
+
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <div class="footer-links">
+    <a href="dashboard.html">Interactive Dashboard</a>
+    <a href="https://github.com/beastoin/highperfasr">Repository</a>
+    <a href="https://github.com/beastoin/highperfasr/tree/main/spec">Protocol Spec</a>
+    <a href="https://github.com/beastoin/highperfasr/tree/main/benchmarks">Benchmark Scripts</a>
+  </div>
+  <div>HighPerfASR &middot; Open ASR Benchmarks</div>
+</div>
+
+<script>
+function toggleRun(header) {
+  header.parentElement.classList.toggle('open');
+  const chartWrap = header.parentElement.querySelector('.chart-wrap');
+  if (chartWrap) requestAnimationFrame(() => drawChartFor(chartWrap.id));
+}
+
+const DATA = {
+  l4Batch: {
+    c: [1,8,32,64,128,256,512],
+    rps: [1.4,7.7,13.5,14.1,14.4,19.5,19.2],
+    rtfx: [13,70,118,124,131,178,175],
+    p50: [711,959,2207,4418,8646,10229,10615],
+    p99: [1462,2172,2608,5282,11864,13986,20784],
+    fail: [0,0,0,0,0,0,0]
+  },
+  l4Stream: {
+    c: [32,64,128,256,512],
+    rtfx: [10.32,13.05,18.76,27.55,38.69],
+    sess: [79.2,100.2,144.0,211.4,297.0],
+    fail: [0,0,0,0,0]
+  },
+  l4Dur: {
+    dur: ['10s','30s','60s','120s'],
+    maxC: [256,256,24,192],
+    rps: [6.12,7.70,2.46,1.69],
+    rtfx: [220,277,172,214],
+    warn: [false,false,true,false]
+  }
+};
+
+// Populate tables
+(function(){
+  const d = DATA.l4Batch;
+  const tb = document.getElementById('tbl-l4-batch');
+  d.c.forEach((c,i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="text-c">${c}</td><td class="text-r">${d.rps[i]}</td><td class="text-r">${d.rtfx[i]}x</td><td class="text-r">${d.p50[i]}ms</td><td class="text-r">${d.p99[i]}ms</td><td class="text-c" style="color:var(--accent)">0</td>`;
+    tb.appendChild(tr);
+  });
+  const ds = DATA.l4Stream;
+  const ts = document.getElementById('tbl-l4-stream');
+  ds.c.forEach((c,i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="text-c">${c}</td><td class="text-r">${ds.rtfx[i]}x</td><td class="text-r">${ds.sess[i]}</td><td class="text-c" style="color:var(--accent)">0</td>`;
+    ts.appendChild(tr);
+  });
+})();
+
+function getColor(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function drawChartFor(id) {
+  if (id === 'chart-l4-batch') drawBarLineChart('chart-l4-batch', DATA.l4Batch.c, DATA.l4Batch.rps, DATA.l4Batch.rtfx, 'RPS', 'RTFx', '--accent', '--accent');
+  else if (id === 'chart-l4-stream') drawBarLineChart('chart-l4-stream', DATA.l4Stream.c, DATA.l4Stream.sess, DATA.l4Stream.rtfx, 'Sess/min', 'RTFx', '--blue', '--blue');
+  else if (id === 'chart-l4-dur') drawDurationChart('chart-l4-dur');
+}
+
+function drawBarLineChart(wrId, xVals, barVals, lineVals, barLabel, lineLabel, barColor, lineColor) {
+  const wrap = document.getElementById(wrId);
+  if (!wrap) return;
+  const canvas = wrap.querySelector('canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = wrap.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = {t:20,r:60,b:36,l:52};
+  const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+
+  const accentHex = getColor(barColor);
+  const gridColor = getColor('--border');
+  const textColor = getColor('--text2');
+  const text3 = getColor('--text3');
+
+  ctx.clearRect(0,0,W,H);
+
+  const maxBar = Math.max(...barVals) * 1.15;
+  const maxLine = Math.max(...lineVals) * 1.15;
+  const n = xVals.length;
+  const barW = Math.min(plotW / n * 0.55, 40);
+  const gap = plotW / n;
+
+  // Grid
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + plotH * (1 - i / 4);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    ctx.fillStyle = textColor; ctx.font = '10px system-ui';
+    ctx.textAlign = 'right'; ctx.fillText((maxBar * i / 4).toFixed(1), pad.l - 6, y + 3);
+    ctx.textAlign = 'left'; ctx.fillText((maxLine * i / 4).toFixed(0) + 'x', W - pad.r + 6, y + 3);
+  }
+
+  // Bars
+  xVals.forEach((x, i) => {
+    const bx = pad.l + gap * i + (gap - barW) / 2;
+    const bh = (barVals[i] / maxBar) * plotH;
+    ctx.fillStyle = accentHex + '66';
+    ctx.fillRect(bx, pad.t + plotH - bh, barW, bh);
+    ctx.fillStyle = accentHex;
+    ctx.fillRect(bx, pad.t + plotH - bh, barW, 2);
+    // X label
+    ctx.fillStyle = textColor; ctx.font = '10px ' + getColor('--mono').split(',')[0].replace(/'/g,'');
+    ctx.textAlign = 'center';
+    ctx.font = '10px system-ui';
+    ctx.fillText(x, pad.l + gap * i + gap / 2, H - pad.b + 14);
+  });
+
+  // Line
+  ctx.strokeStyle = accentHex;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  xVals.forEach((x, i) => {
+    const lx = pad.l + gap * i + gap / 2;
+    const ly = pad.t + plotH * (1 - lineVals[i] / maxLine);
+    if (i === 0) ctx.moveTo(lx, ly); else ctx.lineTo(lx, ly);
+  });
+  ctx.stroke();
+
+  // Dots
+  xVals.forEach((x, i) => {
+    const lx = pad.l + gap * i + gap / 2;
+    const ly = pad.t + plotH * (1 - lineVals[i] / maxLine);
+    ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI * 2);
+    ctx.fillStyle = accentHex; ctx.fill();
+  });
+
+  // Axis labels
+  ctx.fillStyle = text3; ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Concurrency', pad.l + plotW / 2, H - 2);
+  ctx.save();
+  ctx.translate(12, pad.t + plotH / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText(barLabel, 0, 0); ctx.restore();
+  ctx.save();
+  ctx.translate(W - 6, pad.t + plotH / 2); ctx.rotate(Math.PI / 2);
+  ctx.fillText(lineLabel, 0, 0); ctx.restore();
+
+  // Tooltip
+  const tooltip = wrap.querySelector('.chart-tooltip');
+  canvas.onmousemove = function(e) {
+    const mx = e.offsetX;
+    const idx = Math.floor((mx - pad.l) / gap);
+    if (idx >= 0 && idx < n && mx >= pad.l && mx <= W - pad.r) {
+      tooltip.style.opacity = '1';
+      tooltip.innerHTML = `c=${xVals[idx]}<br>${barLabel}: ${barVals[idx]}<br>${lineLabel}: ${lineVals[idx]}x`;
+      tooltip.style.left = (pad.l + gap * idx + gap / 2 + 10) + 'px';
+      tooltip.style.top = '10px';
+    } else {
+      tooltip.style.opacity = '0';
+    }
+  };
+  canvas.onmouseleave = () => tooltip.style.opacity = '0';
+}
+
+function drawDurationChart(wrId) {
+  const wrap = document.getElementById(wrId);
+  if (!wrap) return;
+  const canvas = wrap.querySelector('canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = wrap.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = {t:20,r:16,b:36,l:52};
+  const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+
+  const d = DATA.l4Dur;
+  const accent = getColor('--accent');
+  const amber = getColor('--amber');
+  const errColor = getColor('--error');
+  const gridColor = getColor('--border');
+  const textColor = getColor('--text2');
+  const n = d.dur.length;
+  const gap = plotW / n;
+  const barW = Math.min(gap * 0.35, 50);
+
+  ctx.clearRect(0,0,W,H);
+
+  const maxC = 280;
+  // Grid
+  ctx.strokeStyle = gridColor; ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + plotH * (1 - i / 4);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    ctx.fillStyle = textColor; ctx.font = '10px system-ui';
+    ctx.textAlign = 'right'; ctx.fillText(Math.round(maxC * i / 4), pad.l - 6, y + 3);
+  }
+
+  d.dur.forEach((dur, i) => {
+    const bx = pad.l + gap * i + (gap - barW) / 2;
+    const val = d.maxC[i];
+    const bh = (Math.min(val, maxC) / maxC) * plotH;
+    const color = d.warn[i] ? errColor : accent;
+    ctx.fillStyle = color + '55';
+    ctx.fillRect(bx, pad.t + plotH - bh, barW, bh);
+    ctx.fillStyle = color;
+    ctx.fillRect(bx, pad.t + plotH - bh, barW, 2);
+    // Value on top
+    ctx.fillStyle = color; ctx.font = 'bold 12px system-ui';
+    ctx.textAlign = 'center';
+    const label = val > 256 ? '256+' : val.toString();
+    ctx.fillText(label, bx + barW / 2, pad.t + plotH - bh - 6);
+    // RPS below bar
+    ctx.fillStyle = textColor; ctx.font = '10px system-ui';
+    ctx.fillText(d.rps[i] + ' RPS', bx + barW / 2, pad.t + plotH - bh - 18);
+    // X label
+    ctx.fillText(dur, pad.l + gap * i + gap / 2, H - pad.b + 14);
+  });
+
+  ctx.fillStyle = getColor('--text3'); ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Audio Duration', pad.l + plotW / 2, H - 2);
+  ctx.save();
+  ctx.translate(12, pad.t + plotH / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Max Concurrency', 0, 0); ctx.restore();
+
+  const tooltip = wrap.querySelector('.chart-tooltip');
+  canvas.onmousemove = function(e) {
+    const mx = e.offsetX;
+    const idx = Math.floor((mx - pad.l) / gap);
+    if (idx >= 0 && idx < n && mx >= pad.l && mx <= W - pad.r) {
+      tooltip.style.opacity = '1';
+      tooltip.innerHTML = `${d.dur[idx]} audio<br>Max c=${d.maxC[idx]}${d.maxC[idx]>256?'+':''}<br>${d.rps[idx]} RPS &middot; ${d.rtfx[idx]}x RTFx${d.warn[idx]?'<br><span style="color:var(--error)">OOM at c=32</span>':''}`;
+      tooltip.style.left = (pad.l + gap * idx + gap / 2 + 10) + 'px';
+      tooltip.style.top = '10px';
+    } else {
+      tooltip.style.opacity = '0';
+    }
+  };
+  canvas.onmouseleave = () => tooltip.style.opacity = '0';
+}
+
+// Open first run and draw on load
+document.getElementById('run-l4-batch').classList.add('open');
+requestAnimationFrame(() => drawChartFor('chart-l4-batch'));
+
+// Resize observer
+const ro = new ResizeObserver(() => {
+  document.querySelectorAll('.run-card.open .chart-wrap').forEach(w => drawChartFor(w.id));
+});
+document.querySelectorAll('.chart-wrap').forEach(w => ro.observe(w));
+</script>
