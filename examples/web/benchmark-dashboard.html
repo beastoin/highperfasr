@@ -665,15 +665,16 @@ function parseWavPcm(buf) {
   if (view.getUint16(22, true) !== 1) return { error: 'WAV must be mono. Got channels: ' + view.getUint16(22, true) };
   if (view.getUint32(24, true) !== 16000) return { error: 'WAV must be 16kHz. Got: ' + view.getUint32(24, true) + 'Hz' };
   if (view.getUint16(34, true) !== 16) return { error: 'WAV must be 16-bit. Got: ' + view.getUint16(34, true) + '-bit' };
-  let off = 12;
-  while (off < buf.byteLength - 8) {
+  let off = 12, dataStart = -1, dataSize = 0;
+  while (off + 8 <= buf.byteLength) {
     const id = String.fromCharCode(view.getUint8(off), view.getUint8(off+1), view.getUint8(off+2), view.getUint8(off+3));
     const sz = view.getUint32(off + 4, true);
-    if (id === 'data') { off += 8; break; }
+    if (id === 'data') { dataStart = off + 8; dataSize = sz; break; }
     off += 8 + sz;
   }
-  if (off >= buf.byteLength) return { error: 'WAV file has no data chunk.' };
-  return { pcm: new Uint8Array(buf).slice(off) };
+  if (dataStart < 0 || dataStart > buf.byteLength) return { error: 'WAV file has no data chunk.' };
+  const end = Math.min(dataStart + dataSize, buf.byteLength);
+  return { pcm: new Uint8Array(buf).slice(dataStart, end) };
 }
 
 function makeSem(n) {
