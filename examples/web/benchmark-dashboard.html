@@ -521,7 +521,7 @@ tr:hover td { background: var(--bg-elevated); }
         <div class="card-title">Results</div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>c</th><th>RPS</th><th>RTFx</th><th>p50</th><th>p99</th><th>Fail</th><th>WER</th></tr></thead>
+            <thead><tr><th>c</th><th>RPS</th><th>p50</th><th>p99</th><th>Wall (s)</th><th>Fail</th></tr></thead>
             <tbody id="sweepResults"></tbody>
           </table>
         </div>
@@ -547,7 +547,6 @@ tr:hover td { background: var(--bg-elevated); }
         <div class="stat-card"><div class="stat-value mono" id="rptTotalFiles">0</div><div class="stat-label">Files</div></div>
         <div class="stat-card"><div class="stat-value mono" id="rptWer">—</div><div class="stat-label">WER %</div></div>
         <div class="stat-card"><div class="stat-value mono" id="rptPeakRps">—</div><div class="stat-label">Peak RPS</div></div>
-        <div class="stat-card"><div class="stat-value mono" id="rptPeakRtfx">—</div><div class="stat-label">Peak RTFx</div></div>
         <div class="stat-card"><div class="stat-value mono" id="rptFailures">0</div><div class="stat-label">Failures</div></div>
       </div>
 
@@ -687,7 +686,7 @@ function renderFileList(list, listId) {
   const el = document.getElementById(listId);
   el.innerHTML = list.map((f, i) => `
     <div class="file-item">
-      <span class="name">${f.name}</span>
+      <span class="name">${esc(f.name)}</span>
       <span class="size">${(f.size / 1024).toFixed(0)} KB</span>
       <span class="remove" onclick="removeFile(${i}, '${listId}')">&times;</span>
     </div>
@@ -791,7 +790,10 @@ function renderWerDiff(ops) {
   }).join(' ');
 }
 
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function esc(s) {
+  const d = document.createElement('div'); d.textContent = s;
+  return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
 // ===== BATCH BENCHMARK =====
 async function runBatch() {
@@ -842,9 +844,9 @@ async function runBatch() {
 
       const ref = state.references[file.name];
       let werResult = null;
-      if (ref && data.text) werResult = computeWer(ref, data.text);
+      if (ref) werResult = computeWer(ref, data.text || '');
 
-      const result = { idx, file: file.name, text: data.text || '', latency, status: 'ok', wer: werResult, duration: file._duration };
+      const result = { idx, file: file.name, text: data.text || '', latency, status: 'ok', wer: werResult };
       state.batchResults.push(result);
       completed++;
       addBatchRow(result);
@@ -928,7 +930,18 @@ async function startStreaming() {
     const file = document.getElementById('streamFile').files[0];
     if (!file) return alert('Select an audio file.');
     const buf = await file.arrayBuffer();
-    pcmData = new Uint8Array(buf).slice(44); // skip WAV header
+    const view = new DataView(buf);
+    if (buf.byteLength < 44 || String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3)) !== 'RIFF') {
+      return alert('Streaming requires a WAV file (PCM16, mono, 16kHz). This file does not appear to be a WAV.');
+    }
+    const audioFmt = view.getUint16(20, true);
+    const channels = view.getUint16(22, true);
+    const sRate = view.getUint32(24, true);
+    if (audioFmt !== 1) return alert('WAV must be PCM format (not compressed). Got format code: ' + audioFmt);
+    if (channels !== 1) return alert('WAV must be mono (1 channel). Got: ' + channels);
+    if (sRate !== 16000) return alert('WAV must be 16kHz sample rate. Got: ' + sRate + 'Hz');
+    const dataOffset = 44;
+    pcmData = new Uint8Array(buf).slice(dataOffset);
   }
 
   state.streamingRunning = true;
@@ -957,7 +970,7 @@ async function startStreaming() {
 
 async function startOneStream(idx, wsUrl, pcmData, chunkMs, inputMode) {
   const ws = new WebSocket(`${wsUrl}/v1/stream`);
-  const session = { ws, idx, startTime: null, finalText: '' };
+  const session = { ws, idx, startTime: null, finalText: '', committedText: '', closed: false };
   state.streamingSessions.push(session);
 
   ws.onopen = () => {
@@ -974,17 +987,18 @@ async function startOneStream(idx, wsUrl, pcmData, chunkMs, inputMode) {
       if (inputMode === 'file' && pcmData) sendAudioChunks(ws, pcmData, chunkMs);
       else if (inputMode === 'mic') startMicStream(ws, chunkMs);
     } else if (msg.status === 'closed') {
-      session.finalText = msg.final_text || '';
+      session.finalText = msg.final_text || session.committedText;
+      session.closed = true;
       textEl.innerHTML = `<strong>${esc(session.finalText)}</strong>`;
       document.getElementById(`stream-${idx}`).classList.remove('active');
       document.getElementById(`stream-${idx}`).classList.add('done');
       document.getElementById(`stream-status-${idx}`).textContent = 'done';
       updateStreamStats();
     } else {
-      let html = '';
-      if (msg.final_transcript) html += esc(msg.final_transcript) + ' ';
-      if (msg.partial_transcript) html += `<span class="stream-partial">${esc(msg.partial_transcript)}</span>`;
-      if (html) textEl.innerHTML = html;
+      if (msg.final_transcript) session.committedText = (session.committedText + ' ' + msg.final_transcript).trim();
+      let html = esc(session.committedText);
+      if (msg.partial_transcript) html += ` <span class="stream-partial">${esc(msg.partial_transcript)}</span>`;
+      textEl.innerHTML = html;
     }
   };
 
@@ -1018,7 +1032,9 @@ async function startMicStream(ws, chunkMs) {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
     const ctx = new AudioContext({ sampleRate: 16000 });
     const source = ctx.createMediaStreamSource(stream);
-    const processor = ctx.createScriptProcessor(Math.floor(16000 * chunkMs / 1000), 1, 1);
+    const rawSize = Math.floor(16000 * chunkMs / 1000);
+    const bufSize = Math.max(256, Math.pow(2, Math.ceil(Math.log2(rawSize))));
+    const processor = ctx.createScriptProcessor(bufSize, 1, 1);
     processor.onaudioprocess = (e) => {
       if (ws.readyState !== WebSocket.OPEN) { stream.getTracks().forEach(t => t.stop()); ctx.close(); return; }
       const float32 = e.inputBuffer.getChannelData(0);
@@ -1047,8 +1063,8 @@ function stopStreaming() {
 function updateStreamStats() {
   const sessions = state.streamingSessions;
   const active = sessions.filter(s => s.ws.readyState === WebSocket.OPEN).length;
-  const done = sessions.filter(s => s.finalText).length;
-  const errors = sessions.filter(s => s.ws.readyState === WebSocket.CLOSED && !s.finalText).length;
+  const done = sessions.filter(s => s.closed).length;
+  const errors = sessions.filter(s => s.ws.readyState === WebSocket.CLOSED && !s.closed).length;
   document.getElementById('streamActive').textContent = active;
   document.getElementById('streamDone').textContent = done;
   document.getElementById('streamErrors').textContent = errors;
@@ -1067,7 +1083,7 @@ async function runSweep() {
 
   const url = document.getElementById('serverUrl').value.replace(/\/+$/, '');
   const mode = document.getElementById('sweepMode').value;
-  const levels = document.getElementById('sweepLevels').value.split(',').map(s => parseInt(s.trim())).filter(Boolean);
+  const levels = document.getElementById('sweepLevels').value.split(',').map(s => parseInt(s.trim())).filter(n => n > 0 && n <= 1024);
   const rounds = parseInt(document.getElementById('sweepRounds').value);
   const controller = new AbortController();
   state.sweepAbort = controller;
@@ -1082,9 +1098,10 @@ async function runSweep() {
   const totalSteps = levels.length + 1; // sweep levels + sustained
   let step = 0;
 
-  // WER evaluation first
+  // WER evaluation first — also populates report data
   sweepLog('info', `WER evaluation: ${files.length} files at c=1...`);
   const werResults = await runBatchAtConcurrency(url, files, 1, controller.signal);
+  if (werResults.length > 0 && state.batchResults.length === 0) state.batchResults = werResults;
   const werValid = werResults.filter(r => r.wer);
   if (werValid.length) {
     const totalErrors = werValid.reduce((s, r) => s + r.wer.s + r.wer.i + r.wer.d, 0);
@@ -1106,12 +1123,10 @@ async function runSweep() {
     const latencies = ok.map(r => r.latency).sort((a, b) => a - b);
     const p50 = latencies.length ? latencies[Math.floor(latencies.length * 0.5)] : 0;
     const p99 = latencies.length ? latencies[Math.floor(latencies.length * 0.99)] : 0;
-    const elapsed = ok.length > 0 ? Math.max(...ok.map(r => r.latency)) : 1;
-    const rps = ok.length / (elapsed / 1000);
-    const totalAudioS = files.length * 8; // estimate
-    const rtfx = totalAudioS > 0 ? (totalAudioS / (elapsed / 1000)) : 0;
+    const wallClockS = (results._wallClockMs || 1) / 1000;
+    const rps = ok.length / wallClockS;
 
-    const sweepRow = { c, rps: rps.toFixed(1), rtfx: rtfx.toFixed(1), p50: p50.toFixed(0), p99: p99.toFixed(0), failures: failed };
+    const sweepRow = { c, rps: rps.toFixed(1), p50: p50.toFixed(0), p99: p99.toFixed(0), failures: failed, wallClockS: wallClockS.toFixed(1) };
     state.sweepResults.push(sweepRow);
     addSweepRow(sweepRow);
     sweepLog('info', `  c=${c}: ${rps.toFixed(1)} RPS, ${failed} failures`);
@@ -1142,6 +1157,7 @@ async function runSweep() {
 
 async function runBatchAtConcurrency(url, files, concurrency, signal) {
   const results = [];
+  const t0 = performance.now();
   const semaphore = { count: 0, waiters: [] };
   const acquire = () => new Promise(resolve => {
     if (semaphore.count < concurrency) { semaphore.count++; resolve(); }
@@ -1165,7 +1181,7 @@ async function runBatchAtConcurrency(url, files, concurrency, signal) {
       const latency = performance.now() - start;
       const ref = state.references[file.name];
       let werResult = null;
-      if (ref && data.text) werResult = computeWer(ref, data.text);
+      if (ref) werResult = computeWer(ref, data.text || '');
       results.push({ idx, file: file.name, text: data.text || '', latency, status: 'ok', wer: werResult });
     } catch (e) {
       if (e.name !== 'AbortError') {
@@ -1176,6 +1192,7 @@ async function runBatchAtConcurrency(url, files, concurrency, signal) {
   };
 
   await Promise.all(files.map((f, i) => processFile(f, i)));
+  results._wallClockMs = performance.now() - t0;
   return results;
 }
 
@@ -1185,11 +1202,10 @@ function addSweepRow(r) {
   tr.innerHTML = `
     <td class="mono text-center">${r.c}</td>
     <td class="mono text-right">${r.rps}</td>
-    <td class="mono text-right">${r.rtfx}x</td>
     <td class="mono text-right">${r.p50}ms</td>
     <td class="mono text-right">${r.p99}ms</td>
+    <td class="mono text-right">${r.wallClockS}s</td>
     <td class="mono text-center ${r.failures > 0 ? 'gate-fail' : 'gate-pass'}">${r.failures}</td>
-    <td class="mono text-right">—</td>
   `;
   tbody.appendChild(tr);
 }
@@ -1233,9 +1249,11 @@ function buildReport() {
   document.getElementById('rptFailures').textContent = failed.length;
   document.getElementById('rptFailures').className = `stat-value mono ${failed.length > 0 ? 'bad' : 'good'}`;
 
-  if (latencies.length > 0) {
-    const elapsed = Math.max(...ok.map(r => r.latency)) / 1000;
-    document.getElementById('rptPeakRps').textContent = (ok.length / elapsed).toFixed(1);
+  if (state.sweepResults.length > 0) {
+    const peakRps = Math.max(...state.sweepResults.map(r => parseFloat(r.rps)));
+    document.getElementById('rptPeakRps').textContent = peakRps.toFixed(1);
+  } else if (results._wallClockMs) {
+    document.getElementById('rptPeakRps').textContent = (ok.length / (results._wallClockMs / 1000)).toFixed(1);
   }
 
   // Corpus WER
@@ -1342,9 +1360,9 @@ function downloadMarkdown() {
 
   if (state.sweepResults.length) {
     md += `## Concurrency Sweep\n`;
-    md += `| c | RPS | RTFx | p50 | p99 | Failures |\n|---|-----|------|-----|-----|----------|\n`;
+    md += `| c | RPS | p50 | p99 | Wall (s) | Failures |\n|---|-----|-----|-----|----------|----------|\n`;
     state.sweepResults.forEach(r => {
-      md += `| ${r.c} | ${r.rps} | ${r.rtfx}x | ${r.p50}ms | ${r.p99}ms | ${r.failures} |\n`;
+      md += `| ${r.c} | ${r.rps} | ${r.p50}ms | ${r.p99}ms | ${r.wallClockS}s | ${r.failures} |\n`;
     });
     md += '\n';
   }
