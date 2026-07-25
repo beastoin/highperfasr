@@ -1,0 +1,1298 @@
+<title>HighPerfASR Benchmark Dashboard</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  --ground: #080a10; --surface: #10131c; --elevated: #181c28;
+  --border: #1e2436; --border-focus: #00e5a0;
+  --accent: #00e5a0; --accent-dim: #00e5a033; --accent-glow: #00e5a066;
+  --blue: #5a7fff; --blue-dim: #5a7fff22;
+  --error: #ff5757; --error-dim: #ff575722;
+  --warn: #ffb347; --warn-dim: #ffb34722;
+  --text: #cdd4e0; --text2: #6b7394; --text3: #3d4560;
+  --mono: 'SF Mono','Cascadia Code','JetBrains Mono','Fira Code',monospace;
+  --vu-green: #00e5a0; --vu-yellow: #e5d000; --vu-red: #ff5757;
+  --radius: 6px;
+}
+@media(prefers-color-scheme:light){:root{
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --error:#d93636;--error-dim:#d9363615;
+  --warn:#cc8800;--warn-dim:#cc880015;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}}
+:root[data-theme="light"]{
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --error:#d93636;--error-dim:#d9363615;
+  --warn:#cc8800;--warn-dim:#cc880015;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}
+:root[data-theme="dark"]{
+  --ground:#080a10;--surface:#10131c;--elevated:#181c28;
+  --border:#1e2436;--border-focus:#00e5a0;
+  --accent:#00e5a0;--accent-dim:#00e5a033;--accent-glow:#00e5a066;
+  --blue:#5a7fff;--blue-dim:#5a7fff22;
+  --error:#ff5757;--error-dim:#ff575722;
+  --warn:#ffb347;--warn-dim:#ffb34722;
+  --text:#cdd4e0;--text2:#6b7394;--text3:#3d4560;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--ground);color:var(--text);font-size:13px;line-height:1.5;min-height:100vh}
+
+/* LED */
+@keyframes pulse-glow{0%,100%{box-shadow:0 0 4px var(--accent),0 0 8px var(--accent-dim)}50%{box-shadow:0 0 6px var(--accent),0 0 14px var(--accent-glow)}}
+.led{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.led-off{background:var(--error);box-shadow:0 0 4px var(--error)}
+.led-connecting{background:var(--warn);box-shadow:0 0 4px var(--warn);animation:pulse-glow 1.2s ease-in-out infinite}
+.led-on{background:var(--accent);animation:pulse-glow 2s ease-in-out infinite}
+
+/* Topbar */
+.topbar{display:flex;align-items:center;gap:10px;padding:8px 16px;background:var(--surface);border-bottom:1px solid var(--border)}
+.logo{font-family:var(--mono);font-size:14px;font-weight:800;letter-spacing:-.5px;white-space:nowrap}
+.logo em{font-style:normal;color:var(--accent)}
+.server-group{display:flex;align-items:center;gap:6px;flex:1;max-width:420px}
+.server-group input{flex:1;padding:5px 8px;background:var(--elevated);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--mono);font-size:11px}
+.server-group input:focus{outline:none;border-color:var(--border-focus)}
+.mode-badge{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:10px;background:var(--accent-dim);color:var(--accent);font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+
+/* Buttons */
+.btn{padding:5px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);cursor:pointer;font-size:11px;font-weight:600;font-family:var(--mono);transition:all .12s;white-space:nowrap}
+.btn:active{transform:scale(.97)}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn:disabled{opacity:.35;cursor:not-allowed;transform:none}
+.btn-go{background:var(--accent);color:#080a10;border-color:var(--accent);font-weight:800}
+.btn-go:hover{background:#00ffb3;border-color:#00ffb3;color:#080a10}
+.btn-stop{color:var(--error);border-color:var(--error)}
+.btn-stop:hover{background:var(--error-dim)}
+.btn-sm{padding:3px 8px;font-size:10px}
+
+/* Tabs */
+.tabs{display:flex;gap:0;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px}
+.tab{padding:8px 16px;cursor:pointer;font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text3);border-bottom:2px solid transparent;transition:all .12s;letter-spacing:.3px}
+.tab:hover{color:var(--text2)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* Layout */
+.main{padding:16px;max-width:1400px;margin:0 auto}
+.panel{display:none}.panel.active{display:block}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:14px;transition:box-shadow .2s}
+.card:hover{box-shadow:0 0 0 1px var(--border),0 2px 12px rgba(0,0,0,.15)}
+.card-title{font-family:var(--mono);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:10px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:800px){.grid-2{grid-template-columns:1fr}}
+
+/* Form */
+.form-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.form-row:last-child{margin-bottom:0}
+label{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text2);min-width:80px}
+input[type="text"],input[type="number"],input[type="url"],select,textarea{padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--elevated);color:var(--text);font-size:12px;flex:1}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--border-focus)}
+textarea{font-family:var(--mono);font-size:11px;resize:vertical;min-height:60px}
+
+/* Drop zone */
+@keyframes scan-line{0%{top:-2px}100%{top:100%}}
+.drop-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:24px;text-align:center;color:var(--text3);cursor:pointer;transition:all .2s;position:relative;overflow:hidden;font-family:var(--mono);font-size:12px}
+.drop-zone:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.drop-zone.dragover{border-color:var(--accent);background:var(--accent-dim)}
+.drop-zone.dragover::after{content:'';position:absolute;left:0;width:100%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan-line .8s linear infinite}
+.drop-zone input[type="file"]{display:none}
+
+/* VU Meter */
+.vu-meter{height:6px;background:var(--elevated);border-radius:3px;overflow:hidden;position:relative}
+.vu-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--vu-green) 0%,var(--vu-green) 60%,var(--vu-yellow) 80%,var(--vu-red) 100%);transition:width .3s ease;position:relative}
+.vu-fill::after{content:'';position:absolute;right:0;top:0;width:2px;height:100%;background:#fff;opacity:.6;border-radius:1px}
+.vu-label{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:9px;font-weight:700;color:var(--text);text-shadow:0 0 4px var(--ground)}
+
+/* Stats */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px;text-align:center}
+.stat-val{font-family:var(--mono);font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.stat-lbl{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-top:2px}
+.c-good{color:var(--accent)}.c-warn{color:var(--warn)}.c-bad{color:var(--error)}.c-blue{color:var(--blue)}
+
+/* Tables */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px}
+th{text-align:left;padding:6px 8px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);border-bottom:2px solid var(--border);white-space:nowrap}
+td{padding:5px 8px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums}
+tr:hover td{background:var(--elevated)}
+.text-r{text-align:right}.text-c{text-align:center}
+.trunc{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* WER colors */
+.wer-s{background:var(--warn-dim);color:var(--warn);padding:1px 3px;border-radius:2px}
+.wer-d{background:var(--error-dim);color:var(--error);padding:1px 3px;border-radius:2px;text-decoration:line-through}
+.wer-i{background:var(--accent-dim);color:var(--accent);padding:1px 3px;border-radius:2px;text-decoration:underline}
+
+/* Waveform canvas */
+.waveform-wrap{position:relative;margin-bottom:8px}
+.waveform-wrap canvas{width:100%;height:60px;border-radius:var(--radius);display:block}
+.waveform-info{position:absolute;right:6px;bottom:4px;font-family:var(--mono);font-size:10px;color:var(--accent);opacity:.8}
+
+/* Stream slots */
+.stream-slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+.stream-slot{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px;min-height:80px;transition:border-color .2s}
+.stream-slot.s-active{border-color:var(--accent)}
+.stream-slot.s-done{border-color:var(--blue)}
+.stream-slot.s-error{border-color:var(--error)}
+.stream-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-family:var(--mono);font-size:10px;color:var(--text3)}
+.stream-hdr .dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px}
+.stream-txt{font-family:var(--mono);font-size:11px;line-height:1.6;word-break:break-word}
+.stream-partial{color:var(--text3);transition:color .4s,opacity .4s}
+.stream-final{color:var(--text);font-weight:500}
+
+/* Heatmap */
+.heatmap{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.heat-cell{width:90px;padding:8px;border-radius:var(--radius);text-align:center;font-family:var(--mono);font-size:11px;border:2px solid transparent;cursor:default;transition:all .15s}
+.heat-cell:hover{transform:scale(1.05)}
+.heat-cell .hc-c{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.heat-cell .hc-rps{font-size:16px;font-weight:800}
+.heat-cell .hc-detail{font-size:9px;margin-top:2px}
+
+/* Latency histogram */
+.histogram-wrap{position:relative;margin-bottom:8px}
+.histogram-wrap canvas{width:100%;height:80px;display:block;border-radius:var(--radius)}
+
+/* File list */
+.file-list{max-height:180px;overflow-y:auto}
+.file-item{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:var(--radius);font-family:var(--mono);font-size:11px}
+.file-item:hover{background:var(--elevated)}
+.file-item .fname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-item .fsize{color:var(--text3);font-variant-numeric:tabular-nums}
+.file-item .fremove{cursor:pointer;color:var(--error);font-size:13px}
+
+/* Expandable rows */
+.expand-row{cursor:pointer}
+.expand-row td:first-child::before{content:'>';display:inline-block;transition:transform .15s;margin-right:4px;color:var(--text3)}
+.expand-row.open td:first-child::before{transform:rotate(90deg)}
+.expand-detail{display:none}
+.expand-detail.open{display:table-row}
+.expand-detail td{padding:8px;background:var(--elevated);border-bottom:1px solid var(--border)}
+
+/* Log */
+.log{background:var(--elevated);border-radius:var(--radius);padding:8px;font-family:var(--mono);font-size:10px;max-height:180px;overflow-y:auto;line-height:1.8;color:var(--text2)}
+.log .l-err{color:var(--error)}.log .l-ok{color:var(--accent)}.log .l-info{color:var(--blue)}
+
+/* Downloads */
+.dl-bar{display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+
+/* Gate badges */
+.g-pass{color:var(--accent);font-weight:700}.g-fail{color:var(--error);font-weight:700}
+</style>
+
+<!-- ===== TOPBAR ===== -->
+<div class="topbar">
+  <div class="logo">High<em>Perf</em>ASR</div>
+  <div class="server-group">
+    <div class="led led-off" id="led"></div>
+    <input type="text" id="serverUrl" value="http://localhost:8000" spellcheck="false">
+    <button class="btn btn-sm" onclick="connectServer()">connect</button>
+  </div>
+  <span class="mode-badge" id="modeBadge" style="display:none"></span>
+  <div style="flex:1"></div>
+  <span id="uptimeLabel" style="font-family:var(--mono);font-size:10px;color:var(--text3)"></span>
+</div>
+
+<!-- ===== TABS ===== -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('batch')">Batch</div>
+  <div class="tab" onclick="switchTab('stream')">Stream</div>
+  <div class="tab" onclick="switchTab('sweep')">Sweep</div>
+  <div class="tab" onclick="switchTab('report')">Report</div>
+</div>
+
+<div class="main">
+
+<!-- ===== BATCH ===== -->
+<div class="panel active" id="panel-batch">
+  <div class="grid-2">
+    <div>
+      <div class="card">
+        <div class="card-title">Audio Source</div>
+        <div class="drop-zone" id="batchDrop" onclick="document.getElementById('batchFiles').click()">
+          <input type="file" id="batchFiles" accept="audio/*,.wav,.flac,.mp3" multiple>
+          drop audio files or click to browse
+        </div>
+        <div style="text-align:center;margin:6px 0;font-family:var(--mono);font-size:10px;color:var(--text3)">or paste URL</div>
+        <div class="form-row">
+          <input type="url" id="audioUrl" placeholder="https://...audio.wav" style="flex:1">
+          <button class="btn btn-sm" onclick="addAudioUrl()">+add</button>
+        </div>
+        <div class="file-list" id="batchFileList"></div>
+        <div class="waveform-wrap" id="batchWaveWrap" style="display:none">
+          <canvas id="batchWaveCanvas"></canvas>
+          <div class="waveform-info" id="batchWaveInfo"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Reference Transcripts</div>
+        <textarea id="refTranscripts" placeholder="filename.wav|reference text&#10;audio2.wav|another line"></textarea>
+        <div style="margin-top:4px"><button class="btn btn-sm" onclick="loadPresetRefs()">load LibriSpeech samples</button></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Config</div>
+        <div class="form-row">
+          <label>concurrency</label>
+          <input type="range" id="batchConc" min="1" max="64" value="1" oninput="$id('concLbl').textContent=this.value">
+          <span id="concLbl" style="font-family:var(--mono);font-size:12px;min-width:20px;text-align:right">1</span>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:6px">
+          <button class="btn btn-go" id="batchGoBtn" onclick="runBatch()" disabled>Run Batch</button>
+          <button class="btn btn-stop btn-sm" id="batchStopBtn" onclick="stopBatch()" style="display:none">Stop</button>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="stats-row">
+        <div class="stat"><div class="stat-val" id="bDone">0</div><div class="stat-lbl">Done</div></div>
+        <div class="stat"><div class="stat-val" id="bFail">0</div><div class="stat-lbl">Fail</div></div>
+        <div class="stat"><div class="stat-val c-blue" id="bRps">—</div><div class="stat-lbl">RPS</div></div>
+        <div class="stat"><div class="stat-val" id="bP50">—</div><div class="stat-lbl">p50 ms</div></div>
+        <div class="stat"><div class="stat-val" id="bWer">—</div><div class="stat-lbl">WER %</div></div>
+      </div>
+      <div class="card" style="padding:8px 14px">
+        <div class="vu-meter" style="position:relative">
+          <div class="vu-fill" id="batchVu" style="width:0%"></div>
+          <span class="vu-label" id="batchVuLbl">0%</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Latency Distribution</div>
+        <div class="histogram-wrap"><canvas id="latencyHist"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Results</div>
+        <div class="table-wrap">
+          <table><thead><tr><th>#</th><th>File</th><th>Latency</th><th>Transcript</th><th>WER</th><th>St</th></tr></thead>
+          <tbody id="batchTbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== STREAM ===== -->
+<div class="panel" id="panel-stream">
+  <div class="card">
+    <div class="card-title">Streaming Config</div>
+    <div class="form-row">
+      <label>input</label>
+      <select id="streamMode" onchange="toggleStreamInput()"><option value="file">Audio File</option><option value="mic">Microphone</option></select>
+    </div>
+    <div class="form-row" id="streamFileRow">
+      <label>file</label>
+      <input type="file" id="streamFile" accept=".wav">
+    </div>
+    <div class="form-row">
+      <label>streams</label>
+      <input type="range" id="streamN" min="1" max="32" value="1" oninput="$id('streamNLbl').textContent=this.value">
+      <span id="streamNLbl" style="font-family:var(--mono);font-size:12px;min-width:20px;text-align:right">1</span>
+    </div>
+    <div class="form-row">
+      <label>chunk ms</label>
+      <input type="number" id="streamChunk" value="160" min="40" max="1000" step="40" style="max-width:70px">
+    </div>
+    <div style="margin-top:10px;display:flex;gap:6px">
+      <button class="btn btn-go" id="streamGoBtn" onclick="startStreaming()" disabled>Start Streaming</button>
+      <button class="btn btn-stop btn-sm" id="streamStopBtn" onclick="stopStreaming()" style="display:none">Stop All</button>
+    </div>
+  </div>
+  <div class="stats-row" style="margin-top:14px">
+    <div class="stat"><div class="stat-val c-good" id="sActive">0</div><div class="stat-lbl">Active</div></div>
+    <div class="stat"><div class="stat-val c-blue" id="sDone">0</div><div class="stat-lbl">Done</div></div>
+    <div class="stat"><div class="stat-val" id="sErr">0</div><div class="stat-lbl">Errors</div></div>
+  </div>
+  <div class="stream-slots" id="streamSlots"></div>
+</div>
+
+<!-- ===== SWEEP ===== -->
+<div class="panel" id="panel-sweep">
+  <div class="grid-2">
+    <div>
+      <div class="card">
+        <div class="card-title">Dataset</div>
+        <div class="form-row">
+          <label>preset</label>
+          <select id="sweepPreset" onchange="onPresetChange()"><option value="custom">Custom files</option><option value="librispeech">LibriSpeech Demo</option></select>
+        </div>
+        <div id="sweepUpload">
+          <div class="drop-zone" style="padding:12px;margin-top:6px" onclick="document.getElementById('sweepFileIn').click()">
+            <input type="file" id="sweepFileIn" accept="audio/*,.wav,.flac,.mp3" multiple>
+            drop sweep files
+          </div>
+          <div class="file-list" id="sweepFileList" style="margin-top:6px"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Sweep Config</div>
+        <div class="form-row">
+          <label>mode</label>
+          <select id="sweepType"><option value="batch">Batch</option><option value="streaming">Streaming</option></select>
+        </div>
+        <div class="form-row">
+          <label>levels</label>
+          <input type="text" id="sweepLevels" value="1,4,8,16,32" style="font-family:var(--mono);font-size:11px">
+        </div>
+        <div class="form-row">
+          <label>rounds</label>
+          <input type="number" id="sweepRounds" value="2" min="1" max="10" style="max-width:50px">
+        </div>
+        <div style="margin-top:10px;display:flex;gap:6px">
+          <button class="btn btn-go" id="sweepGoBtn" onclick="runSweep()" disabled>Run Sweep</button>
+          <button class="btn btn-stop btn-sm" id="sweepStopBtn" onclick="stopSweep()" style="display:none">Stop</button>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="padding:8px 14px">
+        <div class="vu-meter" style="position:relative"><div class="vu-fill" id="sweepVu" style="width:0%"></div><span class="vu-label" id="sweepVuLbl">0%</span></div>
+        <div id="sweepStatus" style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--text2)">Ready</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Heatmap</div>
+        <div class="heatmap" id="sweepHeatmap"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Results</div>
+        <div class="table-wrap">
+          <table><thead><tr><th>c</th><th>RPS</th><th>p50</th><th>p99</th><th>Wall</th><th>Fail</th></tr></thead>
+          <tbody id="sweepTbody"></tbody></table>
+        </div>
+      </div>
+      <div class="card"><div class="card-title">Log</div><div class="log" id="sweepLog"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== REPORT ===== -->
+<div class="panel" id="panel-report">
+  <div class="card">
+    <div class="card-title">Benchmark Report</div>
+    <div id="rptEmpty" style="text-align:center;padding:30px;color:var(--text3);font-family:var(--mono)">Run a benchmark to generate a report.</div>
+    <div id="rptContent" style="display:none">
+      <div class="stats-row">
+        <div class="stat"><div class="stat-val" id="rFiles">0</div><div class="stat-lbl">Files</div></div>
+        <div class="stat"><div class="stat-val" id="rWer">—</div><div class="stat-lbl">WER %</div></div>
+        <div class="stat"><div class="stat-val c-blue" id="rRps">—</div><div class="stat-lbl">Peak RPS</div></div>
+        <div class="stat"><div class="stat-val" id="rFail">0</div><div class="stat-lbl">Failures</div></div>
+      </div>
+      <div class="card-title" style="margin-top:14px">Quality Gates</div>
+      <div class="table-wrap" style="margin-bottom:14px">
+        <table><thead><tr><th>Gate</th><th>Threshold</th><th>Actual</th><th>Result</th></tr></thead>
+        <tbody id="rptGates"></tbody></table>
+      </div>
+      <div class="card-title">Per-Utterance Transcripts</div>
+      <div style="margin-bottom:6px"><input type="text" id="rptFilter" placeholder="filter by filename..." oninput="filterReport()" style="max-width:260px"></div>
+      <div class="table-wrap">
+        <table><thead><tr><th></th><th>File</th><th>Reference</th><th>Hypothesis</th><th>WER</th><th>S</th><th>I</th><th>D</th></tr></thead>
+        <tbody id="rptTbody"></tbody></table>
+      </div>
+      <div class="dl-bar">
+        <button class="btn btn-sm" onclick="dlJSON()">JSON Report</button>
+        <button class="btn btn-sm" onclick="dlCSV()">Transcript CSV</button>
+        <button class="btn btn-sm" onclick="dlMD()">Markdown</button>
+        <button class="btn btn-sm" onclick="dlZIP()" style="background:var(--accent);color:var(--ground);font-weight:700">&#x1f4e6; Download All (ZIP)</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const $id = id => document.getElementById(id);
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div'); d.textContent = s;
+  return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ===== STATE =====
+const S = {
+  connected: false, serverInfo: null,
+  batchFiles: [], batchResults: [], batchRunning: false, batchAbort: null,
+  streamSessions: [], streamRunning: false,
+  sweepFiles: [], sweepResults: [], sweepRunning: false, sweepAbort: null,
+  refs: {}, reportData: null,
+  latencyBuckets: new Array(20).fill(0),
+};
+
+const LIBREFS = {
+  '1089-134686-0000.flac':'he hoped there would be stew for dinner turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick peppered flour fattened sauce',
+  '1089-134686-0001.flac':'stuff it into you his belly counselled him',
+  '1089-134686-0002.flac':'after early nightfall the yellow lamps would light up here and there the squalid quarter of the brothels',
+  '1089-134686-0003.flac':'hello bertie any good in your mind',
+  '1089-134686-0004.flac':'number ten fresh nelly is waiting on you good night husband',
+  '1221-135766-0000.flac':'god as a direct consequence of the sin which man thus punished had died',
+  '1221-135766-0001.flac':'no great man lives in vain the history of the world is but the biography of great men',
+  '1221-135766-0002.flac':'the survey of certain books which were never combated and are now combated',
+  '1221-135766-0003.flac':'the survey of certain books which were never completed though they are now completed',
+  '1221-135766-0004.flac':'he had written them to refute a book which had never been read',
+};
+
+// ===== SERVER =====
+async function connectServer() {
+  const url = $id('serverUrl').value.replace(/\/+$/, '');
+  setLed('connecting');
+  try {
+    const r = await fetch(`${url}/health`, { signal: AbortSignal.timeout(5000) });
+    const d = await r.json();
+    if (d.status === 'ok' || d.ready) {
+      S.connected = true; S.serverInfo = d;
+      setLed('on');
+      $id('modeBadge').textContent = d.mode || '?';
+      $id('modeBadge').style.display = '';
+      $id('uptimeLabel').textContent = `up ${Math.round(d.uptime_seconds || 0)}s`;
+      enableAll(true);
+    } else throw new Error('not ready');
+  } catch (e) {
+    S.connected = false; setLed('off');
+    $id('modeBadge').style.display = 'none';
+    $id('uptimeLabel').textContent = e.message;
+    enableAll(false);
+  }
+}
+
+function setLed(state) {
+  const el = $id('led');
+  el.className = 'led ' + (state === 'on' ? 'led-on' : state === 'connecting' ? 'led-connecting' : 'led-off');
+}
+
+function enableAll(on) {
+  $id('batchGoBtn').disabled = !on;
+  $id('streamGoBtn').disabled = !on;
+  $id('sweepGoBtn').disabled = !on;
+}
+
+// ===== TABS =====
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.toLowerCase() === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  $id('panel-' + name).classList.add('active');
+}
+
+// ===== FILES =====
+function setupDrop(zoneId, inputId, list, listId) {
+  const z = $id(zoneId), inp = $id(inputId);
+  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('dragover'); });
+  z.addEventListener('dragleave', () => z.classList.remove('dragover'));
+  z.addEventListener('drop', e => { e.preventDefault(); z.classList.remove('dragover'); addFiles(Array.from(e.dataTransfer.files), list, listId); });
+  inp.addEventListener('change', () => { addFiles(Array.from(inp.files), list, listId); inp.value = ''; });
+}
+function addFiles(files, list, listId) {
+  files.forEach(f => { if (!list.find(x => x.name === f.name)) list.push(f); });
+  renderFileList(list, listId);
+  if (listId === 'batchFileList' && list.length > 0) drawWaveform(list[0], 'batchWaveCanvas', 'batchWaveWrap', 'batchWaveInfo');
+}
+function renderFileList(list, listId) {
+  $id(listId).innerHTML = list.map((f, i) =>
+    `<div class="file-item"><span class="fname">${esc(f.name)}</span><span class="fsize">${(f.size/1024).toFixed(0)}K</span><span class="fremove" onclick="rmFile(${i},'${listId}')">&times;</span></div>`
+  ).join('');
+}
+function rmFile(i, listId) {
+  const list = listId === 'batchFileList' ? S.batchFiles : S.sweepFiles;
+  list.splice(i, 1); renderFileList(list, listId);
+}
+
+async function addAudioUrl() {
+  const url = $id('audioUrl').value.trim();
+  if (!url) return;
+  try {
+    const r = await fetch(url);
+    const blob = await r.blob();
+    const name = url.split('/').pop().split('?')[0] || 'audio.wav';
+    S.batchFiles.push(new File([blob], name, { type: blob.type || 'audio/wav' }));
+    renderFileList(S.batchFiles, 'batchFileList');
+    $id('audioUrl').value = '';
+    drawWaveform(S.batchFiles[S.batchFiles.length - 1], 'batchWaveCanvas', 'batchWaveWrap', 'batchWaveInfo');
+  } catch (e) { alert('Fetch failed: ' + e.message + '\n\nCORS may be blocking.'); }
+}
+
+// ===== WAVEFORM =====
+async function drawWaveform(file, canvasId, wrapId, infoId) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await file.arrayBuffer();
+    const audio = await ctx.decodeAudioData(buf);
+    const data = audio.getChannelData(0);
+    const canvas = $id(canvasId);
+    const wrap = $id(wrapId);
+    wrap.style.display = '';
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = 60;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    const c = canvas.getContext('2d');
+    c.scale(dpr, dpr);
+    const style = getComputedStyle(document.documentElement);
+    c.fillStyle = style.getPropertyValue('--elevated').trim();
+    c.fillRect(0, 0, w, h);
+    c.strokeStyle = style.getPropertyValue('--accent').trim();
+    c.lineWidth = 1;
+    c.beginPath();
+    const step = Math.ceil(data.length / w);
+    for (let x = 0; x < w; x++) {
+      let min = 1, max = -1;
+      for (let j = 0; j < step; j++) {
+        const v = data[x * step + j] || 0;
+        if (v < min) min = v; if (v > max) max = v;
+      }
+      c.moveTo(x, (1 + min) * h / 2);
+      c.lineTo(x, (1 + max) * h / 2);
+    }
+    c.stroke();
+    $id(infoId).textContent = audio.duration.toFixed(1) + 's · ' + audio.sampleRate + 'Hz';
+    ctx.close();
+  } catch (e) {
+    $id(wrapId).style.display = 'none';
+  }
+}
+
+// ===== REFS =====
+function parseRefs() {
+  S.refs = {};
+  const text = $id('refTranscripts').value.trim();
+  if (!text) return;
+  text.split('\n').forEach(l => {
+    const p = l.split('|');
+    if (p.length >= 2) S.refs[p[0].trim()] = p.slice(1).join('|').trim();
+  });
+}
+function loadPresetRefs() {
+  $id('refTranscripts').value = Object.entries(LIBREFS).map(([k,v]) => k+'|'+v).join('\n');
+  parseRefs();
+}
+
+// ===== WER =====
+function computeWer(ref, hyp) {
+  const norm = s => (s||'').toLowerCase().replace(/[^a-z0-9'\s]/g,'').replace(/\s+/g,' ').trim();
+  const rw = norm(ref).split(' ').filter(Boolean);
+  const hw = norm(hyp).split(' ').filter(Boolean);
+  if (!rw.length) return { wer: hw.length ? 100 : 0, s:0, i:hw.length, d:0, ops:[] };
+  const n=rw.length, m=hw.length;
+  const dp=Array.from({length:n+1},()=>new Array(m+1).fill(0));
+  const bt=Array.from({length:n+1},()=>new Array(m+1).fill(''));
+  for(let i=0;i<=n;i++){dp[i][0]=i;bt[i][0]='D'}
+  for(let j=0;j<=m;j++){dp[0][j]=j;bt[0][j]='I'}
+  bt[0][0]='';
+  for(let i=1;i<=n;i++)for(let j=1;j<=m;j++){
+    if(rw[i-1]===hw[j-1]){dp[i][j]=dp[i-1][j-1];bt[i][j]='C'}
+    else{const s=dp[i-1][j-1]+1,d=dp[i-1][j]+1,ins=dp[i][j-1]+1;dp[i][j]=Math.min(s,d,ins);bt[i][j]=dp[i][j]===s?'S':dp[i][j]===d?'D':'I'}
+  }
+  let s=0,ins=0,d=0,i=n,j=m;const ops=[];
+  while(i>0||j>0){const o=bt[i][j];
+    if(o==='C'){ops.unshift({op:'C',r:rw[i-1],h:hw[j-1]});i--;j--}
+    else if(o==='S'){ops.unshift({op:'S',r:rw[i-1],h:hw[j-1]});s++;i--;j--}
+    else if(o==='D'){ops.unshift({op:'D',r:rw[i-1],h:''});d++;i--}
+    else{ops.unshift({op:'I',r:'',h:hw[j-1]});ins++;j--}
+  }
+  return{wer:(s+ins+d)/n*100,s,i:ins,d,ops};
+}
+
+function renderDiff(ops) {
+  return ops.map(o => {
+    if(o.op==='C') return esc(o.h);
+    if(o.op==='S') return `<span class="wer-s" title="sub: ${esc(o.r)} → ${esc(o.h)}">${esc(o.h)}</span>`;
+    if(o.op==='D') return `<span class="wer-d" title="del: ${esc(o.r)}">${esc(o.r)}</span>`;
+    if(o.op==='I') return `<span class="wer-i" title="ins: ${esc(o.h)}">${esc(o.h)}</span>`;
+  }).join(' ');
+}
+
+// ===== LATENCY HISTOGRAM =====
+function updateHistogram(latency) {
+  const maxBucket = 2000;
+  const bucketSize = maxBucket / S.latencyBuckets.length;
+  const idx = Math.min(Math.floor(latency / bucketSize), S.latencyBuckets.length - 1);
+  S.latencyBuckets[idx]++;
+  drawHistogram();
+}
+function drawHistogram() {
+  const canvas = $id('latencyHist');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = 80;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const c = canvas.getContext('2d');
+  c.scale(dpr, dpr);
+  const style = getComputedStyle(document.documentElement);
+  c.fillStyle = style.getPropertyValue('--elevated').trim();
+  c.fillRect(0, 0, w, h);
+  const maxVal = Math.max(...S.latencyBuckets, 1);
+  const barW = w / S.latencyBuckets.length - 2;
+  const accent = style.getPropertyValue('--accent').trim();
+  const blue = style.getPropertyValue('--blue').trim();
+  S.latencyBuckets.forEach((v, i) => {
+    const barH = (v / maxVal) * (h - 16);
+    const x = i * (w / S.latencyBuckets.length) + 1;
+    c.fillStyle = i < 12 ? accent : i < 16 ? style.getPropertyValue('--warn').trim() : style.getPropertyValue('--error').trim();
+    c.globalAlpha = 0.7;
+    c.fillRect(x, h - barH - 8, barW, barH);
+    c.globalAlpha = 1;
+  });
+  c.fillStyle = style.getPropertyValue('--text3').trim();
+  c.font = '9px ' + style.getPropertyValue('--mono').trim();
+  c.fillText('0ms', 2, h - 1);
+  c.fillText('1000ms', w * 0.5 - 15, h - 1);
+  c.fillText('2000ms', w - 35, h - 1);
+}
+
+// ===== ANIMATED COUNTER =====
+function animateVal(elId, target, suffix='') {
+  const el = $id(elId); if (!el) return;
+  const current = parseFloat(el.textContent) || 0;
+  if (Math.abs(current - target) < 0.1) { el.textContent = target + suffix; return; }
+  const start = performance.now();
+  const dur = 300;
+  function tick(now) {
+    const t = Math.min((now - start) / dur, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    el.textContent = (current + (target - current) * ease).toFixed(target % 1 ? 1 : 0) + suffix;
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// ===== SEMAPHORE =====
+function parseWavPcm(buf) {
+  if (buf.byteLength < 44) return { error: 'File too small to be a WAV.' };
+  const view = new DataView(buf);
+  const riff = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+  if (riff !== 'RIFF') return { error: 'Not a WAV file (missing RIFF header).' };
+  if (view.getUint16(20, true) !== 1) return { error: 'WAV must be PCM (format 1). Got: ' + view.getUint16(20, true) };
+  if (view.getUint16(22, true) !== 1) return { error: 'WAV must be mono. Got channels: ' + view.getUint16(22, true) };
+  if (view.getUint32(24, true) !== 16000) return { error: 'WAV must be 16kHz. Got: ' + view.getUint32(24, true) + 'Hz' };
+  if (view.getUint16(34, true) !== 16) return { error: 'WAV must be 16-bit. Got: ' + view.getUint16(34, true) + '-bit' };
+  let off = 12, dataStart = -1, dataSize = 0;
+  while (off + 8 <= buf.byteLength) {
+    const id = String.fromCharCode(view.getUint8(off), view.getUint8(off+1), view.getUint8(off+2), view.getUint8(off+3));
+    const sz = view.getUint32(off + 4, true);
+    if (id === 'data') { dataStart = off + 8; dataSize = sz; break; }
+    off += 8 + sz;
+  }
+  if (dataStart < 0 || dataStart > buf.byteLength) return { error: 'WAV file has no data chunk.' };
+  const end = Math.min(dataStart + dataSize, buf.byteLength);
+  return { pcm: new Uint8Array(buf).slice(dataStart, end) };
+}
+
+function makeSem(n) {
+  const sem = { count: 0, q: [] };
+  sem.acquire = () => new Promise(r => { if (sem.count < n) { sem.count++; r(); } else sem.q.push(r); });
+  sem.release = () => { sem.count--; if (sem.q.length) { sem.count++; sem.q.shift()(); } };
+  return sem;
+}
+
+// ===== BATCH =====
+async function runBatch() {
+  if (!S.batchFiles.length) return alert('Add audio files first.');
+  parseRefs();
+  const url = $id('serverUrl').value.replace(/\/+$/,'');
+  const conc = parseInt($id('batchConc').value);
+  const ctrl = new AbortController();
+  S.batchAbort = ctrl; S.batchRunning = true; S.batchResults = [];
+  S.latencyBuckets.fill(0);
+  $id('batchGoBtn').style.display='none'; $id('batchStopBtn').style.display='';
+  $id('batchTbody').innerHTML=''; $id('batchVu').style.width='0%'; $id('batchVuLbl').textContent='0%';
+  const files=[...S.batchFiles], total=files.length;
+  let done=0, fail=0;
+  const lats=[];
+  const t0=performance.now();
+  const sem=makeSem(conc);
+
+  const process = async (file, idx) => {
+    await sem.acquire();
+    if (ctrl.signal.aborted) { sem.release(); return; }
+    const start = performance.now();
+    try {
+      const form = new FormData(); form.append('file', file);
+      const r = await fetch(`${url}/v1/transcriptions`, { method:'POST', body:form, signal:ctrl.signal });
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      const data = await r.json();
+      const lat = performance.now()-start;
+      lats.push(lat);
+      updateHistogram(lat);
+      const ref = S.refs[file.name];
+      const wer = ref ? computeWer(ref, data.text||'') : null;
+      const res = {idx,file:file.name,text:data.text||'',lat,status:'ok',wer};
+      S.batchResults.push(res); done++;
+      addBatchRow(res);
+    } catch(e) {
+      if (e.name==='AbortError') { sem.release(); return; }
+      S.batchResults.push({idx,file:file.name,text:'',lat:performance.now()-start,status:'error',error:e.message,wer:null});
+      fail++;
+    }
+    sem.release();
+    const pct = ((done+fail)/total*100);
+    $id('batchVu').style.width = pct+'%';
+    $id('batchVuLbl').textContent = pct.toFixed(0)+'%';
+    animateVal('bDone', done);
+    $id('bFail').textContent = fail;
+    $id('bFail').className = 'stat-val' + (fail ? ' c-bad' : '');
+    const elapsed = (performance.now()-t0)/1000;
+    animateVal('bRps', parseFloat((done/elapsed).toFixed(1)));
+    if (lats.length) {
+      const sorted=[...lats].sort((a,b)=>a-b);
+      $id('bP50').textContent = sorted[Math.floor(sorted.length*.5)].toFixed(0);
+    }
+    const werR = S.batchResults.filter(r=>r.wer);
+    if (werR.length) {
+      const tErr = werR.reduce((s,r)=>s+r.wer.s+r.wer.i+r.wer.d,0);
+      const tWds = werR.reduce((s,r)=>{const ref=S.refs[r.file]||'';return s+(ref.toLowerCase().replace(/[^a-z0-9'\s]/g,'').trim().split(/\s+/).filter(Boolean).length)},0);
+      if(tWds) $id('bWer').textContent = (tErr/tWds*100).toFixed(2);
+    }
+  };
+
+  await Promise.all(files.map((f,i) => process(f,i)));
+  S.batchRunning=false;
+  $id('batchGoBtn').style.display=''; $id('batchStopBtn').style.display='none';
+  buildReport();
+}
+function stopBatch() { if(S.batchAbort) S.batchAbort.abort(); S.batchRunning=false; $id('batchGoBtn').style.display=''; $id('batchStopBtn').style.display='none'; }
+
+function addBatchRow(r) {
+  const tb=$id('batchTbody'), tr=document.createElement('tr');
+  const wc = r.wer ? (r.wer.wer<5?'c-good':r.wer.wer<15?'c-warn':'c-bad') : '';
+  tr.innerHTML=`<td class="text-c">${r.idx+1}</td><td class="trunc" title="${esc(r.file)}">${esc(r.file)}</td><td class="text-r">${r.lat.toFixed(0)}ms</td><td class="trunc" title="${esc(r.text)}">${esc(r.text).substring(0,60)}</td><td class="text-r ${wc}">${r.wer?r.wer.wer.toFixed(1)+'%':'—'}</td><td class="text-c">${r.status==='ok'?'<span class="g-pass">OK</span>':'<span class="g-fail">ERR</span>'}</td>`;
+  tb.appendChild(tr);
+}
+
+// ===== STREAMING =====
+async function startStreaming() {
+  const wsUrl = $id('serverUrl').value.replace(/\/+$/,'').replace(/^http/,'ws');
+  const n = parseInt($id('streamN').value);
+  const chunkMs = parseInt($id('streamChunk').value);
+  const mode = $id('streamMode').value;
+  let pcm = null;
+  if (mode === 'file') {
+    const file = $id('streamFile').files[0];
+    if (!file) return alert('Select a WAV file.');
+    const buf = await file.arrayBuffer();
+    const parsed = parseWavPcm(buf);
+    if (parsed.error) return alert(parsed.error);
+    pcm = parsed.pcm;
+  }
+  S.streamRunning=true; S.streamSessions=[];
+  $id('streamGoBtn').style.display='none'; $id('streamStopBtn').style.display='';
+  const slots=$id('streamSlots'); slots.innerHTML='';
+  for(let i=0;i<n;i++){
+    const el=document.createElement('div');
+    el.className='stream-slot'; el.id='ss-'+i;
+    el.innerHTML=`<div class="stream-hdr"><span><span class="dot" id="ss-dot-${i}" style="background:var(--text3)"></span>Stream #${i+1}</span><span id="ss-st-${i}">connecting</span></div><canvas id="ss-wave-${i}" width="280" height="24" style="width:100%;height:24px;border-radius:3px;display:block;margin-bottom:4px"></canvas><div class="stream-txt" id="ss-txt-${i}"></div>`;
+    slots.appendChild(el);
+    launchStream(i, wsUrl, pcm, chunkMs, mode);
+  }
+}
+
+function launchStream(idx, wsUrl, pcm, chunkMs, mode) {
+  const ws = new WebSocket(`${wsUrl}/v1/stream`);
+  const sess = {ws, idx, committed:'', closed:false, waveX:0};
+  S.streamSessions.push(sess);
+
+  ws.onopen = () => {
+    $id('ss-dot-'+idx).style.background='var(--accent)';
+    $id('ss-'+idx).classList.add('s-active');
+    $id('ss-st-'+idx).textContent='opened';
+    updateStreamStats();
+  };
+
+  ws.onmessage = e => {
+    const msg=JSON.parse(e.data);
+    const txt=$id('ss-txt-'+idx);
+    if(msg.status==='opened'){
+      sess.startTime=performance.now();
+      if(mode==='file'&&pcm) sendChunks(ws, pcm, chunkMs, idx);
+      else if(mode==='mic') startMic(ws, chunkMs);
+    } else if(msg.status==='closed'){
+      sess.closed=true;
+      const finalText = msg.final_text || sess.committed;
+      txt.innerHTML=`<span class="stream-final">${esc(finalText)}</span>`;
+      $id('ss-'+idx).classList.remove('s-active');
+      $id('ss-'+idx).classList.add('s-done');
+      $id('ss-dot-'+idx).style.background='var(--blue)';
+      $id('ss-st-'+idx).textContent='done';
+      updateStreamStats();
+    } else {
+      if(msg.final_transcript) sess.committed=(sess.committed+' '+msg.final_transcript).trim();
+      let html='<span class="stream-final">'+esc(sess.committed)+'</span>';
+      if(msg.partial_transcript) html+=' <span class="stream-partial">'+esc(msg.partial_transcript)+'</span>';
+      txt.innerHTML=html;
+      drawStreamWave(idx);
+    }
+  };
+
+  ws.onerror = () => {
+    $id('ss-'+idx).classList.remove('s-active');
+    $id('ss-'+idx).classList.add('s-error');
+    $id('ss-dot-'+idx).style.background='var(--error)';
+    $id('ss-st-'+idx).textContent='error';
+    updateStreamStats();
+  };
+  ws.onclose = () => updateStreamStats();
+}
+
+function drawStreamWave(idx) {
+  const canvas=$id('ss-wave-'+idx); if(!canvas) return;
+  const sess=S.streamSessions.find(s=>s.idx===idx); if(!sess) return;
+  const c=canvas.getContext('2d');
+  const w=canvas.width, h=canvas.height;
+  const style=getComputedStyle(document.documentElement);
+  if(sess.waveX===0){c.fillStyle=style.getPropertyValue('--elevated').trim();c.fillRect(0,0,w,h)}
+  c.strokeStyle=style.getPropertyValue('--accent').trim();
+  c.lineWidth=1;
+  const x=sess.waveX % w;
+  if(x===0){c.fillStyle=style.getPropertyValue('--elevated').trim();c.fillRect(0,0,w,h)}
+  const y = h/2 + (Math.random()-0.5)*h*0.6;
+  c.beginPath();c.moveTo(x,h/2);c.lineTo(x+1,y);c.stroke();
+  sess.waveX+=2;
+}
+
+async function sendChunks(ws, pcm, chunkMs, idx) {
+  const chunkBytes=Math.floor((16000*chunkMs)/1000)*2;
+  let off=0;
+  while(off<pcm.length && ws.readyState===WebSocket.OPEN){
+    ws.send(pcm.slice(off,off+chunkBytes));
+    off+=chunkBytes;
+    drawStreamWave(idx);
+    await new Promise(r=>setTimeout(r,chunkMs));
+  }
+  if(ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({action:'close'}));
+}
+
+async function startMic(ws, chunkMs) {
+  try {
+    const stream=await navigator.mediaDevices.getUserMedia({audio:{sampleRate:16000,channelCount:1}});
+    const ctx=new AudioContext({sampleRate:16000});
+    const src=ctx.createMediaStreamSource(stream);
+    const rawSize=Math.floor(16000*chunkMs/1000);
+    const bufSize=Math.max(256,Math.pow(2,Math.ceil(Math.log2(rawSize))));
+    const proc=ctx.createScriptProcessor(bufSize,1,1);
+    proc.onaudioprocess=e=>{
+      if(ws.readyState!==WebSocket.OPEN){stream.getTracks().forEach(t=>t.stop());ctx.close();return}
+      const f32=e.inputBuffer.getChannelData(0);
+      const i16=new Int16Array(f32.length);
+      for(let i=0;i<f32.length;i++) i16[i]=Math.max(-32768,Math.min(32767,Math.round(f32[i]*32767)));
+      ws.send(i16.buffer);
+    };
+    src.connect(proc);proc.connect(ctx.destination);
+  } catch(e){alert('Mic error: '+e.message)}
+}
+
+function stopStreaming(){
+  S.streamSessions.forEach(s=>{if(s.ws.readyState===WebSocket.OPEN) s.ws.send(JSON.stringify({action:'close'}))});
+  S.streamRunning=false; $id('streamGoBtn').style.display=''; $id('streamStopBtn').style.display='none';
+}
+
+function updateStreamStats(){
+  const ss=S.streamSessions;
+  $id('sActive').textContent=ss.filter(s=>s.ws.readyState===WebSocket.OPEN).length;
+  $id('sDone').textContent=ss.filter(s=>s.closed).length;
+  $id('sErr').textContent=ss.filter(s=>s.ws.readyState===WebSocket.CLOSED&&!s.closed).length;
+}
+
+function toggleStreamInput(){$id('streamFileRow').style.display=$id('streamMode').value==='file'?'':'none'}
+
+// ===== SWEEP =====
+async function runSweep(){
+  const files=S.sweepFiles.length?[...S.sweepFiles]:[...S.batchFiles];
+  if(!files.length) return alert('Add audio files first.');
+  parseRefs();
+  const url=$id('serverUrl').value.replace(/\/+$/,'');
+  const levels=$id('sweepLevels').value.split(',').map(s=>parseInt(s.trim())).filter(n=>n>0&&n<=1024);
+  if(!levels.length) return alert('Invalid concurrency levels.');
+  const rounds=parseInt($id('sweepRounds').value);
+  const ctrl=new AbortController();
+  S.sweepAbort=ctrl; S.sweepRunning=true; S.sweepResults=[]; S.batchResults=[];
+  $id('sweepGoBtn').style.display='none'; $id('sweepStopBtn').style.display='';
+  $id('sweepTbody').innerHTML=''; $id('sweepLog').innerHTML=''; $id('sweepHeatmap').innerHTML='';
+  $id('sweepVu').style.width='0%'; $id('sweepVuLbl').textContent='0%';
+
+  const totalSteps=levels.length+1;
+  let step=0;
+
+  const sweepType=$id('sweepType').value;
+  const runAtC = sweepType==='streaming'
+    ? (u,f,c,s) => streamAtC(u,f,c,s)
+    : (u,f,c,s) => batchAtC(u,f,c,s);
+
+  sLog('l-info','WER eval ('+sweepType+'): '+files.length+' files at c=1...');
+  const werR=await runAtC(url,files,1,ctrl.signal);
+  if(werR.length>0&&S.batchResults.length===0) S.batchResults=werR;
+  const wv=werR.filter(r=>r.wer);
+  if(wv.length){
+    const tE=wv.reduce((s,r)=>s+r.wer.s+r.wer.i+r.wer.d,0);
+    const tW=wv.reduce((s,r)=>{const ref=S.refs[r.file]||'';return s+(ref.toLowerCase().replace(/[^a-z0-9'\s]/g,'').trim().split(/\s+/).filter(Boolean).length)},0);
+    if(tW) sLog('l-ok','WER: '+(tE/tW*100).toFixed(2)+'%');
+  }
+
+  let maxRps=0;
+  for(const c of levels){
+    if(ctrl.signal.aborted) break;
+    sLog('l-info','c='+c+' ('+sweepType+')...');
+    const res=await runAtC(url,files,c,ctrl.signal);
+    const ok=res.filter(r=>r.status==='ok');
+    const fails=res.filter(r=>r.status==='error').length;
+    const lats=ok.map(r=>r.lat).sort((a,b)=>a-b);
+    const p50=lats.length?lats[Math.floor(lats.length*.5)]:0;
+    const p99=lats.length?lats[Math.floor(lats.length*.99)]:0;
+    const wallS=(res._wallMs||1)/1000;
+    const rps=ok.length/wallS;
+    if(rps>maxRps)maxRps=rps;
+    const row={c,rps:rps.toFixed(1),p50:p50.toFixed(0),p99:p99.toFixed(0),wall:wallS.toFixed(1),failures:fails};
+    S.sweepResults.push(row);
+    addSweepRow(row);
+    addHeatCell(row,maxRps);
+    sLog('l-info','  c='+c+': '+rps.toFixed(1)+' RPS, '+fails+' failures');
+    step++;
+    const pct=step/totalSteps*100;
+    $id('sweepVu').style.width=pct+'%'; $id('sweepVuLbl').textContent=pct.toFixed(0)+'%';
+    $id('sweepStatus').textContent='Sweep: '+step+'/'+levels.length+' levels';
+  }
+
+  if(!ctrl.signal.aborted){
+    const sc=levels[Math.floor(levels.length/2)]||4;
+    sLog('l-info','Sustained ('+sweepType+'): c='+sc+', '+rounds+' rounds...');
+    for(let r=0;r<rounds&&!ctrl.signal.aborted;r++){
+      await runAtC(url,files,sc,ctrl.signal);
+      sLog('l-info','  Round '+(r+1)+'/'+rounds+' done');
+    }
+    $id('sweepVu').style.width='100%'; $id('sweepVuLbl').textContent='100%';
+    $id('sweepStatus').textContent='Complete';
+  }
+  S.sweepRunning=false;
+  $id('sweepGoBtn').style.display=''; $id('sweepStopBtn').style.display='none';
+  sLog('l-ok','Sweep finished.');
+  buildReport();
+}
+
+async function batchAtC(url, files, conc, signal) {
+  const results=[]; const t0=performance.now();
+  const sem=makeSem(conc);
+  const process=async(file,idx)=>{
+    await sem.acquire();
+    if(signal.aborted){sem.release();return}
+    const start=performance.now();
+    try{
+      const form=new FormData();form.append('file',file);
+      const r=await fetch(`${url}/v1/transcriptions`,{method:'POST',body:form,signal});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const data=await r.json();
+      const lat=performance.now()-start;
+      const ref=S.refs[file.name];
+      const wer=ref?computeWer(ref,data.text||''):null;
+      results.push({idx,file:file.name,text:data.text||'',lat,status:'ok',wer});
+    }catch(e){
+      if(e.name!=='AbortError') results.push({idx,file:file.name,text:'',lat:performance.now()-start,status:'error',error:e.message,wer:null});
+    }
+    sem.release();
+  };
+  await Promise.all(files.map((f,i)=>process(f,i)));
+  results._wallMs=performance.now()-t0;
+  return results;
+}
+
+async function streamAtC(url, files, conc, signal) {
+  const wsUrl = url.replace(/^http/, 'ws');
+  const results = []; const t0 = performance.now();
+  const sem = makeSem(conc);
+  const chunkMs = 160;
+  const sampleRate = 16000;
+  const chunkBytes = Math.floor((sampleRate * chunkMs) / 1000) * 2;
+
+  const process = async (file, idx) => {
+    await sem.acquire();
+    if (signal.aborted) { sem.release(); return; }
+    const start = performance.now();
+    try {
+      const buf = await file.arrayBuffer();
+      const parsed = parseWavPcm(buf);
+      if (parsed.error) throw new Error(parsed.error);
+      const pcm = parsed.pcm;
+
+      const text = await new Promise((resolve, reject) => {
+        const ws = new WebSocket(`${wsUrl}/v1/stream`);
+        let committed = '', finalText = '';
+        const timeout = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, 60000);
+        ws.onmessage = e => {
+          const msg = JSON.parse(e.data);
+          if (msg.status === 'opened') {
+            let offset = 0;
+            const sendChunk = () => {
+              if (offset >= pcm.length || ws.readyState !== WebSocket.OPEN) {
+                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({action:'close'}));
+                return;
+              }
+              ws.send(pcm.slice(offset, offset + chunkBytes));
+              offset += chunkBytes;
+              setTimeout(sendChunk, chunkMs);
+            };
+            sendChunk();
+          } else if (msg.status === 'closed') {
+            clearTimeout(timeout);
+            finalText = msg.final_text || committed;
+            ws.close();
+            resolve(finalText);
+          } else {
+            if (msg.final_transcript) committed = (committed + ' ' + msg.final_transcript).trim();
+          }
+        };
+        ws.onerror = () => { clearTimeout(timeout); reject(new Error('ws error')); };
+        ws.onclose = () => { clearTimeout(timeout); if (!finalText) resolve(committed); };
+      });
+
+      const lat = performance.now() - start;
+      const ref = S.refs[file.name];
+      const wer = ref ? computeWer(ref, text || '') : null;
+      results.push({idx, file: file.name, text: text || '', lat, status: 'ok', wer});
+    } catch (e) {
+      results.push({idx, file: file.name, text: '', lat: performance.now() - start, status: 'error', error: e.message, wer: null});
+    }
+    sem.release();
+  };
+  await Promise.all(files.map((f, i) => process(f, i)));
+  results._wallMs = performance.now() - t0;
+  return results;
+}
+
+function addSweepRow(r){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td class="text-c">${r.c}</td><td class="text-r">${r.rps}</td><td class="text-r">${r.p50}ms</td><td class="text-r">${r.p99}ms</td><td class="text-r">${r.wall}s</td><td class="text-c ${r.failures?'g-fail':'g-pass'}">${r.failures}</td>`;
+  $id('sweepTbody').appendChild(tr);
+}
+
+function addHeatCell(row, maxRps) {
+  const rps = parseFloat(row.rps);
+  const intensity = maxRps > 0 ? rps / maxRps : 0;
+  const style = getComputedStyle(document.documentElement);
+  const hasFail = row.failures > 0;
+  const bg = hasFail
+    ? `rgba(255,87,87,${0.1 + intensity * 0.2})`
+    : `rgba(0,229,160,${0.05 + intensity * 0.25})`;
+  const border = hasFail ? 'var(--error)' : 'transparent';
+  const el = document.createElement('div');
+  el.className = 'heat-cell';
+  el.style.background = bg;
+  el.style.borderColor = border;
+  el.innerHTML = `<div class="hc-c">c=${row.c}</div><div class="hc-rps" style="color:${hasFail?'var(--error)':'var(--accent)'}">${row.rps}</div><div class="hc-detail">p50 ${row.p50}ms</div>`;
+  el.title = `c=${row.c} | RPS: ${row.rps} | p50: ${row.p50}ms | p99: ${row.p99}ms | wall: ${row.wall}s | fail: ${row.failures}`;
+  $id('sweepHeatmap').appendChild(el);
+}
+
+function sLog(cls,msg){const el=$id('sweepLog');el.innerHTML+=`<div class="${cls}">${new Date().toISOString().substr(11,8)} ${esc(msg)}</div>`;el.scrollTop=el.scrollHeight}
+function stopSweep(){if(S.sweepAbort)S.sweepAbort.abort();S.sweepRunning=false;$id('sweepGoBtn').style.display='';$id('sweepStopBtn').style.display='none'}
+function onPresetChange(){
+  if($id('sweepPreset').value==='librispeech'){loadPresetRefs();$id('sweepUpload').style.display='none'}
+  else $id('sweepUpload').style.display='';
+}
+
+// ===== REPORT =====
+function buildReport(){
+  const results=S.batchResults.length?S.batchResults:[];
+  if(!results.length) return;
+  $id('rptEmpty').style.display='none'; $id('rptContent').style.display='';
+  const ok=results.filter(r=>r.status==='ok');
+  const fails=results.filter(r=>r.status==='error');
+  $id('rFiles').textContent=results.length;
+  $id('rFail').textContent=fails.length;
+  $id('rFail').className='stat-val'+(fails.length?' c-bad':' c-good');
+
+  if(S.sweepResults.length){
+    $id('rRps').textContent=Math.max(...S.sweepResults.map(r=>parseFloat(r.rps))).toFixed(1);
+  } else if(results._wallMs){
+    $id('rRps').textContent=(ok.length/(results._wallMs/1000)).toFixed(1);
+  }
+
+  const wR=ok.filter(r=>r.wer);
+  if(wR.length){
+    const tE=wR.reduce((s,r)=>s+r.wer.s+r.wer.i+r.wer.d,0);
+    const tW=wR.reduce((s,r)=>{const ref=S.refs[r.file]||'';return s+(ref.toLowerCase().replace(/[^a-z0-9'\s]/g,'').trim().split(/\s+/).filter(Boolean).length)},0);
+    if(tW){
+      const w=(tE/tW*100).toFixed(2);
+      $id('rWer').textContent=w+'%';
+      $id('rWer').className='stat-val '+(parseFloat(w)<5?'c-good':parseFloat(w)<15?'c-warn':'c-bad');
+    }
+  }
+
+  const gb=$id('rptGates'); gb.innerHTML='';
+  const werVal=$id('rWer').textContent;
+  [{name:'WER',thresh:'< 4.0%',actual:werVal,pass:werVal!=='—'&&parseFloat(werVal)<4},
+   {name:'Failures',thresh:'0',actual:fails.length+'',pass:fails.length===0}
+  ].forEach(g=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${g.name}</td><td>${g.thresh}</td><td>${g.actual}</td><td class="${g.pass?'g-pass':'g-fail'}">${g.pass?'PASS':'FAIL'}</td>`;
+    gb.appendChild(tr);
+  });
+
+  S.reportData=results;
+  renderReport(results);
+}
+
+function renderReport(results){
+  const tb=$id('rptTbody'); tb.innerHTML='';
+  results.forEach((r,i)=>{
+    const ref=S.refs[r.file]||'';
+    const w=r.wer;
+    const diff=w?renderDiff(w.ops):esc(r.text);
+    const wc=w?(w.wer<5?'c-good':w.wer<15?'c-warn':'c-bad'):'';
+
+    const mainTr=document.createElement('tr');
+    mainTr.className='expand-row';
+    mainTr.onclick=()=>{mainTr.classList.toggle('open');mainTr.nextElementSibling.classList.toggle('open')};
+    mainTr.innerHTML=`<td class="text-c">${i+1}</td><td class="trunc" title="${esc(r.file)}">${esc(r.file)}</td><td class="trunc" title="${esc(ref)}">${esc(ref).substring(0,40)}</td><td class="trunc">${esc(r.text).substring(0,40)}</td><td class="text-r ${wc}">${w?w.wer.toFixed(1)+'%':'—'}</td><td class="text-c">${w?w.s:'—'}</td><td class="text-c">${w?w.i:'—'}</td><td class="text-c">${w?w.d:'—'}</td>`;
+    tb.appendChild(mainTr);
+
+    const detTr=document.createElement('tr');
+    detTr.className='expand-detail';
+    detTr.innerHTML=`<td colspan="8" style="font-size:12px;line-height:1.8"><strong>REF:</strong> ${esc(ref)}<br><strong>HYP:</strong> ${diff}</td>`;
+    tb.appendChild(detTr);
+  });
+}
+
+function filterReport(){
+  const q=$id('rptFilter').value.toLowerCase();
+  renderReport((S.reportData||[]).filter(r=>r.file.toLowerCase().includes(q)));
+}
+
+// ===== DOWNLOADS =====
+function dlJSON(){
+  const d={timestamp:new Date().toISOString(),server:$id('serverUrl').value,server_info:S.serverInfo,
+    results:S.batchResults.map(r=>({file:r.file,text:r.text,latency_ms:r.lat,status:r.status,error:r.error||null,
+      reference:S.refs[r.file]||null,wer:r.wer?{wer_pct:r.wer.wer,s:r.wer.s,i:r.wer.i,d:r.wer.d}:null})),
+    sweep:S.sweepResults};
+  dlFile(JSON.stringify(d,null,2),'benchmark-report.json','application/json');
+}
+function dlCSV(){
+  let csv='file,reference,hypothesis,wer_pct,substitutions,insertions,deletions,latency_ms,status\n';
+  S.batchResults.forEach(r=>{
+    const ref=(S.refs[r.file]||'').replace(/"/g,'""');
+    const hyp=(r.text||'').replace(/"/g,'""');
+    csv+=`"${r.file}","${ref}","${hyp}",${r.wer?r.wer.wer.toFixed(2):''},${r.wer?r.wer.s:''},${r.wer?r.wer.i:''},${r.wer?r.wer.d:''},${r.lat.toFixed(0)},${r.status}\n`;
+  });
+  dlFile(csv,'transcripts.csv','text/csv');
+}
+function dlMD(){
+  let md='# Benchmark Report\n\n';
+  md+=`**Server:** ${$id('serverUrl').value}  \n**Date:** ${new Date().toISOString()}\n\n`;
+  md+='## Summary\n| Metric | Value |\n|--------|-------|\n';
+  md+=`| Files | ${S.batchResults.length} |\n| WER | ${$id('rWer').textContent} |\n| Failures | ${S.batchResults.filter(r=>r.status==='error').length} |\n\n`;
+  if(S.sweepResults.length){
+    md+='## Concurrency Sweep\n| c | RPS | p50 | p99 | Wall | Fail |\n|---|-----|-----|-----|------|------|\n';
+    S.sweepResults.forEach(r=>{md+=`| ${r.c} | ${r.rps} | ${r.p50}ms | ${r.p99}ms | ${r.wall}s | ${r.failures} |\n`});
+    md+='\n';
+  }
+  md+='## Per-Utterance\n| File | Ref | Hyp | WER |\n|------|-----|-----|-----|\n';
+  S.batchResults.slice(0,50).forEach(r=>{
+    md+=`| ${r.file} | ${(S.refs[r.file]||'').substring(0,40)} | ${(r.text||'').substring(0,40)} | ${r.wer?r.wer.wer.toFixed(1)+'%':'—'} |\n`;
+  });
+  if(S.batchResults.length>50) md+=`\n_...${S.batchResults.length-50} more (see CSV)_\n`;
+  dlFile(md,'benchmark-report.md','text/markdown');
+}
+function dlFile(content,name,mime){
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:mime}));a.download=name;a.click();URL.revokeObjectURL(a.href);
+}
+
+function makeZip(files){
+  function crc32(buf){
+    let c=0xffffffff;
+    for(let i=0;i<buf.length;i++){c^=buf[i];for(let j=0;j<8;j++)c=(c>>>1)^(c&1?0xedb88320:0)}
+    return(c^0xffffffff)>>>0;
+  }
+  function dosTime(d){
+    const s=(d.getSeconds()>>1)|((d.getMinutes())<<5)|((d.getHours())<<11);
+    const dt=d.getDate()|((d.getMonth()+1)<<5)|((d.getFullYear()-1980)<<9);
+    return{time:s,date:dt};
+  }
+  const enc=new TextEncoder();
+  const entries=files.map(f=>{
+    const data=typeof f.content==='string'?enc.encode(f.content):f.content;
+    const name=enc.encode(f.name);
+    return{name,data,crc:crc32(data)};
+  });
+  const now=dosTime(new Date());
+  let localOff=0;
+  const localParts=[], centralParts=[];
+  for(const e of entries){
+    const header=new ArrayBuffer(30+e.name.length);
+    const hv=new DataView(header);
+    hv.setUint32(0,0x04034b50,true);
+    hv.setUint16(4,20,true);
+    hv.setUint16(8,0,true);
+    hv.setUint16(10,now.time,true);
+    hv.setUint16(12,now.date,true);
+    hv.setUint32(14,e.crc,true);
+    hv.setUint32(18,e.data.length,true);
+    hv.setUint32(22,e.data.length,true);
+    hv.setUint16(26,e.name.length,true);
+    new Uint8Array(header,30).set(e.name);
+    localParts.push(new Uint8Array(header),e.data);
+
+    const cdir=new ArrayBuffer(46+e.name.length);
+    const cv=new DataView(cdir);
+    cv.setUint32(0,0x02014b50,true);
+    cv.setUint16(4,20,true);
+    cv.setUint16(6,20,true);
+    cv.setUint16(10,0,true);
+    cv.setUint16(12,now.time,true);
+    cv.setUint16(14,now.date,true);
+    cv.setUint32(16,e.crc,true);
+    cv.setUint32(20,e.data.length,true);
+    cv.setUint32(24,e.data.length,true);
+    cv.setUint16(28,e.name.length,true);
+    cv.setUint32(42,localOff,true);
+    new Uint8Array(cdir,46).set(e.name);
+    centralParts.push(new Uint8Array(cdir));
+
+    localOff+=30+e.name.length+e.data.length;
+  }
+  const cdirSize=centralParts.reduce((s,p)=>s+p.length,0);
+  const eocd=new ArrayBuffer(22);
+  const ev=new DataView(eocd);
+  ev.setUint32(0,0x06054b50,true);
+  ev.setUint16(8,entries.length,true);
+  ev.setUint16(10,entries.length,true);
+  ev.setUint32(12,cdirSize,true);
+  ev.setUint32(16,localOff,true);
+  return new Blob([...localParts,...centralParts,new Uint8Array(eocd)],{type:'application/zip'});
+}
+
+function dlZIP(){
+  if(!S.batchResults.length&&!S.sweepResults.length) return;
+  const d={timestamp:new Date().toISOString(),server:$id('serverUrl').value,server_info:S.serverInfo,
+    results:S.batchResults.map(r=>({file:r.file,text:r.text,latency_ms:r.lat,status:r.status,error:r.error||null,
+      reference:S.refs[r.file]||null,wer:r.wer?{wer_pct:r.wer.wer,s:r.wer.s,i:r.wer.i,d:r.wer.d}:null})),
+    sweep:S.sweepResults};
+  let csv='file,reference,hypothesis,wer_pct,substitutions,insertions,deletions,latency_ms,status\n';
+  S.batchResults.forEach(r=>{
+    const ref=(S.refs[r.file]||'').replace(/"/g,'""');
+    const hyp=(r.text||'').replace(/"/g,'""');
+    csv+=`"${r.file}","${ref}","${hyp}",${r.wer?r.wer.wer.toFixed(2):''},${r.wer?r.wer.s:''},${r.wer?r.wer.i:''},${r.wer?r.wer.d:''},${r.lat.toFixed(0)},${r.status}\n`;
+  });
+  let md='# Benchmark Report\n\n';
+  md+=`**Server:** ${$id('serverUrl').value}  \n**Date:** ${new Date().toISOString()}\n\n`;
+  md+='## Summary\n| Metric | Value |\n|--------|-------|\n';
+  md+=`| Files | ${S.batchResults.length} |\n| WER | ${$id('rWer').textContent} |\n| Failures | ${S.batchResults.filter(r=>r.status==='error').length} |\n\n`;
+  if(S.sweepResults.length){
+    md+='## Concurrency Sweep\n| c | RPS | p50 | p99 | Wall | Fail |\n|---|-----|-----|-----|------|------|\n';
+    S.sweepResults.forEach(r=>{md+=`| ${r.c} | ${r.rps} | ${r.p50}ms | ${r.p99}ms | ${r.wall}s | ${r.failures} |\n`});
+    md+='\n';
+  }
+  md+='## Per-Utterance\n| File | Ref | Hyp | WER |\n|------|-----|-----|-----|\n';
+  S.batchResults.forEach(r=>{
+    md+=`| ${r.file} | ${(S.refs[r.file]||'').substring(0,60)} | ${(r.text||'').substring(0,60)} | ${r.wer?r.wer.wer.toFixed(1)+'%':'—'} |\n`;
+  });
+  const zip=makeZip([
+    {name:'benchmark-report.json',content:JSON.stringify(d,null,2)},
+    {name:'transcripts.csv',content:csv},
+    {name:'benchmark-report.md',content:md}
+  ]);
+  const a=document.createElement('a');a.href=URL.createObjectURL(zip);a.download='highperfasr-benchmark-'+new Date().toISOString().replace(/[:.]/g,'-').substring(0,19)+'.zip';a.click();URL.revokeObjectURL(a.href);
+}
+
+// ===== INIT =====
+setupDrop('batchDrop','batchFiles',S.batchFiles,'batchFileList');
+$id('sweepFileIn')?.addEventListener('change',function(){addFiles(Array.from(this.files),S.sweepFiles,'sweepFileList');this.value=''});
+if($id('serverUrl').value) setTimeout(connectServer,500);
+drawHistogram();
+</script>

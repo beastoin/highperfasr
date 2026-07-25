@@ -1,6 +1,6 @@
 {
   "schema_version": "v1alpha2",
-  "report_id": "2026-t4-nemo-stream",
+  "report_id": "t4-stream-20260713T083446",
   "generated_at": "2026-07-13T09:52:38Z",
   "protocol_version": "v1alpha1",
   "sut": {

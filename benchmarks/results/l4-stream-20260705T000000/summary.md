@@ -1,6 +1,6 @@
 # highperfasr Benchmark Report: L4 Streaming 512 Concurrent
 
-**Report ID:** 2026-l4-nemo-512-streams
+**Report ID:** l4-stream-20260705T000000
 **Protocol Version:** v1alpha1
 **Date:** 2026-07-05
 

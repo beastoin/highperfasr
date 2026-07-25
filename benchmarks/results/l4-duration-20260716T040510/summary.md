@@ -1,6 +1,6 @@
 # highperfasr Benchmark Report: L4 Batch by Duration
 
-**Report ID:** 2026-l4-batch-by-duration
+**Report ID:** l4-duration-20260716T040510
 **Date:** 2026-07-16
 
 ## System Under Test
