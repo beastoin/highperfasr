@@ -414,7 +414,6 @@ tr:last-child td{border-bottom:none}
       <div class="run-chips">
         <span class="chip chip-b">13.91 RPS</span>
         <span class="chip chip-g">WER 1.88%</span>
-        <span class="chip chip-b">Latest</span>
         <a href="runs/l4-batch-20260724T122749.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
       </div>
     </div>
@@ -426,6 +425,55 @@ tr:last-child td{border-bottom:none}
         <div class="run-m"><div class="run-m-val c-accent">0</div><div class="run-m-label">Failures</div></div>
       </div>
       <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">200 samples &middot; LibriSpeech test-clean &middot; NVIDIA L4 &middot; Sustained 19.99 RPS (c=64, 0 fail) &middot; <a href="https://github.com/beastoin/highperfasr/commit/1334cc3" style="color:var(--accent)"><code>1334cc3</code></a></div>
+    </div>
+  </div>
+
+  <!-- L4 BATCH v0.3.0 -->
+  <div class="run-card" onclick="toggleRun(this)">
+    <div class="run-header">
+      <div class="run-title">L4 Batch — v0.3.0</div>
+      <div class="run-chips">
+        <span class="chip chip-g">WER 1.92%</span>
+        <span class="chip chip-g">100x RTFx</span>
+        <span class="chip chip-g">17.48 RPS</span>
+        <span class="chip chip-g">0 fail</span>
+        <span class="chip chip-b">v0.3.0</span>
+        <a href="runs/l4-batch-20260725T055248.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
+      </div>
+    </div>
+    <div class="run-body">
+      <div class="run-metrics">
+        <div class="run-m"><div class="run-m-val c-accent">1.92%</div><div class="run-m-label">WER</div></div>
+        <div class="run-m"><div class="run-m-val">13.49</div><div class="run-m-label">Peak RPS</div></div>
+        <div class="run-m"><div class="run-m-val">100x</div><div class="run-m-label">RTFx</div></div>
+        <div class="run-m"><div class="run-m-val c-accent">0</div><div class="run-m-label">Failures</div></div>
+        <div class="run-m"><div class="run-m-val">17.48</div><div class="run-m-label">Sustained RPS</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">ghcr.io/beastoin/highperfasr-batch:v0.3.0 &middot; 2620 LibriSpeech test-clean &middot; NVIDIA L4 &middot; Sustained 17.48 RPS (c=64, 0 fail) &middot; Max-load WER 1.91%</div>
+    </div>
+  </div>
+
+  <!-- L4 STREAM v0.3.0 -->
+  <div class="run-card" onclick="toggleRun(this)">
+    <div class="run-header">
+      <div class="run-title">L4 Stream — v0.3.0</div>
+      <div class="run-chips">
+        <span class="chip chip-b">WER 3.21%</span>
+        <span class="chip chip-b">11.48x RTFx</span>
+        <span class="chip chip-b">87.4 sess/min</span>
+        <span class="chip chip-g">0 fail</span>
+        <span class="chip chip-b">v0.3.0</span>
+        <a href="runs/l4-stream-20260725T082046.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
+      </div>
+    </div>
+    <div class="run-body">
+      <div class="run-metrics">
+        <div class="run-m"><div class="run-m-val c-blue">3.21%</div><div class="run-m-label">WER</div></div>
+        <div class="run-m"><div class="run-m-val">11.48x</div><div class="run-m-label">RTFx</div></div>
+        <div class="run-m"><div class="run-m-val">87.4</div><div class="run-m-label">Sess/min</div></div>
+        <div class="run-m"><div class="run-m-val c-accent">0</div><div class="run-m-label">Failures</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">ghcr.io/beastoin/highperfasr-stream:v0.3.0 &middot; 200 LibriSpeech test-clean &middot; NVIDIA L4 &middot; both mode &middot; Sustained c=32 87.4 sess/min (0 fail) &middot; Max-load WER 5.83%</div>
     </div>
   </div>
 
@@ -441,8 +489,10 @@ tr:last-child td{border-bottom:none}
   <a href="runs/l4-compare-20260710T152527.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">l4-compare-20260710T152527</a>
   <a href="runs/t4-batch-20260712T125257.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">t4-batch-20260712T125257</a>
   <a href="runs/t4-stream-20260713T083446.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">t4-stream-20260713T083446</a>
-  <a href="runs/l4-batch-20260724T122749.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">l4-batch-20260724 <span class="chip chip-b" style="font-size:9px;padding:1px 6px">Latest</span></a>
-  <a href="runs/l4-stream-20260724T123159.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">l4-stream-20260724 <span class="chip chip-b" style="font-size:9px;padding:1px 6px">Latest</span></a>
+  <a href="runs/l4-batch-20260724T122749.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">l4-batch-20260724</a>
+  <a href="runs/l4-stream-20260724T123159.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">l4-stream-20260724</a>
+  <a href="runs/l4-batch-20260725T055248.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">l4-batch v0.3.0 <span class="chip chip-b" style="font-size:9px;padding:1px 6px">Latest</span></a>
+  <a href="runs/l4-stream-20260725T082046.html" style="padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">l4-stream v0.3.0 <span class="chip chip-b" style="font-size:9px;padding:1px 6px">Latest</span></a>
 </div>
 
 <!-- IMPORT -->
