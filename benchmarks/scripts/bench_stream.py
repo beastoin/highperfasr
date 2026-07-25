@@ -64,10 +64,10 @@ def summarize_wer_results(results, refs):
     return _summarize(results, refs)
 
 
-def collect_system_info(gpu_override=None):
+def collect_system_info(gpu_override=None, image_tag=None):
     from bench_batch import collect_system_info as _collect
 
-    return _collect(gpu_override=gpu_override)
+    return _collect(gpu_override=gpu_override, image_tag=image_tag)
 
 
 def collect_gpu_memory_used_mb():
@@ -321,6 +321,8 @@ async def main():
                         help="Publish results to DIR/<auto-named>/ using GPU-mode-timestamp naming")
     parser.add_argument("--gpu", default=None, metavar="NAME",
                         help="Override GPU name when nvidia-smi is unavailable (e.g. remote benchmarking)")
+    parser.add_argument("--image-tag", default=None, metavar="TAG",
+                        help="Image version tag for reports (e.g. v0.3.0). Falls back to sha-<HEAD>")
     args = parser.parse_args()
 
     if args.quick:
@@ -364,7 +366,7 @@ async def main():
         "samples": len(manifest),
         "dataset": dataset_name,
         "smart_mode": args.smart,
-        "system": collect_system_info(gpu_override=args.gpu),
+        "system": collect_system_info(gpu_override=args.gpu, image_tag=args.image_tag),
         "command": " ".join(sys.argv),
     }
     vram_start_mb = collect_gpu_memory_used_mb()

@@ -215,7 +215,7 @@ def summarize_wer_results(results, refs):
     }
 
 
-def collect_system_info(gpu_override=None):
+def collect_system_info(gpu_override=None, image_tag=None):
     """Collect system metadata for report reproducibility."""
     import platform as _platform
     import subprocess as _sp
@@ -241,6 +241,13 @@ def collect_system_info(gpu_override=None):
     if git_sha:
         info["git_sha"] = git_sha
 
+    if image_tag:
+        info["container_image"] = image_tag
+    elif not image_tag:
+        sha = git_sha or _run("git rev-parse --short HEAD")
+        if sha:
+            info["container_image"] = f"sha-{sha}"
+
     if gpu_override:
         info["gpu"] = gpu_override
     else:
@@ -259,11 +266,6 @@ def collect_system_info(gpu_override=None):
     gpu_util = _run("nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader,nounits")
     if gpu_util:
         info["gpu_utilization_pct"] = int(gpu_util.split("\n")[0])
-
-    if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv"):
-        image = os.environ.get("NVIDIA_PYTORCH_VERSION") or os.environ.get("BASE_IMAGE")
-        if image:
-            info["container_image"] = image
 
     return info
 
@@ -524,6 +526,8 @@ async def main():
                         help="Publish results to DIR/<auto-named>/ using GPU-mode-timestamp naming")
     parser.add_argument("--gpu", default=None, metavar="NAME",
                         help="Override GPU name when nvidia-smi is unavailable (e.g. remote benchmarking)")
+    parser.add_argument("--image-tag", default=None, metavar="TAG",
+                        help="Image version tag for reports (e.g. v0.3.0). Falls back to sha-<HEAD>")
     args = parser.parse_args()
 
     if args.quick:
@@ -570,7 +574,7 @@ async def main():
         "samples": len(manifest),
         "dataset": dataset_name,
         "smart_mode": args.smart,
-        "system": collect_system_info(gpu_override=args.gpu),
+        "system": collect_system_info(gpu_override=args.gpu, image_tag=args.image_tag),
         "command": " ".join(sys.argv),
     }
     vram_start_mb = collect_gpu_memory_used_mb()
