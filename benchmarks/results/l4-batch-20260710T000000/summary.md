@@ -1,6 +1,6 @@
 # highperfasr Benchmark Report: L4 Batch Concurrency Sweep
 
-**Report ID:** 2026-l4-nemo-batch
+**Report ID:** l4-batch-20260710T000000
 **Protocol Version:** v1alpha1
 **Date:** 2026-07-10
 

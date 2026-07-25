@@ -1,6 +1,6 @@
 {
   "schema_version": "v1alpha2",
-  "report_id": "2026-l4-batch-by-duration",
+  "report_id": "l4-duration-20260716T040510",
   "generated_at": "2026-07-16T04:05:10Z",
   "protocol_version": "v1alpha1",
   "sut": {
@@ -39,7 +39,7 @@
     "description": "Duration-stratified batch concurrency sweep: 100 espeak-ng speech files per duration bracket (10s, 30s, 60s, 120s). Tests throughput and max safe concurrency as a function of audio duration."
   },
   "quality": {
-    "note": "WER not measured in-scenario (synthetic espeak-ng audio). See 2026-l4-nemo-batch for LibriSpeech WER."
+    "note": "WER not measured in-scenario (synthetic espeak-ng audio). See l4-batch-20260710T000000 for LibriSpeech WER."
   },
   "performance": {
     "rtfx": 235,
@@ -82,12 +82,12 @@
   "artifacts": [
     {
       "name": "raw benchmark output",
-      "path": "benchmarks/results/2026-l4-batch-by-duration/raw.json",
+      "path": "benchmarks/results/l4-duration-20260716T040510/raw.json",
       "description": "Full script output with per-duration sweep data"
     },
     {
       "name": "summary",
-      "path": "benchmarks/results/2026-l4-batch-by-duration/summary.md",
+      "path": "benchmarks/results/l4-duration-20260716T040510/summary.md",
       "description": "Human-readable benchmark report"
     }
   ]

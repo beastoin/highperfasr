@@ -1,6 +1,6 @@
 {
   "schema_version": "v1alpha2",
-  "report_id": "2026-t4-nemo-batch",
+  "report_id": "t4-batch-20260712T125257",
   "generated_at": "2026-07-12T12:52:57Z",
   "protocol_version": "v1alpha1",
   "sut": {

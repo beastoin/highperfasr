@@ -769,9 +769,9 @@ def build_live_page(run_id, result_dir):
 
 
 BUILDERS = {
-    "2026-l4-batch-by-duration": build_duration_page,
-    "2026-l4-dockerfile-stream": build_dockerfile_stream_page,
-    "2026-l4-streaming-comparison": build_comparison_page,
+    "l4-duration-20260716T040510": build_duration_page,
+    "l4-stream-20260711T034546": build_dockerfile_stream_page,
+    "l4-compare-20260710T152527": build_comparison_page,
 }
 
 def auto_detect_builder(run_id, result_dir):
