@@ -12,7 +12,7 @@
     "platform": "Linux-6.12.85+-x86_64-with-glibc2.35",
     "pytorch_version": "2.6.0+cu126",
     "cuda_version": "12.6",
-    "container_image": "v0.3.0",
+    "container_image": "ghcr.io/beastoin/highperfasr-stream:v0.3.0",
     "gpu": "NVIDIA L4",
     "gpu_memory_mb": 23034,
     "driver_version": "580.126.20",
