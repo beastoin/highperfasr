@@ -1,0 +1,12 @@
+# HighPerfASR — Cursor Rules
+
+See AGENTS.md for full project rules, architecture, and conventions.
+
+Key constraints:
+- NGC base `nvcr.io/nvidia/nemo:26.02` only — DO NOT use PyTorch 2.12+ or CUDA 13.x
+- All CUDA model loading on GPU worker thread — cross-thread tensor ownership causes segfaults
+- WER computation only via repo bench scripts (`benchmarks/scripts/`) with Whisper normalization
+- `gc.disable()` at module level, `gc.collect(0)` per batch on GPU thread
+- uvicorn WebSocket: `ws_ping_interval=None, ws_ping_timeout=None`
+- GHCR images: `ghcr.io/beastoin/highperfasr-{batch,stream}:<semver>` — never `:latest`
+- Run `python3 -m pytest benchmarks/scripts/tests/ -q` before committing

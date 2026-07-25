@@ -1,45 +1,118 @@
-# HighPerfASR — Agent Instructions
+# HighPerfASR
 
-## Mission
+"vLLM for ASR" — serving optimization for existing open-source NVIDIA ASR models. We do NOT train models. We take published models and maximize serving throughput while preserving their published WER.
 
-HighPerfASR is "vLLM for ASR" — maximize serving performance of existing open-source NVIDIA ASR models without modifying model quality. Preserve WER, maximize throughput.
+Target: B2B companies self-hosting ASR. Value prop: one L4 GPU serving 512 concurrent streams with published WER, reproducible and evidence-based.
 
-## Target Customer
+## Repository Layout
 
-B2B companies self-hosting ASR instead of paying per-minute API pricing. Our value: one L4 GPU serving 512 concurrent streams with published WER — reproducible, evidence-based.
+```
+beastoin/highperfasr (main branch)
+├── Dockerfile                    # multi-target: batch + stream
+├── compose.yaml                  # docker compose up -d
+├── gke-l4.yaml                   # GKE L4 GPU deployment
+├── labs/nemo-fastapi/
+│   ├── configs/                  # serving-batch.yaml, serving-stream.yaml, cache_aware_rnnt.yaml
+│   ├── src/highperfasr/          # server.py, gpu_worker.py, stream_engine.py, batch_engine.py, compat.py, config.py, cli.py
+│   └── pyproject.toml
+├── benchmarks/
+│   ├── scripts/                  # bench_batch.py, bench_stream.py, bench_stream_soak.py, tune_gpu.py, gates.py, wer_utils.py
+│   ├── results/                  # published reports ({gpu}-{mode}-{timestamp}/)
+│   ├── config/quality-gates.json
+│   └── baselines/registry.json
+├── docs/                         # GitHub Pages site
+│   ├── index.html, dashboard.html
+│   ├── runs/                     # per-run HTML pages
+│   └── scripts/gen-run-pages.py
+└── spec/                         # protocol.md, openapi.yaml, asyncapi.yaml
+```
 
-## Agent Roles
+## Infrastructure Constraints
 
-### zen (lead)
-- Primary workdir: `~/ossasr-zen/highperfasr`
-- Owns: server code, framework patches, benchmark methodology, GHCR images
-- Coordinates work across agents on this project
+- **NGC base:** `nvcr.io/nvidia/nemo:26.02` (PyTorch 2.6 + CUDA 12.8)
+- **DO NOT** use PyTorch 2.12 + CUDA 13.x — CachingHostAllocator crash
+- **GHCR images:** `ghcr.io/beastoin/highperfasr-{batch,stream}:<semver>` — never `:latest` for benchmarks
+- **GKE:** bench pods in `highperfasr-bench` namespace, L4 GPUs
 
-### aki (dev)
-- Primary workdir: `~/ossasr-aki`
-- Focus: benchmark runs, GPU tuning, quality gates, HTML dashboards
-- Coordinate with zen via bridge messaging before architectural changes
+## Serving Rules
 
-## Coordination Rules
+- Load ALL models on the GPU worker thread — cross-thread CUDA tensor ownership causes segfaults
+- `gc.disable()` at module level, `gc.collect(0)` per batch on GPU thread
+- uvicorn: `ws_ping_interval=None, ws_ping_timeout=None` for sustained WebSocket workloads
+- RNNT `num_slots` must match `max_concurrent_streams`
+- Streaming chunks < 320ms must be accumulated to pipeline's native chunk size before creating Frames
 
-1. **Before changing benchmark methodology** (WER calculation, gate thresholds, sweep parameters) — discuss with zen first. These affect reproducibility of published results.
-2. **Before changing server code** (`labs/nemo-fastapi/src/highperfasr/`) — coordinate with zen. Thread-safety and CUDA memory management are critical.
-3. **HTML/dashboard changes** can proceed independently but cross-check hardcoded data against source JSON.
-4. **New benchmark runs** can proceed independently — follow the workflow in CLAUDE.md.
+## Benchmark Rules
 
-## PR Workflow
+- Always use repo bench scripts (`bench_batch.py`, `bench_stream.py`) — never compute WER manually
+- Whisper normalization required for WER comparability
+- Real speech only for WER (LibriSpeech test-clean) — silence/tone WAVs inflate RNNT throughput
+- `--image-tag <semver>` required — records container version in reports
+- Results naming: `{gpu}-{mode}-{timestamp}/` (e.g., `l4-batch-20260725T055248/`)
+- Both-mode degrades stream WER (~3.21% vs ~1.87% stream-only) — always note serving mode
+- Report both RTFx and RTF for speed metrics
+- kubectl port-forwards degrade after 50+ min of WebSocket traffic — run scripts on-pod for long benchmarks
 
-Use the `highperfasr-pr-workflow` skill (10 checkpoints). Key steps:
-1. Branch from main (`fix/` or `feat/`)
-2. Implement + test (`python3 -m pytest benchmarks/scripts/tests/ -q`)
-3. Create PR via REST API (not `gh pr edit` — token scope limitation)
-4. Codex review cycle (max 8 iterations)
-5. Benchmark gate (if serving/benchmark code changed)
-6. Present PR link to manager — **never merge yourself**
+## Quality Gates
 
-## Communication
+| Gate | Batch | Stream |
+|------|-------|--------|
+| max_wer_pct | 2.5% | 4.0% |
+| max_failure_rate | 0.0 | 0.0 |
+| wer_delta (vs baseline) | 0.3% | 0.3% |
+| min_rtfx | 1.0 | 1.0 |
 
-- Report results proactively — don't wait to be asked
-- Share partial results as they come (iterative reporting)
-- No real metrics on GitHub — percentages only
-- Manager prefers root cause analysis over speculation — run the test first
+## Current Baselines (L4, v0.3.0)
+
+| Mode | WER | Peak Throughput | Max Concurrency |
+|------|-----|-----------------|-----------------|
+| Batch (dedicated) | 1.57% | 19.5 RPS / 178x RTFx | c=512, 0 failures |
+| Batch (both) | 1.92% | 13.49 RPS / 100x RTFx | c=32, 0 failures |
+| Stream (dedicated) | 3.21% | 297 sess/min / 38.69x RTFx | c=512, 0 failures |
+| Stream (both) | 3.21% | 87.4 sess/min / 11.48x RTFx | c=32, 0 failures |
+
+## Commands
+
+```bash
+# Tests (run before every commit)
+python3 -m pytest benchmarks/scripts/tests/ -q
+
+# Batch benchmark
+python3 benchmarks/scripts/bench_batch.py \
+  --server http://localhost:8000 \
+  --concurrency 1,8,16,32,64 \
+  --sustained-rounds 4 \
+  --image-tag v0.3.0 \
+  --output /tmp/bench_batch.json
+
+# Streaming benchmark
+python3 benchmarks/scripts/bench_stream.py \
+  --server ws://localhost:8000 \
+  --endpoint /v1/stream \
+  --concurrency 1,16,32 \
+  --sustained-rounds 2 \
+  --image-tag v0.3.0 \
+  --output /tmp/bench_stream.json
+
+# Quick validation (200 samples)
+python3 benchmarks/scripts/bench_batch.py --quick ...
+
+# Generate HTML run pages
+python3 docs/scripts/gen-run-pages.py
+```
+
+## Workflow
+
+- Never merge PRs — present link and wait for manager approval
+- Use REST API for GitHub operations (`GH_TOKEN_CLASSIC` has `public_repo` scope only)
+- No real dollar amounts on GitHub — percentages only
+- Hardcoded HTML data must match source JSON — cross-check before committing
+- Branch naming: `fix/<description>` or `feat/<description>`
+
+## GKE
+
+```bash
+gcloud container clusters get-credentials dev-omi-gke --region us-central1 --project based-hardware-dev
+kubectl get pods -n highperfasr-bench
+kubectl port-forward -n highperfasr-bench svc/bench-l4 10320:8000
+```
