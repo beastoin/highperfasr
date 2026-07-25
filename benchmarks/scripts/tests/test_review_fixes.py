@@ -127,7 +127,7 @@ def test_quality_gate_config_matches_project_wer_thresholds():
 
 
 def test_schema_requires_canonical_batch_metrics_for_any_offline_scenario_name():
-    report = _valid_report("results/2026-l4-nemo-batch/result.json")
+    report = _valid_report("results/l4-batch-20260710T000000/result.json")
     report["scenario"]["name"] = "batch-regression-smoke"
     report["quality"].pop("reference_wer")
     report["quality"].pop("max_load_wer")
@@ -141,11 +141,11 @@ def test_schema_requires_canonical_batch_metrics_for_any_offline_scenario_name()
 
 
 def test_schema_allows_synthetic_batch_tuning_reports_without_wer_proof_fields():
-    _valid_report("results/2026-l4-batch-by-duration/result.json")
+    _valid_report("results/l4-duration-20260716T040510/result.json")
 
 
 def test_schema_requires_streaming_completeness_without_duration_bypass():
-    report = _valid_report("results/2026-l4-nemo-512-streams/result.json")
+    report = _valid_report("results/l4-stream-20260705T000000/result.json")
     report["scenario"]["name"] = "streaming-regression-smoke"
     report["scenario"].pop("duration_seconds")
     report["quality"].pop("reference_wer")
@@ -165,7 +165,7 @@ def test_schema_requires_streaming_completeness_without_duration_bypass():
 
 
 def test_t4_batch_report_does_not_fabricate_missing_vram_growth():
-    report = _valid_report("results/2026-t4-nemo-batch/result.json")
+    report = _valid_report("results/t4-batch-20260712T125257/result.json")
 
     assert report["resources"]["vram_baseline_mb"] is None
     assert report["resources"]["vram_highwater_mb"] is None
@@ -174,7 +174,7 @@ def test_t4_batch_report_does_not_fabricate_missing_vram_growth():
 
 def test_t4_batch_report_missing_vram_fails_quality_gate():
     gates = _load_script("gates")
-    report = _valid_report("results/2026-t4-nemo-batch/result.json")
+    report = _valid_report("results/t4-batch-20260712T125257/result.json")
     config = json.loads((BENCHMARKS_DIR / "config" / "quality-gates.json").read_text())
 
     result = gates.evaluate_gates(report, config, scenario="batch")
@@ -186,7 +186,7 @@ def test_t4_batch_report_missing_vram_fails_quality_gate():
 
 
 def test_t4_stream_report_records_missing_required_evidence_explicitly():
-    report = _valid_report("results/2026-t4-nemo-stream/result.json")
+    report = _valid_report("results/t4-stream-20260713T083446/result.json")
 
     assert report["scenario"]["duration_seconds"] == 664.84
     assert report["quality"]["reference_wer"] is None
@@ -452,7 +452,7 @@ def test_bench_batch_zero_max_samples_means_full_dataset(monkeypatch, tmp_path):
         },
     )
     monkeypatch.setattr(bench_batch, "compute_wer", lambda *_args, **_kwargs: (0.0, []))
-    monkeypatch.setattr(bench_batch, "collect_system_info", lambda: {})
+    monkeypatch.setattr(bench_batch, "collect_system_info", lambda **kw: {})
     monkeypatch.setattr(
         sys,
         "argv",
@@ -508,7 +508,7 @@ def test_bench_stream_default_uses_full_registry_dataset(monkeypatch, tmp_path):
             "failures": 0,
         },
     )
-    monkeypatch.setattr(bench_stream, "collect_system_info", lambda: {})
+    monkeypatch.setattr(bench_stream, "collect_system_info", lambda **kw: {})
     monkeypatch.setattr(bench_stream, "collect_gpu_memory_used_mb", lambda: 0)
 
     import benchmarks.scripts.gates as gates
