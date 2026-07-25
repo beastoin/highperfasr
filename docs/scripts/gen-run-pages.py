@@ -666,7 +666,7 @@ def build_live_page(run_id, result_dir):
     peak_rps = max([l.get("rps", 0) for l in levels], default=0)
     peak_rtfx = max([l.get("rtfx", 0) for l in levels], default=0)
     peak_sess = max([l.get("sessions_per_min", l.get("sess_per_min", 0)) for l in levels], default=0)
-    total_failures = sum(l.get("failures", 0) for l in levels)
+    total_failures = sum(l.get("failures", 0) for l in levels) + sustained.get("failures", 0)
 
     chart_init = ""
     chart_html = ""
@@ -685,10 +685,20 @@ def build_live_page(run_id, result_dir):
             for l in levels:
                 f = l.get("failures", 0)
                 fc = "c-error" if f else "c-accent"
-                p50 = l.get("p50_ms", l.get("p50_s", "—"))
-                p99 = l.get("p99_ms", l.get("p99_s", "—"))
-                p50_s = f'{p50}ms' if isinstance(p50, (int, float)) else str(p50)
-                p99_s = f'{p99}ms' if isinstance(p99, (int, float)) else str(p99)
+                p50_raw = l.get("p50_ms")
+                p99_raw = l.get("p99_ms")
+                if p50_raw is not None:
+                    p50_s = f'{p50_raw}ms'
+                elif l.get("p50_s") is not None:
+                    p50_s = f'{round(l["p50_s"] * 1000)}ms'
+                else:
+                    p50_s = "—"
+                if p99_raw is not None:
+                    p99_s = f'{p99_raw}ms'
+                elif l.get("p99_s") is not None:
+                    p99_s = f'{round(l["p99_s"] * 1000)}ms'
+                else:
+                    p99_s = "—"
                 sweep_table += f'<tr><td class="text-c">{l["concurrency"]}</td><td class="text-r">{l.get("rtfx","—")}x</td><td class="text-r">{l.get("sessions_per_min", l.get("sess_per_min","—"))}</td><td class="text-r">{p50_s}</td><td class="text-r">{p99_s}</td><td class="text-c {fc}">{f}</td></tr>'
             sweep_table += '</tbody></table></div>'
         else:
@@ -749,7 +759,7 @@ def build_live_page(run_id, result_dir):
         gates_html = '<div class="card"><div class="card-title">Quality Gates</div><div class="table-wrap"><table><thead><tr><th>Gate</th><th class="text-c">Result</th><th class="text-r">Threshold</th><th class="text-r">Actual</th></tr></thead><tbody>'
         for g in gates:
             gc = "c-accent" if g.get("passed") else "c-error"
-            gates_html += f'<tr><td>{g.get("name","")}</td><td class="text-c {gc}">{"PASS" if g.get("passed") else "FAIL"}</td><td class="text-r">{g.get("threshold","—")}</td><td class="text-r">{g.get("actual","—")}</td></tr>'
+            gates_html += f'<tr><td>{g.get("gate", g.get("name",""))}</td><td class="text-c {gc}">{"PASS" if g.get("passed") else "FAIL"}</td><td class="text-r">{g.get("threshold","—")}</td><td class="text-r">{g.get("actual","—")}</td></tr>'
         gates_html += '</tbody></table></div></div>'
 
     rps_label = "Peak Sess/min" if is_stream else "Peak RPS"

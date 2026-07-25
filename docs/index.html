@@ -186,10 +186,10 @@ tr:last-child td{border-bottom:none}
     </div>
     <div class="gpu-section-label">Duration Scaling (batch)</div>
     <div class="dur-grid">
-      <div class="dur-cell"><div class="dur-label">10s audio</div><div class="dur-val c-accent">256+</div><div class="dur-note">6.12 RPS</div></div>
-      <div class="dur-cell"><div class="dur-label">30s audio</div><div class="dur-val c-accent">256+</div><div class="dur-note">7.70 RPS</div></div>
+      <div class="dur-cell"><div class="dur-label">10s audio</div><div class="dur-val c-accent">256+</div><div class="dur-note">14.91 RPS</div></div>
+      <div class="dur-cell"><div class="dur-label">30s audio</div><div class="dur-val c-accent">256+</div><div class="dur-note">5.33 RPS</div></div>
       <div class="dur-cell"><div class="dur-label">60s audio</div><div class="dur-val dur-warn">24</div><div class="dur-note">OOM at c=32</div></div>
-      <div class="dur-cell"><div class="dur-label">120s audio</div><div class="dur-val">192</div><div class="dur-note">1.69 RPS</div></div>
+      <div class="dur-cell"><div class="dur-label">120s audio</div><div class="dur-val">128</div><div class="dur-note">1.38 RPS</div></div>
     </div>
   </div>
   <div class="gpu-card">
@@ -408,8 +408,9 @@ tr:last-child td{border-bottom:none}
   </div>
 
   <!-- L4 BATCH 2026-07-24 (auto-published) -->
-  <div class="run-card" data-target="run-l4-batch-latest" onclick="toggleRun(this)">
-    <div class="run-header">
+  <div class="run-card" data-target="run-l4-batch-latest">
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25B6;</span>
       <div class="run-title">L4 Batch — 2026-07-24</div>
       <div class="run-chips">
         <span class="chip chip-b">13.91 RPS</span>
@@ -429,8 +430,9 @@ tr:last-child td{border-bottom:none}
   </div>
 
   <!-- L4 BATCH v0.3.0 -->
-  <div class="run-card" onclick="toggleRun(this)">
-    <div class="run-header">
+  <div class="run-card">
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25B6;</span>
       <div class="run-title">L4 Batch — v0.3.0</div>
       <div class="run-chips">
         <span class="chip chip-g">WER 1.92%</span>
@@ -454,8 +456,9 @@ tr:last-child td{border-bottom:none}
   </div>
 
   <!-- L4 STREAM v0.3.0 -->
-  <div class="run-card" onclick="toggleRun(this)">
-    <div class="run-header">
+  <div class="run-card">
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25B6;</span>
       <div class="run-title">L4 Stream — v0.3.0</div>
       <div class="run-chips">
         <span class="chip chip-b">WER 3.21%</span>
@@ -558,9 +561,9 @@ const DATA = {
   },
   l4Dur: {
     dur: ['10s','30s','60s','120s'],
-    maxC: [256,256,24,192],
-    rps: [6.12,7.70,2.46,1.69],
-    rtfx: [220,277,172,214],
+    maxC: [256,256,24,128],
+    rps: [14.91,5.33,2.45,1.38],
+    rtfx: [235,189,161,173],
     warn: [false,false,true,false]
   }
 };
@@ -833,8 +836,8 @@ function renderImportedReport(d, filename) {
     const best = sweep.reduce((a,b) => (b.rps||0) > (a.rps||0) ? b : a, {rps:0});
     const fails = sweep.reduce((s,e) => s + (e.failures||0), 0);
     const sys = d.system || {};
-    title = `${bench} — ${sys.gpu || 'GPU'}`;
-    info = `${d.dataset || 'dataset'} &middot; ${d.samples || '?'} samples &middot; ${sys.gpu || ''} &middot; ${ts.substring(0,10)}`;
+    title = esc(`${bench} — ${sys.gpu || 'GPU'}`);
+    info = `${esc(d.dataset || 'dataset')} &middot; ${esc(String(d.samples || '?'))} samples &middot; ${esc(sys.gpu || '')} &middot; ${esc(ts.substring(0,10))}`;
     metrics = `
       <div class="run-m"><div class="run-m-val ${wer!=null&&wer<4?'c-accent':'c-blue'}">${wer!=null?wer.toFixed(2)+'%':'—'}</div><div class="run-m-label">WER</div></div>
       <div class="run-m"><div class="run-m-val">${best.rps||'—'}</div><div class="run-m-label">Peak RPS</div></div>
@@ -868,8 +871,8 @@ function renderImportedReport(d, filename) {
       sweepHtml += '<div style="margin-top:12px;font-size:12px;color:var(--text2);font-family:var(--mono)"><strong style="color:var(--text)">Sustained Load:</strong> c=' + (sl.concurrency||'?') + ' &middot; ' + (sl.rounds||'?') + ' rounds &middot; ' + (sl.rps||'?') + ' RPS &middot; failures=' + (sl.failures||0) + '</div>';
     }
   } else if (fmt === 'tuning') {
-    title = `GPU Tuning — ${d.mode||'?'} on ${d.gpu||'?'}`;
-    info = `${d.server||''} &middot; ${ts.substring(0,10)}`;
+    title = esc(`GPU Tuning — ${d.mode||'?'} on ${d.gpu||'?'}`);
+    info = `${esc(d.server||'')} &middot; ${esc(ts.substring(0,10))}`;
     const maxC = d.max_concurrency || '—';
     const bp = d.best_params || {};
     metrics = `
@@ -893,11 +896,11 @@ function renderImportedReport(d, filename) {
       tuningHtml += '</tbody></table></div></div>';
     }
     if (bp && Object.keys(bp).length) {
-      tuningHtml += '<div style="margin-top:8px;font-size:12px;color:var(--text2);font-family:var(--mono)"><strong style="color:var(--accent)">Best:</strong> ' + Object.entries(bp).map(([k,v])=>k+'='+v).join(', ') + '</div>';
+      tuningHtml += '<div style="margin-top:8px;font-size:12px;color:var(--text2);font-family:var(--mono)"><strong style="color:var(--accent)">Best:</strong> ' + Object.entries(bp).map(([k,v])=>esc(k)+'='+esc(String(v))).join(', ') + '</div>';
     }
   } else if (fmt === 'dashboard') {
     title = 'Dashboard Export';
-    info = `${d.server||''} &middot; ${d.results?.length||0} files &middot; ${ts.substring(0,10)}`;
+    info = `${esc(d.server||'')} &middot; ${d.results?.length||0} files &middot; ${esc(ts.substring(0,10))}`;
     const results = d.results || [];
     const ok = results.filter(r => r.status === 'ok');
     const fails = results.filter(r => r.status === 'error');
