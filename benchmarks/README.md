@@ -55,10 +55,10 @@ orchestrator auto-probes `:8001` when it detects batch-only on `:8000`.
 
 | Report | GPU | Workload | WER | Throughput |
 |--------|-----|----------|-----|------------|
-| [L4 streaming 512](results/2026-l4-nemo-512-streams/) | L4 24GB | 512 WebSocket streams | 3.21% | 297 sess/min, 38.69x RTFx |
-| [L4 batch](results/2026-l4-nemo-batch/) | L4 24GB | REST c=1..512 | 1.57% | 19.5 RPS, 178x RTFx |
-| [T4 batch](results/2026-t4-nemo-batch/) | T4 16GB | REST c=1..32 | 1.86% | — |
-| [L4 duration sweep](results/2026-l4-batch-by-duration/) | L4 24GB | 5s–120s audio brackets | — | Duration-stratified |
+| [L4 streaming 512](results/l4-stream-20260705T000000/) | L4 24GB | 512 WebSocket streams | 3.21% | 297 sess/min, 38.69x RTFx |
+| [L4 batch](results/l4-batch-20260710T000000/) | L4 24GB | REST c=1..512 | 1.57% | 19.5 RPS, 178x RTFx |
+| [T4 batch](results/t4-batch-20260712T125257/) | T4 16GB | REST c=1..32 | 1.86% | — |
+| [L4 duration sweep](results/l4-duration-20260716T040510/) | L4 24GB | 5s–120s audio brackets | — | Duration-stratified |
 
 ## Metrics & Datasets
 
@@ -78,7 +78,7 @@ Every gate returns `passed: false` when its metric data is missing — no silent
 | combined | 3.0% | — | 0% | — | — | — | — | — |
 
 ```bash
-python3 scripts/gates.py --report results/2026-l4-nemo-batch/result.json --scenario batch
+python3 scripts/gates.py --report results/l4-batch-20260710T000000/result.json --scenario batch
 ```
 
 ## Baseline Regression Detection

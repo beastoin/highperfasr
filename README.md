@@ -48,31 +48,31 @@ HPFASR_STREAM_IMAGE=highperfasr-stream:dev docker compose up -d --build
 
 ### Streaming (Nemotron 3.5 ASR 0.6B)
 
-![RTFx Scaling](benchmarks/results/2026-l4-nemo-512-streams/rtfx-scaling.png)
+![RTFx Scaling](benchmarks/results/l4-stream-20260705T000000/rtfx-scaling.png)
 
-![Throughput Scaling](benchmarks/results/2026-l4-nemo-512-streams/throughput-scaling.png)
+![Throughput Scaling](benchmarks/results/l4-stream-20260705T000000/throughput-scaling.png)
 
-![Cost Efficiency](benchmarks/results/2026-l4-nemo-512-streams/cost-efficiency.png)
+![Cost Efficiency](benchmarks/results/l4-stream-20260705T000000/cost-efficiency.png)
 
 512 persistent WebSocket streams, 10-minute real-time soak, all 2,620 LibriSpeech
 test-clean files. WER 3.21%, 297 sessions/min, 8672 MB VRAM (38%), 0 failures.
 
-Full report: [benchmarks/results/2026-l4-nemo-512-streams/](benchmarks/results/2026-l4-nemo-512-streams/)
+Full report: [benchmarks/results/l4-stream-20260705T000000/](benchmarks/results/l4-stream-20260705T000000/)
 
 ### Batch (Parakeet TDT 0.6B)
 
-![Batch RTFx Scaling](benchmarks/results/2026-l4-nemo-batch/rtfx-scaling.png)
+![Batch RTFx Scaling](benchmarks/results/l4-batch-20260710T000000/rtfx-scaling.png)
 
-![Batch Throughput](benchmarks/results/2026-l4-nemo-batch/throughput-scaling.png)
+![Batch Throughput](benchmarks/results/l4-batch-20260710T000000/throughput-scaling.png)
 
-![Batch Latency](benchmarks/results/2026-l4-nemo-batch/latency-scaling.png)
+![Batch Latency](benchmarks/results/l4-batch-20260710T000000/latency-scaling.png)
 
-![Batch Cost Efficiency](benchmarks/results/2026-l4-nemo-batch/cost-efficiency.png)
+![Batch Cost Efficiency](benchmarks/results/l4-batch-20260710T000000/cost-efficiency.png)
 
 REST concurrency sweep c=1..512, LibriSpeech test-clean (200 files).
 WER 1.57%, peak 19.5 RPS (178x realtime), 0 failures at every level.
 
-Full report: [benchmarks/results/2026-l4-nemo-batch/](benchmarks/results/2026-l4-nemo-batch/)
+Full report: [benchmarks/results/l4-batch-20260710T000000/](benchmarks/results/l4-batch-20260710T000000/)
 
 ### Methodology
 
@@ -88,8 +88,8 @@ and gated by [automated thresholds](benchmarks/config/quality-gates.json)
 CI runs all checks on every PR.
 
 Verify:
-[streaming result.json](benchmarks/results/2026-l4-nemo-512-streams/result.json),
-[batch result.json](benchmarks/results/2026-l4-nemo-batch/result.json),
+[streaming result.json](benchmarks/results/l4-stream-20260705T000000/result.json),
+[batch result.json](benchmarks/results/l4-batch-20260710T000000/result.json),
 [benchmark scripts](benchmarks/scripts/).
 
 ## Deploy

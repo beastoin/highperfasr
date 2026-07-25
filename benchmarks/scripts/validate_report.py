@@ -3,7 +3,7 @@
 Validate benchmark report JSON files against the highperfasr report schema.
 
 Usage:
-    python3 validate_report.py benchmarks/results/2026-l4-nemo-batch/result.json
+    python3 validate_report.py benchmarks/results/l4-batch-20260710T000000/result.json
     python3 validate_report.py benchmarks/results/*/result.json
     python3 validate_report.py --all
 """

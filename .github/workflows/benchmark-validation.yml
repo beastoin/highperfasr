@@ -32,13 +32,13 @@ jobs:
       - name: Evaluate batch quality gates
         run: |
           python benchmarks/scripts/gates.py \
-            --report benchmarks/results/2026-l4-nemo-batch/result.json \
+            --report benchmarks/results/l4-batch-20260710T000000/result.json \
             --scenario batch
 
       - name: Evaluate L4 streaming quality gates
         run: |
           python benchmarks/scripts/gates.py \
-            --report benchmarks/results/2026-l4-nemo-512-streams/result.json \
+            --report benchmarks/results/l4-stream-20260705T000000/result.json \
             --scenario streaming-realtime
 
       - name: Check baseline registry
