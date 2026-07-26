@@ -52,9 +52,11 @@ Examples:
 Required IAM permissions:
   compute.instances.create, compute.instances.delete,
   compute.instances.get, compute.instances.list,
+  compute.regions.get, compute.zones.get,
   compute.firewalls.create, compute.firewalls.delete,
-  compute.firewalls.get
-  (roles/compute.instanceAdmin.v1 covers all of these)
+  compute.firewalls.get, serviceusage.services.list
+  Suggested roles: compute.instanceAdmin.v1, compute.securityAdmin,
+  serviceusage.serviceUsageViewer
 EOF
   exit 0
 }
@@ -94,10 +96,46 @@ validate_inputs() {
 
 # --- Resolve GPU config ---
 case "$GPU" in
-  l4)  MACHINE="g2-standard-4"; ACCEL_FLAG="" ;;
-  t4)  MACHINE="n1-standard-4"; ACCEL_FLAG="--accelerator=type=nvidia-tesla-t4,count=1" ;;
+  l4)  MACHINE="g2-standard-4"; ACCEL_FLAG=""; GPU_QUOTA_METRIC="NVIDIA_L4_GPUS" ;;
+  t4)  MACHINE="n1-standard-4"; ACCEL_FLAG="--accelerator=type=nvidia-tesla-t4,count=1"; GPU_QUOTA_METRIC="NVIDIA_T4_GPUS" ;;
   *)   echo "ERROR: unsupported GPU '$GPU' (use l4 or t4)" >&2; exit 1 ;;
 esac
+
+check_gpu_quota() {
+  local region quota_check quota_limit quota_usage quota_available
+  region="${ZONE%-*}"
+
+  if ! quota_check=$(gcloud compute regions describe "$region" \
+    --project="$PROJECT" \
+    --format=json 2>/dev/null | python3 -c '
+import json
+import sys
+
+metric = sys.argv[1]
+region = json.load(sys.stdin)
+for quota in region.get("quotas", []):
+    if quota.get("metric") == metric:
+        limit = float(quota.get("limit", 0))
+        usage = float(quota.get("usage", 0))
+        print(f"{limit:g} {usage:g} {limit - usage:g}")
+        sys.exit(0)
+sys.exit(2)
+' "$GPU_QUOTA_METRIC"); then
+    echo "ERROR: cannot read $GPU GPU quota ($GPU_QUOTA_METRIC) in region $region." >&2
+    echo "Need compute.regions.get permission and quota visibility in project $PROJECT." >&2
+    exit 1
+  fi
+
+  read -r quota_limit quota_usage quota_available <<< "$quota_check"
+  if ! python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= 1 else 1)' "$quota_available"; then
+    echo "ERROR: insufficient $GPU GPU quota in region $region." >&2
+    echo "Quota $GPU_QUOTA_METRIC: ${quota_usage}/${quota_limit} used; need 1 available GPU." >&2
+    echo "Request quota at https://console.cloud.google.com/iam-admin/quotas?project=$PROJECT" >&2
+    exit 1
+  fi
+
+  echo "    GPU quota: ${quota_usage}/${quota_limit} $GPU_QUOTA_METRIC used (${quota_available} available)"
+}
 
 # --- Preflight checks ---
 preflight() {
@@ -144,6 +182,10 @@ preflight() {
   if ! gcloud compute zones describe "$ZONE" --project="$PROJECT" &>/dev/null; then
     echo "ERROR: zone '$ZONE' not found in project $PROJECT" >&2
     exit 1
+  fi
+
+  if [[ "$ACTION" == "deploy" ]]; then
+    check_gpu_quota
   fi
 
   echo "    Project: $PROJECT"
@@ -279,7 +321,8 @@ SCRIPT
     --tags=highperfasr-eval
     --labels="app=$LABEL_APP,created-by=$LABEL_CREATOR,mode=$MODE,image-tag=${VERSION//./-}"
     --metadata=startup-script="$STARTUP_SCRIPT",install-nvidia-driver=True
-    --scopes=https://www.googleapis.com/auth/cloud-platform
+    --no-service-account
+    --no-scopes
   )
 
   if [[ -n "$ACCEL_FLAG" ]]; then
