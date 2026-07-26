@@ -96,8 +96,8 @@ validate_inputs() {
 
 # --- Resolve GPU config ---
 case "$GPU" in
-  l4)  MACHINE="g2-standard-4"; ACCEL_FLAG=""; GPU_QUOTA_METRIC="NVIDIA_L4_GPUS" ;;
-  t4)  MACHINE="n1-standard-4"; ACCEL_FLAG="--accelerator=type=nvidia-tesla-t4,count=1"; GPU_QUOTA_METRIC="NVIDIA_T4_GPUS" ;;
+  l4)  MACHINE="g2-standard-4"; ACCEL_FLAGS=(); GPU_QUOTA_METRIC="NVIDIA_L4_GPUS" ;;
+  t4)  MACHINE="n1-standard-4"; ACCEL_FLAGS=("--accelerator=type=nvidia-tesla-t4,count=1"); GPU_QUOTA_METRIC="NVIDIA_T4_GPUS" ;;
   *)   echo "ERROR: unsupported GPU '$GPU' (use l4 or t4)" >&2; exit 1 ;;
 esac
 
@@ -213,7 +213,7 @@ do_teardown() {
   if [[ -z "$VMS" ]]; then
     echo "    No evaluation VMs found."
   else
-    while IFS=$'\t' read -r name zone ip status; do
+    while IFS=$'\t' read -r name zone _ip status; do
       echo "    Deleting $name ($zone, $status)..."
       gcloud compute instances delete "$name" \
         --project="$PROJECT" --zone="$zone" --quiet 2>/dev/null || true
@@ -320,14 +320,14 @@ SCRIPT
     --boot-disk-size=50GB
     --boot-disk-type=pd-balanced
     --tags=highperfasr-eval
-    --labels="app=$LABEL_APP,created-by=$LABEL_CREATOR,mode=$MODE,image-tag=${VERSION//./-}"
-    --metadata=startup-script="$STARTUP_SCRIPT",install-nvidia-driver=True
+    "--labels=app=$LABEL_APP,created-by=$LABEL_CREATOR,mode=$MODE,image-tag=${VERSION//./-}"
+    "--metadata=startup-script=$STARTUP_SCRIPT,install-nvidia-driver=True"
     --no-service-account
     --no-scopes
   )
 
-  if [[ -n "$ACCEL_FLAG" ]]; then
-    CREATE_FLAGS+=($ACCEL_FLAG)
+  if [[ ${#ACCEL_FLAGS[@]} -gt 0 ]]; then
+    CREATE_FLAGS+=("${ACCEL_FLAGS[@]}")
   fi
 
   if [[ "$NO_PUBLIC_IP" == "true" ]]; then
@@ -377,7 +377,7 @@ SCRIPT
   echo "    Installing GPU drivers, pulling container image, loading model..."
   echo ""
 
-  for i in $(seq 1 120); do
+  for _attempt in $(seq 1 120); do
     if curl -sf "${SERVER_URL}/health" >/dev/null 2>&1; then
       echo ""
       echo "============================================"
