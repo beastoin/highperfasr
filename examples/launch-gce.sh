@@ -200,6 +200,14 @@ preflight() {
     echo "    Auth: $ACCOUNT"
   fi
 
+  BILLING_INFO=$(gcloud billing projects describe "$PROJECT" --format='value(billingEnabled)' 2>/dev/null) || true
+  if [[ "$BILLING_INFO" == "False" ]]; then
+    echo "ERROR: billing is not enabled for project $PROJECT." >&2
+    echo "  GPU VMs require an active billing account." >&2
+    echo "  Link billing at: https://console.cloud.google.com/billing/linkedaccount?project=$PROJECT" >&2
+    exit 1
+  fi
+
   SVC_OUTPUT=$(gcloud services list --enabled --project="$PROJECT" --format='value(name)' 2>&1) || {
     echo "ERROR: cannot list enabled APIs for project $PROJECT." >&2
     echo "  This usually means the account lacks serviceusage.services.list permission." >&2
@@ -209,6 +217,7 @@ preflight() {
   if ! echo "$SVC_OUTPUT" | grep -q compute.googleapis.com; then
     echo "ERROR: Compute Engine API not enabled. Run:" >&2
     echo "  gcloud services enable compute.googleapis.com --project=$PROJECT" >&2
+    echo "  (If this fails, check that billing is enabled for the project)" >&2
     exit 1
   fi
 
