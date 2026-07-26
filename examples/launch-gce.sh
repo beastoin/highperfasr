@@ -299,7 +299,7 @@ fi
 
 if ! dpkg -l nvidia-container-toolkit 2>/dev/null | grep -q ii; then
   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \\
-    gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+    gpg --batch --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
   ARCH=\$(dpkg --print-architecture)
   echo "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/deb/\$ARCH /" | \\
     tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
