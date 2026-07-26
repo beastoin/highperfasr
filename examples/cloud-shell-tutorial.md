@@ -60,17 +60,12 @@ For batch transcription instead:
 
 ## Run a benchmark
 
-Once the server is healthy, the script prints benchmark commands. Copy and run
-them to measure throughput, latency, and WER on LibriSpeech test-clean.
+Once the server is healthy, the script prints benchmark commands. Run those
+commands to measure throughput, latency, and WER on LibriSpeech test-clean.
 
-You can also open the interactive benchmark dashboard from your local clone:
-
-```bash
-echo "Open: examples/web/benchmark-dashboard.html?server=SERVER_URL"
-```
-
-Replace `SERVER_URL` with the URL printed by the launch script. The launcher
-enables CORS for this evaluation server so the static dashboard can reach it.
+For exploratory checks, the static benchmark dashboard can connect to same-origin
+deployments or images built with `HPFASR_CORS_ORIGINS` support. Use the printed
+benchmark commands for canonical WER and quality-gate results.
 
 ## Clean up
 

@@ -27,6 +27,7 @@ LABEL_APP="highperfasr"
 LABEL_CREATOR="launch-gce"
 
 usage() {
+  local exit_code="${1:-0}"
   cat <<EOF
 Deploy a HighPerfASR evaluation server on Google Cloud.
 
@@ -56,7 +57,7 @@ Required IAM permissions:
   Suggested roles: compute.instanceAdmin.v1, compute.securityAdmin,
   serviceusage.serviceUsageViewer
 EOF
-  exit 0
+  exit "$exit_code"
 }
 
 require_value() {
@@ -84,8 +85,12 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     teardown)      ACTION="teardown"; shift ;;
-    -h|--help)     usage ;;
-    *)             echo "Unknown option: $1" >&2; usage ;;
+    -h|--help)     usage 0 ;;
+    *)
+      echo "ERROR: unknown option: $1" >&2
+      echo "Run '$(basename "$0") --help' for usage." >&2
+      exit 1
+      ;;
   esac
 done
 
@@ -408,9 +413,6 @@ SCRIPT
         echo "      --image-tag ${VERSION} \\"
         echo "      --output /tmp/bench_stream.json"
       fi
-      echo ""
-      echo "  Dashboard:"
-      echo "    Open examples/web/benchmark-dashboard.html?server=${SERVER_URL}"
       echo ""
       echo "  Teardown:"
       echo "    $(basename "$0") teardown"

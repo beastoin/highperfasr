@@ -42,10 +42,9 @@ HTML tool for exploratory server checks:
 - **Sweep** — concurrency sweep with heatmap visualization
 - **Report** — request traces, timing summaries, and export as ZIP
 
-Open it directly or pass `?server=http://...` to auto-connect. Remote GCE
-evaluation servers launched by `launch-gce.sh` enable CORS for this static
-dashboard; other deployments must serve the dashboard from the same origin or
-configure CORS explicitly. Use `benchmarks/scripts/` for canonical WER and
+Open it directly or pass `?server=http://...` to auto-connect. Browser-based
+remote access requires a same-origin deployment or an image built with
+`HPFASR_CORS_ORIGINS` support. Use `benchmarks/scripts/` for canonical WER and
 quality-gate results.
 
 ## Client Libraries
