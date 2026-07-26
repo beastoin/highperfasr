@@ -38,6 +38,10 @@ def fake_cloud_env(tmp_path: Path, **overrides: str) -> dict[str, str]:
           echo "${GCE_FAKE_PROJECT:-test-project}"
           exit 0
         fi
+        if [[ "$1" == "billing" && "$2" == "projects" && "$3" == "describe" ]]; then
+          echo "${GCE_FAKE_BILLING_ENABLED:-True}"
+          exit 0
+        fi
         if [[ "$1" == "services" && "$2" == "list" ]]; then
           printf '%s\n' "${GCE_FAKE_SERVICES:-compute.googleapis.com}"
           exit 0
@@ -175,6 +179,24 @@ def test_batch_deploy_uses_batch_image_and_batch_port(tmp_path: Path) -> None:
     assert "PORT=8000" in log
     assert "--machine-type=n1-standard-4" in log
     assert "--accelerator=type=nvidia-tesla-t4,count=1" in log
+
+
+def test_billing_disabled_fails_before_api_quota_or_vm_checks(tmp_path: Path) -> None:
+    env = fake_cloud_env(tmp_path, GCE_FAKE_BILLING_ENABLED="False")
+
+    result = run_launcher(["--mode", "stream"], env=env)
+
+    assert result.returncode != 0
+    assert "ERROR: billing is not enabled for project test-project." in result.stderr
+    assert "GPU VMs require an active billing account." in result.stderr
+    assert "https://console.cloud.google.com/billing/linkedaccount?project=test-project" in result.stderr
+
+    log = cloud_log(env)
+    assert "gcloud billing projects describe test-project --format=value(billingEnabled)" in log
+    assert "gcloud services list" not in log
+    assert "gcloud compute zones describe" not in log
+    assert "gcloud compute regions describe" not in log
+    assert "gcloud compute instances create" not in log
 
 
 def test_teardown_deletes_existing_eval_vm_and_firewall(tmp_path: Path) -> None:
