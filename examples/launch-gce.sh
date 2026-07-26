@@ -59,14 +59,25 @@ EOF
   exit 0
 }
 
+require_value() {
+  local option="$1"
+  local value="${2-}"
+
+  if [[ -z "$value" || "$value" == --* ]]; then
+    echo "ERROR: $option requires a value." >&2
+    echo "Run '$(basename "$0") --help' for usage." >&2
+    exit 1
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --key)         KEY_FILE="$2"; shift 2 ;;
-    --zone)        ZONE="$2"; shift 2 ;;
-    --mode)        MODE="$2"; shift 2 ;;
-    --gpu)         GPU="$2"; shift 2 ;;
-    --version)     VERSION="$2"; shift 2 ;;
-    --ttl)         TTL_HOURS="$2"; shift 2 ;;
+    --key)         require_value "$1" "${2-}"; KEY_FILE="$2"; shift 2 ;;
+    --zone)        require_value "$1" "${2-}"; ZONE="$2"; shift 2 ;;
+    --mode)        require_value "$1" "${2-}"; MODE="$2"; shift 2 ;;
+    --gpu)         require_value "$1" "${2-}"; GPU="$2"; shift 2 ;;
+    --version)     require_value "$1" "${2-}"; VERSION="$2"; shift 2 ;;
+    --ttl)         require_value "$1" "${2-}"; TTL_HOURS="$2"; shift 2 ;;
     --no-public-ip)
       echo "ERROR: --no-public-ip is not supported by this one-click evaluator." >&2
       echo "Private VMs need project-specific Cloud NAT and IAP firewall setup for Docker/GHCR egress." >&2
@@ -295,13 +306,24 @@ SCRIPT
   if gcloud compute firewall-rules describe "$FW_RULE" --project="$PROJECT" &>/dev/null; then
     echo "    Firewall rule already exists."
   else
-    gcloud compute firewall-rules create "$FW_RULE" \
+    if ! firewall_error=$(gcloud compute firewall-rules create "$FW_RULE" \
       --project="$PROJECT" \
       --allow=tcp:8000,tcp:8001 \
       --source-ranges=0.0.0.0/0 \
       --target-tags=highperfasr-eval \
       --description="HighPerfASR evaluation — auto-created by launch-gce.sh" \
-      --quiet 2>/dev/null
+      --quiet 2>&1); then
+      echo "" >&2
+      echo "ERROR: firewall rule creation failed." >&2
+      echo "$firewall_error" >&2
+      echo "Common causes:" >&2
+      echo "  - Insufficient permissions: need roles/compute.securityAdmin or compute.firewalls.create" >&2
+      echo "  - Organization policy blocks public ingress firewall rules" >&2
+      echo "  - A conflicting firewall rule name exists in another evaluation flow" >&2
+      echo "" >&2
+      echo "Cleanup: $(basename "$0") teardown" >&2
+      exit 1
+    fi
     echo "    Created $FW_RULE (ports 8000-8001, tag: highperfasr-eval)."
   fi
 
