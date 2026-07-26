@@ -20,7 +20,6 @@ GPU="l4"
 TTL_HOURS=4
 KEY_FILE=""
 ACTION="deploy"
-NO_PUBLIC_IP=false
 
 VM_PREFIX="hpfasr-eval"
 FW_RULE="allow-highperfasr-eval"
@@ -40,7 +39,6 @@ Options:
   --gpu GPU         l4 (default) or t4
   --version VER     GHCR image version (default: 0.3.0)
   --ttl HOURS       Auto-shutdown after N hours (default: 4)
-  --no-public-ip    Use SSH tunnel instead of public IP
   -h, --help        Show this help
 
 Examples:
@@ -69,7 +67,11 @@ while [[ $# -gt 0 ]]; do
     --gpu)         GPU="$2"; shift 2 ;;
     --version)     VERSION="$2"; shift 2 ;;
     --ttl)         TTL_HOURS="$2"; shift 2 ;;
-    --no-public-ip) NO_PUBLIC_IP=true; shift ;;
+    --no-public-ip)
+      echo "ERROR: --no-public-ip is not supported by this one-click evaluator." >&2
+      echo "Private VMs need project-specific Cloud NAT and IAP firewall setup for Docker/GHCR egress." >&2
+      exit 1
+      ;;
     teardown)      ACTION="teardown"; shift ;;
     -h|--help)     usage ;;
     *)             echo "Unknown option: $1" >&2; usage ;;
@@ -268,7 +270,7 @@ if ! dpkg -l nvidia-container-toolkit 2>/dev/null | grep -q ii; then
   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \\
     gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
   ARCH=\$(dpkg --print-architecture)
-  echo "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/deb/\\\$ARCH /" | \\
+  echo "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/deb/\$ARCH /" | \\
     tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
   apt-get update && apt-get install -y nvidia-container-toolkit
   nvidia-ctk runtime configure --runtime=docker
@@ -293,18 +295,14 @@ SCRIPT
   if gcloud compute firewall-rules describe "$FW_RULE" --project="$PROJECT" &>/dev/null; then
     echo "    Firewall rule already exists."
   else
-    if [[ "$NO_PUBLIC_IP" == "true" ]]; then
-      echo "    Skipping (--no-public-ip mode)."
-    else
-      gcloud compute firewall-rules create "$FW_RULE" \
-        --project="$PROJECT" \
-        --allow=tcp:8000,tcp:8001 \
-        --source-ranges=0.0.0.0/0 \
-        --target-tags=highperfasr-eval \
-        --description="HighPerfASR evaluation — auto-created by launch-gce.sh" \
-        --quiet 2>/dev/null
-      echo "    Created $FW_RULE (ports 8000-8001, tag: highperfasr-eval)."
-    fi
+    gcloud compute firewall-rules create "$FW_RULE" \
+      --project="$PROJECT" \
+      --allow=tcp:8000,tcp:8001 \
+      --source-ranges=0.0.0.0/0 \
+      --target-tags=highperfasr-eval \
+      --description="HighPerfASR evaluation — auto-created by launch-gce.sh" \
+      --quiet 2>/dev/null
+    echo "    Created $FW_RULE (ports 8000-8001, tag: highperfasr-eval)."
   fi
 
   # Create VM
@@ -330,10 +328,6 @@ SCRIPT
     CREATE_FLAGS+=("${ACCEL_FLAGS[@]}")
   fi
 
-  if [[ "$NO_PUBLIC_IP" == "true" ]]; then
-    CREATE_FLAGS+=(--no-address)
-  fi
-
   if ! gcloud compute instances create "$VM_NAME" "${CREATE_FLAGS[@]}"; then
     echo "" >&2
     echo "ERROR: VM creation failed." >&2
@@ -347,29 +341,11 @@ SCRIPT
   fi
 
   # Get IP
-  if [[ "$NO_PUBLIC_IP" == "true" ]]; then
-    echo ""
-    echo "==> VM created (no public IP). Starting SSH tunnel for health checks..."
-    if ! gcloud compute ssh "$VM_NAME" \
-      --zone="$ZONE" \
-      --project="$PROJECT" \
-      --tunnel-through-iap \
-      -- -f -N -L "${PORT}:localhost:${PORT}"; then
-      echo "ERROR: SSH tunnel failed. Re-run with public IP or create the tunnel manually:" >&2
-      echo "  gcloud compute ssh $VM_NAME --zone=$ZONE --project=$PROJECT --tunnel-through-iap -- -N -L ${PORT}:localhost:${PORT}" >&2
-      echo "Cleanup: $(basename "$0") teardown" >&2
-      exit 1
-    fi
-    echo "    Tunnel active: http://localhost:${PORT}"
-    echo "    Recreate manually: gcloud compute ssh $VM_NAME --zone=$ZONE --project=$PROJECT --tunnel-through-iap -- -N -L ${PORT}:localhost:${PORT}"
-    SERVER_URL="http://localhost:${PORT}"
-  else
-    IP=$(gcloud compute instances describe "$VM_NAME" \
-      --project="$PROJECT" --zone="$ZONE" \
-      --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
-    SERVER_URL="http://${IP}:${PORT}"
-    echo "    External IP: $IP"
-  fi
+  IP=$(gcloud compute instances describe "$VM_NAME" \
+    --project="$PROJECT" --zone="$ZONE" \
+    --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
+  SERVER_URL="http://${IP}:${PORT}"
+  echo "    External IP: $IP"
 
   # Wait for health
   echo ""
