@@ -315,7 +315,7 @@ SCRIPT
     --machine-type="$MACHINE"
     --maintenance-policy=TERMINATE
     --no-restart-on-failure
-    --image-family=common-gpu-debian-12
+    --image-family=common-cu129-ubuntu-2204-nvidia-580
     --image-project=deeplearning-platform-release
     --boot-disk-size=50GB
     --boot-disk-type=pd-balanced

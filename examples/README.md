@@ -35,17 +35,18 @@ See `./examples/launch-gce.sh --help` for all options.
 ### Benchmark Dashboard
 
 The [benchmark dashboard](web/benchmark-dashboard.html) is a self-contained
-HTML tool for evaluating server performance:
+HTML tool for exploratory server checks:
 
-- **Batch** — upload audio files, measure latency, RPS, and WER
+- **Batch** — upload audio files and inspect latency and RPS
 - **Stream** — real-time streaming from file or microphone
 - **Sweep** — concurrency sweep with heatmap visualization
-- **Report** — quality gates, per-utterance WER diffs, export as ZIP
+- **Report** — request traces, timing summaries, and export as ZIP
 
 Open it directly or pass `?server=http://...` to auto-connect. Remote GCE
 evaluation servers launched by `launch-gce.sh` enable CORS for this static
 dashboard; other deployments must serve the dashboard from the same origin or
-configure CORS explicitly.
+configure CORS explicitly. Use `benchmarks/scripts/` for canonical WER and
+quality-gate results.
 
 ## Client Libraries
 
