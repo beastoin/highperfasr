@@ -39,7 +39,7 @@ curl http://localhost:8001/health
 
 No GPU? No Docker? Deploy a server on your own GCP project in one click:
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?git_repo=https://github.com/beastoin/highperfasr&tutorial=examples/cloud-shell-tutorial.md)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/beastoin/highperfasr&cloudshell_tutorial=examples/cloud-shell-tutorial.md&cloudshell_workspace=.)
 
 Or from any terminal with `gcloud`:
 

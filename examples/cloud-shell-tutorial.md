@@ -10,6 +10,21 @@ have a running server in under 10 minutes, ready for benchmarking.
 
 ---
 
+## Authenticate
+
+Cloud Shell opens this repository in a temporary environment. Authenticate
+explicitly before creating GCE resources:
+
+```bash
+gcloud auth login --no-launch-browser
+```
+
+Verify the active account:
+
+```bash
+gcloud auth list --filter=status:ACTIVE
+```
+
 ## Set your project
 
 <walkthrough-project-setup></walkthrough-project-setup>
@@ -48,13 +63,14 @@ For batch transcription instead:
 Once the server is healthy, the script prints benchmark commands. Copy and run
 them to measure throughput, latency, and WER on LibriSpeech test-clean.
 
-You can also open the interactive benchmark dashboard:
+You can also open the interactive benchmark dashboard from your local clone:
 
 ```bash
 echo "Open: examples/web/benchmark-dashboard.html?server=SERVER_URL"
 ```
 
-Replace `SERVER_URL` with the URL printed by the launch script.
+Replace `SERVER_URL` with the URL printed by the launch script. The launcher
+enables CORS for this evaluation server so the static dashboard can reach it.
 
 ## Clean up
 

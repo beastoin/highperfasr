@@ -7,10 +7,10 @@ under 10 minutes.
 
 ### One-click (Cloud Shell)
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/open?git_repo=https://github.com/beastoin/highperfasr&tutorial=examples/cloud-shell-tutorial.md)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/beastoin/highperfasr&cloudshell_tutorial=examples/cloud-shell-tutorial.md&cloudshell_workspace=.)
 
 Opens a browser-based terminal, clones the repo, and walks you through
-deployment. No local setup needed.
+authentication, project selection, and deployment. No local setup needed.
 
 ### CLI
 
@@ -42,7 +42,10 @@ HTML tool for evaluating server performance:
 - **Sweep** — concurrency sweep with heatmap visualization
 - **Report** — quality gates, per-utterance WER diffs, export as ZIP
 
-Open it directly or pass `?server=http://...` to auto-connect.
+Open it directly or pass `?server=http://...` to auto-connect. Remote GCE
+evaluation servers launched by `launch-gce.sh` enable CORS for this static
+dashboard; other deployments must serve the dashboard from the same origin or
+configure CORS explicitly.
 
 ## Client Libraries
 

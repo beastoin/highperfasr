@@ -151,7 +151,7 @@ preflight() {
       echo "ERROR: key file not found: $KEY_FILE" >&2
       exit 1
     fi
-    PROJECT=$(python3 -c "import json; print(json.load(open('$KEY_FILE'))['project_id'])" 2>/dev/null \
+    PROJECT=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["project_id"])' "$KEY_FILE" 2>/dev/null \
       || jq -r .project_id "$KEY_FILE" 2>/dev/null)
     if [[ -z "$PROJECT" ]]; then
       echo "ERROR: cannot read project_id from $KEY_FILE" >&2
@@ -281,6 +281,7 @@ docker run -d --gpus all -p "\${PORT}:8000" \\
   -e NVIDIA_VISIBLE_DEVICES=all \\
   -e HF_HOME=/app/.cache/huggingface \\
   -e NUMBA_CACHE_DIR=/tmp/numba_cache \\
+  -e HPFASR_CORS_ORIGINS='*' \\
   --name "\$CONTAINER_NAME" \\
   --restart unless-stopped \\
   "\$IMAGE"

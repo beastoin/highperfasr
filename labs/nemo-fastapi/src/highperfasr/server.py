@@ -19,6 +19,7 @@ from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from highperfasr.batch_engine import BatchEngine, QueueFullError
@@ -51,6 +52,17 @@ def _batch_enabled() -> bool:
 
 def _stream_enabled() -> bool:
     return serving_mode in ("stream", "both")
+
+
+def _cors_origins_from_env() -> list[str]:
+    raw = os.getenv("HPFASR_CORS_ORIGINS", "").strip()
+    if not raw:
+        return []
+
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    if "*" in origins:
+        return ["*"]
+    return origins
 
 
 def _validate_startup_config() -> None:
@@ -152,6 +164,15 @@ app = FastAPI(
     description="Production ASR serving for NeMo models",
     lifespan=lifespan,
 )
+
+_cors_origins = _cors_origins_from_env()
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
 
 
 # --- Health & Metrics ---
