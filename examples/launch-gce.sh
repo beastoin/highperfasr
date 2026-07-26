@@ -155,6 +155,10 @@ sys.exit(2)
   echo "    GPU quota: ${quota_usage}/${quota_limit} $GPU_QUOTA_METRIC used (${quota_available} available)"
 }
 
+urlencode() {
+  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+
 # --- Preflight checks ---
 preflight() {
   echo "==> Preflight checks"
@@ -372,6 +376,7 @@ SCRIPT
     --project="$PROJECT" --zone="$ZONE" \
     --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
   SERVER_URL="http://${IP}:${PORT}"
+  DASHBOARD_URL="https://beastoin.github.io/highperfasr/dashboard.html?server=$(urlencode "$SERVER_URL")"
   echo "    External IP: $IP"
 
   # Wait for health
@@ -387,6 +392,7 @@ SCRIPT
       echo "  Server is ready!"
       echo ""
       echo "  URL:     ${SERVER_URL}"
+      echo "  Dashboard: ${DASHBOARD_URL}"
       echo "  Mode:    ${MODE}"
       echo "  GPU:     ${GPU}"
       echo "  Version: ${VERSION}"
