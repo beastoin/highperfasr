@@ -63,9 +63,9 @@ For batch transcription instead:
 Once the server is healthy, the script prints benchmark commands. Run those
 commands to measure throughput, latency, and WER on LibriSpeech test-clean.
 
-For exploratory checks, the static benchmark dashboard can connect to same-origin
-deployments or images built with `HPFASR_CORS_ORIGINS` support. Use the printed
-benchmark commands for canonical WER and quality-gate results.
+Use the printed benchmark commands for canonical WER and quality-gate results.
+The static dashboard is for same-origin or HTTPS/proxied deployments; browsers
+block the public GitHub Pages dashboard from calling an HTTP VM endpoint.
 
 ## Clean up
 
