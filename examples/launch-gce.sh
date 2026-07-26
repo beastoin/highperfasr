@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-VERSION="v0.3.0"
+VERSION="0.3.0"
 MODE="stream"
 ZONE="us-central1-a"
 GPU="l4"
@@ -38,7 +38,7 @@ Options:
   --zone ZONE       GCE zone (default: us-central1-a)
   --mode MODE       batch or stream (default: stream)
   --gpu GPU         l4 (default) or t4
-  --version VER     GHCR image version (default: v0.3.0)
+  --version VER     GHCR image version (default: 0.3.0)
   --ttl HOURS       Auto-shutdown after N hours (default: 4)
   --no-public-ip    Use SSH tunnel instead of public IP
   -h, --help        Show this help
@@ -82,9 +82,9 @@ validate_inputs() {
     *) echo "ERROR: unsupported mode '$MODE' (use batch or stream)" >&2; exit 1 ;;
   esac
 
-  if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+  if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
     echo "ERROR: unsupported image version '$VERSION'." >&2
-    echo "Use a pinned semver Docker tag like v0.3.0 or v0.3.0-rc.1." >&2
+    echo "Use a pinned GHCR semver Docker tag like 0.3.0 or 0.3.0-rc.1." >&2
     exit 1
   fi
 
