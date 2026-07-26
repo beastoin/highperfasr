@@ -173,13 +173,22 @@ preflight() {
       echo "ERROR: key file not found: $KEY_FILE" >&2
       exit 1
     fi
-    PROJECT=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["project_id"])' "$KEY_FILE" 2>/dev/null \
-      || jq -r .project_id "$KEY_FILE" 2>/dev/null)
-    if [[ -z "$PROJECT" ]]; then
+    PROJECT=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["project_id"])' "$KEY_FILE" 2>/dev/null) \
+      || PROJECT=$(jq -r .project_id "$KEY_FILE" 2>/dev/null) \
+      || true
+    if [[ -z "$PROJECT" || "$PROJECT" == "null" ]]; then
       echo "ERROR: cannot read project_id from $KEY_FILE" >&2
+      echo "  The file must be a valid GCP service account JSON key." >&2
       exit 1
     fi
-    gcloud auth activate-service-account --key-file="$KEY_FILE" --project="$PROJECT" 2>/dev/null
+    if ! gcloud auth activate-service-account --key-file="$KEY_FILE" --project="$PROJECT"; then
+      echo "" >&2
+      echo "ERROR: failed to authenticate with service account key." >&2
+      echo "  Check that the key is valid and the service account is not disabled." >&2
+      echo "  Key file: $KEY_FILE" >&2
+      echo "  Project:  $PROJECT" >&2
+      exit 1
+    fi
     echo "    Auth: service account from $KEY_FILE"
   else
     ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1)
@@ -195,7 +204,13 @@ preflight() {
     echo "    Auth: $ACCOUNT"
   fi
 
-  if ! gcloud services list --enabled --project="$PROJECT" --format='value(name)' 2>/dev/null | grep -q compute.googleapis.com; then
+  SVC_OUTPUT=$(gcloud services list --enabled --project="$PROJECT" --format='value(name)' 2>&1) || {
+    echo "ERROR: cannot list enabled APIs for project $PROJECT." >&2
+    echo "  This usually means the account lacks serviceusage.services.list permission." >&2
+    echo "  Ensure the account has roles/serviceusage.serviceUsageViewer on the project." >&2
+    exit 1
+  }
+  if ! echo "$SVC_OUTPUT" | grep -q compute.googleapis.com; then
     echo "ERROR: Compute Engine API not enabled. Run:" >&2
     echo "  gcloud services enable compute.googleapis.com --project=$PROJECT" >&2
     exit 1
@@ -309,6 +324,18 @@ docker run -d --gpus all -p "\${PORT}:8000" \\
   "\$IMAGE"
 SCRIPT
 )
+
+  # Check for existing eval VMs
+  EXISTING_VMS=$(find_vms)
+  if [[ -n "$EXISTING_VMS" ]]; then
+    echo "WARNING: existing evaluation VM(s) found:" >&2
+    while IFS=$'\t' read -r name zone _ip status; do
+      echo "    $name ($zone, $status)" >&2
+    done <<< "$EXISTING_VMS"
+    echo "  Run '$(basename "$0") teardown' first, or this will create an additional VM." >&2
+    echo "  Continuing in 5 seconds... (Ctrl-C to cancel)" >&2
+    sleep 5
+  fi
 
   # Firewall rule (idempotent)
   echo "==> Creating firewall rule..."
