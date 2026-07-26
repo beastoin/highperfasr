@@ -1,0 +1,366 @@
+#!/usr/bin/env bash
+#
+# HighPerfASR — one-command GCE evaluation server.
+#
+# Usage:
+#   ./launch-gce.sh                                   # Deploy with current gcloud auth
+#   ./launch-gce.sh --key service-account.json        # Deploy with service account
+#   ./launch-gce.sh --mode batch --gpu t4             # Options
+#   ./launch-gce.sh teardown                          # Delete evaluation VM + firewall
+#
+# Prerequisites: gcloud CLI (authenticated), GPU quota in target zone.
+# Runs in Google Cloud Shell or any terminal with gcloud installed.
+
+set -euo pipefail
+
+VERSION="v0.3.0"
+MODE="stream"
+ZONE="us-central1-a"
+GPU="l4"
+TTL_HOURS=4
+KEY_FILE=""
+ACTION="deploy"
+NO_PUBLIC_IP=false
+
+VM_PREFIX="hpfasr-eval"
+FW_RULE="allow-highperfasr-eval"
+LABEL_APP="highperfasr"
+LABEL_CREATOR="launch-gce"
+
+usage() {
+  cat <<EOF
+Deploy a HighPerfASR evaluation server on Google Cloud.
+
+Usage: $(basename "$0") [OPTIONS] [teardown]
+
+Options:
+  --key FILE        GCP service account JSON key file
+  --zone ZONE       GCE zone (default: us-central1-a)
+  --mode MODE       batch or stream (default: stream)
+  --gpu GPU         l4 (default) or t4
+  --version VER     GHCR image version (default: v0.3.0)
+  --ttl HOURS       Auto-shutdown after N hours (default: 4)
+  --no-public-ip    Use SSH tunnel instead of public IP
+  -h, --help        Show this help
+
+Examples:
+  $(basename "$0")                                  # Stream on L4, current gcloud auth
+  $(basename "$0") --key sa.json                    # Stream on L4, service account
+  $(basename "$0") --mode batch --gpu t4            # Batch on T4
+  $(basename "$0") teardown                         # Delete evaluation VM
+
+Required IAM permissions:
+  compute.instances.create, compute.instances.delete,
+  compute.instances.get, compute.instances.list,
+  compute.firewalls.create, compute.firewalls.delete,
+  compute.firewalls.get
+  (roles/compute.instanceAdmin.v1 covers all of these)
+EOF
+  exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --key)         KEY_FILE="$2"; shift 2 ;;
+    --zone)        ZONE="$2"; shift 2 ;;
+    --mode)        MODE="$2"; shift 2 ;;
+    --gpu)         GPU="$2"; shift 2 ;;
+    --version)     VERSION="$2"; shift 2 ;;
+    --ttl)         TTL_HOURS="$2"; shift 2 ;;
+    --no-public-ip) NO_PUBLIC_IP=true; shift ;;
+    teardown)      ACTION="teardown"; shift ;;
+    -h|--help)     usage ;;
+    *)             echo "Unknown option: $1" >&2; usage ;;
+  esac
+done
+
+# --- Resolve GPU config ---
+case "$GPU" in
+  l4)  MACHINE="g2-standard-4"; ACCEL_FLAG="" ;;
+  t4)  MACHINE="n1-standard-4"; ACCEL_FLAG="--accelerator=type=nvidia-tesla-t4,count=1" ;;
+  *)   echo "ERROR: unsupported GPU '$GPU' (use l4 or t4)" >&2; exit 1 ;;
+esac
+
+# --- Preflight checks ---
+preflight() {
+  echo "==> Preflight checks"
+
+  if ! command -v gcloud &>/dev/null; then
+    echo "ERROR: gcloud CLI not found. Install: https://cloud.google.com/sdk/install" >&2
+    exit 1
+  fi
+
+  if [[ -n "$KEY_FILE" ]]; then
+    if [[ ! -f "$KEY_FILE" ]]; then
+      echo "ERROR: key file not found: $KEY_FILE" >&2
+      exit 1
+    fi
+    PROJECT=$(python3 -c "import json; print(json.load(open('$KEY_FILE'))['project_id'])" 2>/dev/null \
+      || jq -r .project_id "$KEY_FILE" 2>/dev/null)
+    if [[ -z "$PROJECT" ]]; then
+      echo "ERROR: cannot read project_id from $KEY_FILE" >&2
+      exit 1
+    fi
+    gcloud auth activate-service-account --key-file="$KEY_FILE" --project="$PROJECT" 2>/dev/null
+    echo "    Auth: service account from $KEY_FILE"
+  else
+    ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1)
+    if [[ -z "$ACCOUNT" ]]; then
+      echo "ERROR: no active gcloud auth. Run: gcloud auth login" >&2
+      exit 1
+    fi
+    PROJECT=$(gcloud config get-value project 2>/dev/null)
+    if [[ -z "$PROJECT" || "$PROJECT" == "(unset)" ]]; then
+      echo "ERROR: no project set. Run: gcloud config set project PROJECT_ID" >&2
+      exit 1
+    fi
+    echo "    Auth: $ACCOUNT"
+  fi
+
+  if ! gcloud services list --enabled --project="$PROJECT" --format='value(name)' 2>/dev/null | grep -q compute.googleapis.com; then
+    echo "ERROR: Compute Engine API not enabled. Run:" >&2
+    echo "  gcloud services enable compute.googleapis.com --project=$PROJECT" >&2
+    exit 1
+  fi
+
+  if ! gcloud compute zones describe "$ZONE" --project="$PROJECT" &>/dev/null; then
+    echo "ERROR: zone '$ZONE' not found in project $PROJECT" >&2
+    exit 1
+  fi
+
+  echo "    Project: $PROJECT"
+  echo "    Zone:    $ZONE"
+  echo "    GPU:     $GPU ($MACHINE)"
+  echo "    Mode:    $MODE"
+  echo "    Version: $VERSION"
+  echo "    TTL:     ${TTL_HOURS}h"
+  echo ""
+}
+
+# --- Find existing eval VMs ---
+find_vms() {
+  gcloud compute instances list \
+    --project="$PROJECT" \
+    --filter="labels.app=$LABEL_APP AND labels.created-by=$LABEL_CREATOR" \
+    --format="value(name,zone.basename(),networkInterfaces[0].accessConfigs[0].natIP,status)" \
+    2>/dev/null
+}
+
+# --- Teardown ---
+do_teardown() {
+  echo "==> Looking for evaluation VMs..."
+  VMS=$(find_vms)
+  if [[ -z "$VMS" ]]; then
+    echo "    No evaluation VMs found."
+  else
+    while IFS=$'\t' read -r name zone ip status; do
+      echo "    Deleting $name ($zone, $status)..."
+      gcloud compute instances delete "$name" \
+        --project="$PROJECT" --zone="$zone" --quiet 2>/dev/null || true
+    done <<< "$VMS"
+  fi
+
+  echo "==> Checking firewall rule..."
+  if gcloud compute firewall-rules describe "$FW_RULE" --project="$PROJECT" &>/dev/null; then
+    echo "    Deleting firewall rule $FW_RULE..."
+    gcloud compute firewall-rules delete "$FW_RULE" \
+      --project="$PROJECT" --quiet 2>/dev/null || true
+  else
+    echo "    No firewall rule found."
+  fi
+
+  echo "==> Teardown complete."
+}
+
+# --- Deploy ---
+do_deploy() {
+  VM_NAME="${VM_PREFIX}-$(date +%s | tail -c 7)"
+
+  if [[ "$MODE" == "batch" ]]; then
+    IMAGE="ghcr.io/beastoin/highperfasr-batch:${VERSION}"
+    PORT=8000
+    CONTAINER_NAME="highperfasr-batch"
+  else
+    IMAGE="ghcr.io/beastoin/highperfasr-stream:${VERSION}"
+    PORT=8001
+    CONTAINER_NAME="highperfasr-stream"
+  fi
+
+  TTL_MINUTES=$((TTL_HOURS * 60))
+
+  STARTUP_SCRIPT=$(cat <<SCRIPT
+#!/bin/bash
+set -ex
+
+shutdown -h +${TTL_MINUTES} "Auto-shutdown: evaluation TTL expired" &
+
+if ! command -v docker &>/dev/null; then
+  curl -fsSL https://get.docker.com | sh
+fi
+
+if ! dpkg -l nvidia-container-toolkit 2>/dev/null | grep -q ii; then
+  curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \\
+    gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+  ARCH=\$(dpkg --print-architecture)
+  echo "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/deb/\\\$ARCH /" | \\
+    tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+  apt-get update && apt-get install -y nvidia-container-toolkit
+  nvidia-ctk runtime configure --runtime=docker
+  systemctl restart docker
+fi
+
+docker pull ${IMAGE}
+docker run -d --gpus all -p ${PORT}:8000 \\
+  -v hf-cache:/app/.cache/huggingface \\
+  -e NVIDIA_VISIBLE_DEVICES=all \\
+  -e HF_HOME=/app/.cache/huggingface \\
+  -e NUMBA_CACHE_DIR=/tmp/numba_cache \\
+  --name ${CONTAINER_NAME} \\
+  --restart unless-stopped \\
+  ${IMAGE}
+SCRIPT
+)
+
+  # Firewall rule (idempotent)
+  echo "==> Creating firewall rule..."
+  if gcloud compute firewall-rules describe "$FW_RULE" --project="$PROJECT" &>/dev/null; then
+    echo "    Firewall rule already exists."
+  else
+    if [[ "$NO_PUBLIC_IP" == "true" ]]; then
+      echo "    Skipping (--no-public-ip mode)."
+    else
+      gcloud compute firewall-rules create "$FW_RULE" \
+        --project="$PROJECT" \
+        --allow=tcp:8000,tcp:8001 \
+        --source-ranges=0.0.0.0/0 \
+        --target-tags=highperfasr-eval \
+        --description="HighPerfASR evaluation — auto-created by launch-gce.sh" \
+        --quiet 2>/dev/null
+      echo "    Created $FW_RULE (ports 8000-8001, tag: highperfasr-eval)."
+    fi
+  fi
+
+  # Create VM
+  echo "==> Creating VM: $VM_NAME..."
+  CREATE_FLAGS=(
+    --project="$PROJECT"
+    --zone="$ZONE"
+    --machine-type="$MACHINE"
+    --maintenance-policy=TERMINATE
+    --no-restart-on-failure
+    --image-family=common-gpu-debian-12
+    --image-project=deeplearning-platform-release
+    --boot-disk-size=50GB
+    --boot-disk-type=pd-balanced
+    --tags=highperfasr-eval
+    --labels="app=$LABEL_APP,created-by=$LABEL_CREATOR,mode=$MODE,image-tag=${VERSION//./-}"
+    --metadata=startup-script="$STARTUP_SCRIPT",install-nvidia-driver=True
+    --scopes=https://www.googleapis.com/auth/cloud-platform
+  )
+
+  if [[ -n "$ACCEL_FLAG" ]]; then
+    CREATE_FLAGS+=($ACCEL_FLAG)
+  fi
+
+  if [[ "$NO_PUBLIC_IP" == "true" ]]; then
+    CREATE_FLAGS+=(--no-address)
+  fi
+
+  if ! gcloud compute instances create "$VM_NAME" "${CREATE_FLAGS[@]}"; then
+    echo "" >&2
+    echo "ERROR: VM creation failed." >&2
+    echo "Common causes:" >&2
+    echo "  - GPU quota exceeded: request quota at https://console.cloud.google.com/iam-admin/quotas" >&2
+    echo "  - GPU not available in zone: try --zone us-east1-b or us-west1-b" >&2
+    echo "  - Insufficient permissions: need roles/compute.instanceAdmin.v1" >&2
+    echo "" >&2
+    echo "Cleanup: $(basename "$0") teardown" >&2
+    exit 1
+  fi
+
+  # Get IP
+  if [[ "$NO_PUBLIC_IP" == "true" ]]; then
+    echo ""
+    echo "==> VM created (no public IP). Connect via SSH tunnel:"
+    echo "    gcloud compute ssh $VM_NAME --zone=$ZONE --project=$PROJECT -- -L ${PORT}:localhost:${PORT}"
+    echo "    Then use: http://localhost:${PORT}"
+    SERVER_URL="http://localhost:${PORT}"
+  else
+    IP=$(gcloud compute instances describe "$VM_NAME" \
+      --project="$PROJECT" --zone="$ZONE" \
+      --format="value(networkInterfaces[0].accessConfigs[0].natIP)")
+    SERVER_URL="http://${IP}:${PORT}"
+    echo "    External IP: $IP"
+  fi
+
+  # Wait for health
+  echo ""
+  echo "==> Waiting for server to become healthy (this takes 5-10 minutes)..."
+  echo "    Installing GPU drivers, pulling container image, loading model..."
+  echo ""
+
+  for i in $(seq 1 120); do
+    if curl -sf "${SERVER_URL}/health" >/dev/null 2>&1; then
+      echo ""
+      echo "============================================"
+      echo "  Server is ready!"
+      echo ""
+      echo "  URL:     ${SERVER_URL}"
+      echo "  Mode:    ${MODE}"
+      echo "  GPU:     ${GPU}"
+      echo "  Version: ${VERSION}"
+      echo "  TTL:     ${TTL_HOURS} hours (auto-shutdown)"
+      echo ""
+      echo "  Health:  curl ${SERVER_URL}/health"
+      echo ""
+      if [[ "$MODE" == "batch" ]]; then
+        echo "  Quick test:"
+        echo "    curl -F 'file=@audio.wav' ${SERVER_URL}/v1/transcriptions"
+        echo ""
+        echo "  Benchmark:"
+        echo "    python3 benchmarks/scripts/bench_batch.py \\"
+        echo "      --server ${SERVER_URL} \\"
+        echo "      --concurrency 1,8,16,32,64 \\"
+        echo "      --image-tag ${VERSION} \\"
+        echo "      --output /tmp/bench_batch.json"
+      else
+        echo "  Benchmark:"
+        echo "    python3 benchmarks/scripts/bench_stream.py \\"
+        echo "      --server ws://${IP:-localhost}:${PORT} \\"
+        echo "      --endpoint /v1/stream \\"
+        echo "      --concurrency 1,16,32 \\"
+        echo "      --image-tag ${VERSION} \\"
+        echo "      --output /tmp/bench_stream.json"
+      fi
+      echo ""
+      echo "  Dashboard:"
+      echo "    Open examples/web/benchmark-dashboard.html?server=${SERVER_URL}"
+      echo ""
+      echo "  Teardown:"
+      echo "    $(basename "$0") teardown"
+      echo "============================================"
+      exit 0
+    fi
+    printf "."
+    sleep 5
+  done
+
+  echo ""
+  echo "WARNING: server not healthy after 10 minutes." >&2
+  echo "The VM ($VM_NAME) is running but the container may still be starting." >&2
+  echo "" >&2
+  echo "Debug:" >&2
+  echo "  gcloud compute ssh $VM_NAME --zone=$ZONE --project=$PROJECT -- docker logs $CONTAINER_NAME" >&2
+  echo "  curl ${SERVER_URL}/health" >&2
+  echo "" >&2
+  echo "Cleanup: $(basename "$0") teardown" >&2
+  exit 1
+}
+
+# --- Main ---
+preflight
+
+case "$ACTION" in
+  teardown) do_teardown ;;
+  deploy)   do_deploy ;;
+esac

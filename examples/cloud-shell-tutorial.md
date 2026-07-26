@@ -1,0 +1,71 @@
+# Deploy HighPerfASR on Google Cloud
+
+## Overview
+
+This tutorial deploys a GPU-accelerated ASR server on your GCP project. You will
+have a running server in under 10 minutes, ready for benchmarking.
+
+**Estimated time:** 10 minutes  
+**Cost:** ~$0.70/hr (L4 GPU) — auto-shuts down after 4 hours  
+
+---
+
+## Set your project
+
+<walkthrough-project-setup></walkthrough-project-setup>
+
+Set the project in gcloud:
+
+```bash
+gcloud config set project <walkthrough-project-id/>
+```
+
+## Enable Compute Engine
+
+```bash
+gcloud services enable compute.googleapis.com
+```
+
+## Deploy the server
+
+Launch a streaming ASR server on an L4 GPU:
+
+```bash
+./examples/launch-gce.sh --mode stream
+```
+
+The script creates a GCE VM with an NVIDIA L4 GPU, pulls the HighPerfASR
+container image, and waits for the server to become healthy.
+
+For batch transcription instead:
+
+```bash
+./examples/launch-gce.sh --mode batch
+```
+
+## Run a benchmark
+
+Once the server is healthy, the script prints benchmark commands. Copy and run
+them to measure throughput, latency, and WER on LibriSpeech test-clean.
+
+You can also open the interactive benchmark dashboard:
+
+```bash
+echo "Open: examples/web/benchmark-dashboard.html?server=SERVER_URL"
+```
+
+Replace `SERVER_URL` with the URL printed by the launch script.
+
+## Clean up
+
+Delete the evaluation VM and firewall rule:
+
+```bash
+./examples/launch-gce.sh teardown
+```
+
+## Next steps
+
+- [Benchmark scripts](../benchmarks/scripts/) — reproducible evaluation methodology
+- [Deployment recipes](../recipes/) — Kubernetes recipes for GCP, AWS, Azure
+- [Protocol spec](../spec/protocol.md) — REST and WebSocket API reference
