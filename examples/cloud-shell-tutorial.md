@@ -5,8 +5,8 @@
 This tutorial deploys a GPU-accelerated ASR server on your GCP project. You will
 have a running server in under 10 minutes, ready for benchmarking.
 
-**Estimated time:** 10 minutes  
-**Cost:** ~$0.70/hr (L4 GPU) — auto-shuts down after 4 hours  
+**Estimated time:** 10 minutes
+**Cost:** L4 GPU usage in your GCP project; auto-shuts down after 4 hours
 
 ---
 

@@ -74,6 +74,24 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+validate_inputs() {
+  case "$MODE" in
+    batch|stream) ;;
+    *) echo "ERROR: unsupported mode '$MODE' (use batch or stream)" >&2; exit 1 ;;
+  esac
+
+  if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+    echo "ERROR: unsupported image version '$VERSION'." >&2
+    echo "Use a pinned semver Docker tag like v0.3.0 or v0.3.0-rc.1." >&2
+    exit 1
+  fi
+
+  if [[ ! "$TTL_HOURS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: --ttl must be a positive integer number of hours." >&2
+    exit 1
+  fi
+}
+
 # --- Resolve GPU config ---
 case "$GPU" in
   l4)  MACHINE="g2-standard-4"; ACCEL_FLAG="" ;;
@@ -187,10 +205,16 @@ do_deploy() {
   fi
 
   TTL_MINUTES=$((TTL_HOURS * 60))
+  STARTUP_IMAGE=$(printf '%q' "$IMAGE")
+  STARTUP_CONTAINER_NAME=$(printf '%q' "$CONTAINER_NAME")
 
   STARTUP_SCRIPT=$(cat <<SCRIPT
 #!/bin/bash
 set -ex
+
+IMAGE=${STARTUP_IMAGE}
+CONTAINER_NAME=${STARTUP_CONTAINER_NAME}
+PORT=${PORT}
 
 shutdown -h +${TTL_MINUTES} "Auto-shutdown: evaluation TTL expired" &
 
@@ -209,15 +233,15 @@ if ! dpkg -l nvidia-container-toolkit 2>/dev/null | grep -q ii; then
   systemctl restart docker
 fi
 
-docker pull ${IMAGE}
-docker run -d --gpus all -p ${PORT}:8000 \\
+docker pull "\$IMAGE"
+docker run -d --gpus all -p "\${PORT}:8000" \\
   -v hf-cache:/app/.cache/huggingface \\
   -e NVIDIA_VISIBLE_DEVICES=all \\
   -e HF_HOME=/app/.cache/huggingface \\
   -e NUMBA_CACHE_DIR=/tmp/numba_cache \\
-  --name ${CONTAINER_NAME} \\
+  --name "\$CONTAINER_NAME" \\
   --restart unless-stopped \\
-  ${IMAGE}
+  "\$IMAGE"
 SCRIPT
 )
 
@@ -281,9 +305,19 @@ SCRIPT
   # Get IP
   if [[ "$NO_PUBLIC_IP" == "true" ]]; then
     echo ""
-    echo "==> VM created (no public IP). Connect via SSH tunnel:"
-    echo "    gcloud compute ssh $VM_NAME --zone=$ZONE --project=$PROJECT -- -L ${PORT}:localhost:${PORT}"
-    echo "    Then use: http://localhost:${PORT}"
+    echo "==> VM created (no public IP). Starting SSH tunnel for health checks..."
+    if ! gcloud compute ssh "$VM_NAME" \
+      --zone="$ZONE" \
+      --project="$PROJECT" \
+      --tunnel-through-iap \
+      -- -f -N -L "${PORT}:localhost:${PORT}"; then
+      echo "ERROR: SSH tunnel failed. Re-run with public IP or create the tunnel manually:" >&2
+      echo "  gcloud compute ssh $VM_NAME --zone=$ZONE --project=$PROJECT --tunnel-through-iap -- -N -L ${PORT}:localhost:${PORT}" >&2
+      echo "Cleanup: $(basename "$0") teardown" >&2
+      exit 1
+    fi
+    echo "    Tunnel active: http://localhost:${PORT}"
+    echo "    Recreate manually: gcloud compute ssh $VM_NAME --zone=$ZONE --project=$PROJECT --tunnel-through-iap -- -N -L ${PORT}:localhost:${PORT}"
     SERVER_URL="http://localhost:${PORT}"
   else
     IP=$(gcloud compute instances describe "$VM_NAME" \
@@ -358,6 +392,7 @@ SCRIPT
 }
 
 # --- Main ---
+validate_inputs
 preflight
 
 case "$ACTION" in
