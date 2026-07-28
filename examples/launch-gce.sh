@@ -16,10 +16,14 @@ set -euo pipefail
 VERSION="0.3.0"
 MODE="stream"
 ZONE="us-central1-a"
+ZONE_EXPLICIT=false
 GPU="l4"
 TTL_HOURS=4
 KEY_FILE=""
 ACTION="deploy"
+
+L4_FALLBACK_ZONES=("us-central1-a" "us-east1-b" "us-west1-b" "us-east4-c" "europe-west4-b")
+T4_FALLBACK_ZONES=("us-central1-a" "us-east1-b" "us-west1-b" "europe-west4-b" "asia-east1-b")
 
 VM_PREFIX="hpfasr-eval"
 FW_RULE="allow-highperfasr-eval"
@@ -35,7 +39,7 @@ Usage: $(basename "$0") [OPTIONS] [teardown]
 
 Options:
   --key FILE        GCP service account JSON key file
-  --zone ZONE       GCE zone (default: us-central1-a)
+  --zone ZONE       GCE zone (default: auto-selects from US zones)
   --mode MODE       batch or stream (default: stream)
   --gpu GPU         l4 (default) or t4
   --version VER     GHCR image version (default: 0.3.0)
@@ -74,7 +78,7 @@ require_value() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --key)         require_value "$1" "${2-}"; KEY_FILE="$2"; shift 2 ;;
-    --zone)        require_value "$1" "${2-}"; ZONE="$2"; shift 2 ;;
+    --zone)        require_value "$1" "${2-}"; ZONE="$2"; ZONE_EXPLICIT=true; shift 2 ;;
     --mode)        require_value "$1" "${2-}"; MODE="$2"; shift 2 ;;
     --gpu)         require_value "$1" "${2-}"; GPU="$2"; shift 2 ;;
     --version)     require_value "$1" "${2-}"; VERSION="$2"; shift 2 ;;
@@ -380,7 +384,6 @@ SCRIPT
   echo "==> Creating VM: $VM_NAME..."
   CREATE_FLAGS=(
     --project="$PROJECT"
-    --zone="$ZONE"
     --machine-type="$MACHINE"
     --maintenance-policy=TERMINATE
     --no-restart-on-failure
@@ -393,18 +396,43 @@ SCRIPT
     "--metadata=startup-script=$STARTUP_SCRIPT,install-nvidia-driver=True"
     --no-service-account
     --no-scopes
+    ${ACCEL_FLAGS[@]+"${ACCEL_FLAGS[@]}"}
   )
 
-  if [[ ${#ACCEL_FLAGS[@]} -gt 0 ]]; then
-    CREATE_FLAGS+=("${ACCEL_FLAGS[@]}")
+  if [[ "$ZONE_EXPLICIT" == "true" ]]; then
+    ZONES_TO_TRY=("$ZONE")
+  else
+    if [[ "$GPU" == "l4" ]]; then
+      ZONES_TO_TRY=("${L4_FALLBACK_ZONES[@]}")
+    else
+      ZONES_TO_TRY=("${T4_FALLBACK_ZONES[@]}")
+    fi
   fi
 
-  if ! gcloud compute instances create "$VM_NAME" "${CREATE_FLAGS[@]}"; then
+  VM_CREATED=false
+  for try_zone in "${ZONES_TO_TRY[@]}"; do
+    if [[ "${#ZONES_TO_TRY[@]}" -gt 1 ]]; then
+      echo "    Trying zone $try_zone..."
+    fi
+    if gcloud compute instances create "$VM_NAME" \
+      --zone="$try_zone" "${CREATE_FLAGS[@]}" 2>&1; then
+      ZONE="$try_zone"
+      VM_CREATED=true
+      break
+    else
+      if [[ "${#ZONES_TO_TRY[@]}" -gt 1 ]]; then
+        echo "    No capacity in $try_zone, trying next..."
+      fi
+    fi
+  done
+
+  if [[ "$VM_CREATED" != "true" ]]; then
     echo "" >&2
-    echo "ERROR: VM creation failed." >&2
+    echo "ERROR: VM creation failed in all zones tried: ${ZONES_TO_TRY[*]}" >&2
+    echo "" >&2
     echo "Common causes:" >&2
-    echo "  - GPU quota exceeded: request quota at https://console.cloud.google.com/iam-admin/quotas" >&2
-    echo "  - GPU not available in zone: try --zone us-east1-b or us-west1-b" >&2
+    echo "  - GPU capacity exhausted: all zones are out of $GPU GPUs right now" >&2
+    echo "  - GPU quota insufficient: request at https://console.cloud.google.com/iam-admin/quotas" >&2
     echo "  - Insufficient permissions: need roles/compute.instanceAdmin.v1" >&2
     echo "" >&2
     echo "Cleanup: $(basename "$0") teardown" >&2
@@ -423,7 +451,6 @@ SCRIPT
   echo "==> Waiting for server (typically 5-10 minutes)..."
   echo ""
   _start_wait=$SECONDS
-  _last_stage=""
   for _attempt in $(seq 1 120); do
     if curl -sf "${SERVER_URL}/health" >/dev/null 2>&1; then
       _elapsed=$(( SECONDS - _start_wait ))
@@ -472,14 +499,11 @@ SCRIPT
     fi
 
     _elapsed=$(( SECONDS - _start_wait ))
-    if [[ $_elapsed -lt 60 && "$_last_stage" != "drivers" ]]; then
-      _last_stage="drivers"
+    if [[ $_elapsed -lt 60 ]]; then
       printf "\r    [%3ds] Installing GPU drivers...          " "$_elapsed"
-    elif [[ $_elapsed -lt 180 && "$_last_stage" != "pull" ]]; then
-      _last_stage="pull"
+    elif [[ $_elapsed -lt 180 ]]; then
       printf "\r    [%3ds] Pulling container image...         " "$_elapsed"
-    elif [[ $_elapsed -lt 420 && "$_last_stage" != "model" ]]; then
-      _last_stage="model"
+    elif [[ $_elapsed -lt 420 ]]; then
       printf "\r    [%3ds] Loading ASR model into GPU...      " "$_elapsed"
     else
       printf "\r    [%3ds] Waiting for /health...             " "$_elapsed"
