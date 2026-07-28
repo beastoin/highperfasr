@@ -150,9 +150,9 @@ def test_stream_deploy_uses_pinned_image_public_port_and_locked_vm_credentials(t
     result = run_launcher(["--mode", "stream", "--version", "0.3.0", "--ttl", "2"], env=env)
 
     assert result.returncode == 0, result.stderr
-    assert "URL:     http://203.0.113.10:8001" in result.stdout
+    assert "http://203.0.113.10:8001" in result.stdout
     assert "python3 benchmarks/scripts/bench_stream.py" in result.stdout
-    assert "--server ws://203.0.113.10:8001" in result.stdout
+    assert "ws://203.0.113.10:8001" in result.stdout
 
     log = cloud_log(env)
     assert "gcloud compute instances create hpfasr-eval-" in log
@@ -170,7 +170,7 @@ def test_batch_deploy_uses_batch_image_and_batch_port(tmp_path: Path) -> None:
     result = run_launcher(["--mode", "batch", "--gpu", "t4"], env=env)
 
     assert result.returncode == 0, result.stderr
-    assert "URL:     http://203.0.113.10:8000" in result.stdout
+    assert "http://203.0.113.10:8000" in result.stdout
     assert "python3 benchmarks/scripts/bench_batch.py" in result.stdout
     assert "--server http://203.0.113.10:8000" in result.stdout
 
@@ -197,6 +197,56 @@ def test_billing_disabled_fails_before_api_quota_or_vm_checks(tmp_path: Path) ->
     assert "gcloud compute zones describe" not in log
     assert "gcloud compute regions describe" not in log
     assert "gcloud compute instances create" not in log
+
+
+def test_billing_api_error_warns_but_continues(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    write_executable(
+        fake_bin / "gcloud",
+        r"""
+        #!/usr/bin/env bash
+        set -euo pipefail
+        echo "gcloud $*" >> "$GCE_FAKE_LOG"
+
+        if [[ "$1" == "auth" && "$2" == "list" ]]; then echo "tester@example.com"; exit 0; fi
+        if [[ "$1" == "config" && "$2" == "get-value" && "$3" == "project" ]]; then echo "test-project"; exit 0; fi
+        if [[ "$1" == "billing" ]]; then exit 1; fi
+        if [[ "$1" == "services" && "$2" == "list" ]]; then echo "compute.googleapis.com"; exit 0; fi
+        if [[ "$1" == "compute" && "$2" == "zones" ]]; then exit 0; fi
+        if [[ "$1" == "compute" && "$2" == "regions" ]]; then
+          echo '{"quotas":[{"metric":"NVIDIA_L4_GPUS","limit":2.0,"usage":0.0}]}'
+          exit 0
+        fi
+        if [[ "$1" == "compute" && "$2" == "instances" && "$3" == "list" ]]; then exit 0; fi
+        if [[ "$1" == "compute" && "$2" == "instances" && "$3" == "create" ]]; then exit 0; fi
+        if [[ "$1" == "compute" && "$2" == "instances" && "$3" == "describe" ]]; then echo "203.0.113.10"; exit 0; fi
+        if [[ "$1" == "compute" && "$2" == "firewall-rules" && "$3" == "describe" ]]; then exit 1; fi
+        if [[ "$1" == "compute" && "$2" == "firewall-rules" && "$3" == "create" ]]; then exit 0; fi
+        exit 64
+        """,
+    )
+
+    write_executable(
+        fake_bin / "curl",
+        r"""
+        #!/usr/bin/env bash
+        echo "curl $*" >> "$GCE_FAKE_LOG"
+        exit 0
+        """,
+    )
+
+    env = os.environ.copy()
+    env.update({
+        "PATH": f"{fake_bin}{os.pathsep}{env['PATH']}",
+        "GCE_FAKE_LOG": str(tmp_path / "gcloud.log"),
+    })
+
+    result = run_launcher(["--mode", "stream"], env=env)
+
+    assert result.returncode == 0, result.stderr
+    assert "could not verify" in result.stdout
+    assert "VM creation will fail if billing is not enabled" in result.stdout
 
 
 def test_teardown_deletes_existing_eval_vm_and_firewall(tmp_path: Path) -> None:

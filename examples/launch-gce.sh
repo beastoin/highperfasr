@@ -200,12 +200,17 @@ preflight() {
     echo "    Auth: $ACCOUNT"
   fi
 
-  BILLING_INFO=$(gcloud billing projects describe "$PROJECT" --format='value(billingEnabled)' 2>/dev/null) || true
+  BILLING_INFO=$(gcloud billing projects describe "$PROJECT" --format='value(billingEnabled)' 2>/dev/null) || BILLING_INFO="UNKNOWN"
   if [[ "$BILLING_INFO" == "False" ]]; then
     echo "ERROR: billing is not enabled for project $PROJECT." >&2
     echo "  GPU VMs require an active billing account." >&2
     echo "  Link billing at: https://console.cloud.google.com/billing/linkedaccount?project=$PROJECT" >&2
     exit 1
+  elif [[ "$BILLING_INFO" == "UNKNOWN" ]]; then
+    echo "    Billing: could not verify (missing cloudbilling.projects.get permission)"
+    echo "             VM creation will fail if billing is not enabled."
+  else
+    echo "    Billing: enabled"
   fi
 
   SVC_OUTPUT=$(gcloud services list --enabled --project="$PROJECT" --format='value(name)' 2>&1) || {
@@ -338,8 +343,11 @@ SCRIPT
       echo "    $name ($zone, $status)" >&2
     done <<< "$EXISTING_VMS"
     echo "  Run '$(basename "$0") teardown' first, or this will create an additional VM." >&2
-    echo "  Continuing in 5 seconds... (Ctrl-C to cancel)" >&2
-    sleep 5
+    for _countdown in 5 4 3 2 1; do
+      printf "\r  Continuing in %ds... (Ctrl-C to cancel)  " "$_countdown" >&2
+      sleep 1
+    done
+    echo "" >&2
   fi
 
   # Firewall rule (idempotent)
@@ -412,23 +420,26 @@ SCRIPT
 
   # Wait for health
   echo ""
-  echo "==> Waiting for server to become healthy (this takes 5-10 minutes)..."
-  echo "    Installing GPU drivers, pulling container image, loading model..."
+  echo "==> Waiting for server (typically 5-10 minutes)..."
   echo ""
-
+  _start_wait=$SECONDS
+  _last_stage=""
   for _attempt in $(seq 1 120); do
     if curl -sf "${SERVER_URL}/health" >/dev/null 2>&1; then
+      _elapsed=$(( SECONDS - _start_wait ))
       echo ""
-      echo "============================================"
-      echo "  Server is ready!"
       echo ""
-      echo "  URL:     ${SERVER_URL}"
-      echo "  Mode:    ${MODE}"
-      echo "  GPU:     ${GPU}"
-      echo "  Version: ${VERSION}"
-      echo "  TTL:     ${TTL_HOURS} hours (auto-shutdown)"
+      echo "============================================================"
       echo ""
-      echo "  Health:  curl ${SERVER_URL}/health"
+      echo "  HighPerfASR server is ready!  (${_elapsed}s)"
+      echo ""
+      echo "  Server    ${SERVER_URL}"
+      echo "  Mode      ${MODE}"
+      echo "  GPU       ${GPU}"
+      echo "  Image     ghcr.io/beastoin/highperfasr-${MODE}:${VERSION}"
+      echo "  TTL       ${TTL_HOURS}h auto-shutdown"
+      echo ""
+      echo "  ---"
       echo ""
       if [[ "$MODE" == "batch" ]]; then
         echo "  Quick test:"
@@ -441,9 +452,12 @@ SCRIPT
         echo "      --image-tag ${VERSION} \\"
         echo "      --output /tmp/bench_batch.json"
       else
+        echo "  Quick test:"
+        echo "    python3 -c \"import asyncio, websockets; asyncio.run(websockets.connect('ws://${IP}:${PORT}/v1/stream'))\""
+        echo ""
         echo "  Benchmark:"
         echo "    python3 benchmarks/scripts/bench_stream.py \\"
-        echo "      --server ws://${IP:-localhost}:${PORT} \\"
+        echo "      --server ws://${IP}:${PORT} \\"
         echo "      --endpoint /v1/stream \\"
         echo "      --concurrency 1,16,32 \\"
         echo "      --image-tag ${VERSION} \\"
@@ -452,20 +466,40 @@ SCRIPT
       echo ""
       echo "  Teardown:"
       echo "    $(basename "$0") teardown"
-      echo "============================================"
+      echo ""
+      echo "============================================================"
       exit 0
     fi
-    printf "."
+
+    _elapsed=$(( SECONDS - _start_wait ))
+    if [[ $_elapsed -lt 60 && "$_last_stage" != "drivers" ]]; then
+      _last_stage="drivers"
+      printf "\r    [%3ds] Installing GPU drivers...          " "$_elapsed"
+    elif [[ $_elapsed -lt 180 && "$_last_stage" != "pull" ]]; then
+      _last_stage="pull"
+      printf "\r    [%3ds] Pulling container image...         " "$_elapsed"
+    elif [[ $_elapsed -lt 420 && "$_last_stage" != "model" ]]; then
+      _last_stage="model"
+      printf "\r    [%3ds] Loading ASR model into GPU...      " "$_elapsed"
+    else
+      printf "\r    [%3ds] Waiting for /health...             " "$_elapsed"
+    fi
     sleep 5
   done
 
   echo ""
+  echo ""
   echo "WARNING: server not healthy after 10 minutes." >&2
   echo "The VM ($VM_NAME) is running but the container may still be starting." >&2
   echo "" >&2
-  echo "Debug:" >&2
+  echo "Keep waiting (check every 5s until healthy):" >&2
+  echo "  until curl -sf ${SERVER_URL}/health; do sleep 5; done && echo 'Ready!'" >&2
+  echo "" >&2
+  echo "Check container logs:" >&2
   echo "  gcloud compute ssh $VM_NAME --zone=$ZONE --project=$PROJECT -- docker logs $CONTAINER_NAME" >&2
-  echo "  curl ${SERVER_URL}/health" >&2
+  echo "" >&2
+  echo "Check if container is running:" >&2
+  echo "  gcloud compute ssh $VM_NAME --zone=$ZONE --project=$PROJECT -- docker ps" >&2
   echo "" >&2
   echo "Cleanup: $(basename "$0") teardown" >&2
   exit 1
