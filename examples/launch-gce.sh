@@ -315,16 +315,16 @@ if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com | sh
 fi
 
-if ! dpkg -l nvidia-container-toolkit 2>/dev/null | grep -q ii; then
+if ! command -v nvidia-ctk &>/dev/null; then
   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \\
-    gpg --batch --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+    gpg --batch --yes --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
   ARCH=\$(dpkg --print-architecture)
   echo "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/deb/\$ARCH /" | \\
     tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
   apt-get update && apt-get install -y nvidia-container-toolkit
-  nvidia-ctk runtime configure --runtime=docker
-  systemctl restart docker
 fi
+nvidia-ctk runtime configure --runtime=docker
+systemctl restart docker
 
 docker pull "\$IMAGE"
 docker run -d --gpus all -p "\${PORT}:8000" \\
