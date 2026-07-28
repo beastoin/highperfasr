@@ -108,7 +108,7 @@ Replace `SERVER_IP` with the IP printed by the deploy script.
 
 ## Clean up
 
-Delete the evaluation VM and firewall rule:
+Delete the VM and firewall rule:
 
 ```bash
 ./examples/launch-gce.sh teardown
@@ -134,6 +134,6 @@ Link one at [Billing](https://console.cloud.google.com/billing/linkedaccount).
 
 ## Next steps
 
-- [Benchmark scripts](../benchmarks/scripts/) — reproducible evaluation methodology
+- [Benchmark scripts](../benchmarks/scripts/) — reproducible benchmark methodology
 - [Deployment recipes](../recipes/) — Kubernetes recipes for GCP, AWS, Azure
 - [Protocol spec](../spec/protocol.md) — REST and WebSocket API reference

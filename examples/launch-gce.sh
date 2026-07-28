@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# HighPerfASR — one-command GCE evaluation server.
+# HighPerfASR — one-command GCE server deployment.
 #
 # Usage:
 #   ./launch-gce.sh                                   # Deploy with current gcloud auth
 #   ./launch-gce.sh --key service-account.json        # Deploy with service account
 #   ./launch-gce.sh --mode batch --gpu t4             # Options
-#   ./launch-gce.sh teardown                          # Delete evaluation VM + firewall
+#   ./launch-gce.sh teardown                          # Delete VM + firewall
 #
 # Prerequisites: gcloud CLI (authenticated), GPU quota in target zone.
 # Runs in Google Cloud Shell or any terminal with gcloud installed.
@@ -25,15 +25,15 @@ ACTION="deploy"
 L4_FALLBACK_ZONES=("us-central1-a" "us-east1-b" "us-west1-b" "us-east4-c" "europe-west4-b")
 T4_FALLBACK_ZONES=("us-central1-a" "us-east1-b" "us-west1-b" "europe-west4-b" "asia-east1-b")
 
-VM_PREFIX="hpfasr-eval"
-FW_RULE="allow-highperfasr-eval"
+VM_PREFIX="hpfasr"
+FW_RULE="allow-highperfasr"
 LABEL_APP="highperfasr"
 LABEL_CREATOR="launch-gce"
 
 usage() {
   local exit_code="${1:-0}"
   cat <<EOF
-Deploy a HighPerfASR evaluation server on Google Cloud.
+Deploy a HighPerfASR server on Google Cloud.
 
 Usage: $(basename "$0") [OPTIONS] [teardown]
 
@@ -50,7 +50,7 @@ Examples:
   $(basename "$0")                                  # Stream on L4, current gcloud auth
   $(basename "$0") --key sa.json                    # Stream on L4, service account
   $(basename "$0") --mode batch --gpu t4            # Batch on T4
-  $(basename "$0") teardown                         # Delete evaluation VM
+  $(basename "$0") teardown                         # Delete VM + firewall
 
 Required IAM permissions:
   compute.instances.create, compute.instances.delete,
@@ -85,7 +85,7 @@ while [[ $# -gt 0 ]]; do
     --version)     require_value "$1" "${2-}"; VERSION="$2"; shift 2 ;;
     --ttl)         require_value "$1" "${2-}"; TTL_HOURS="$2"; shift 2 ;;
     --no-public-ip)
-      echo "ERROR: --no-public-ip is not supported by this one-click evaluator." >&2
+      echo "ERROR: --no-public-ip is not supported. The server needs a public IP for direct access." >&2
       echo "Private VMs need project-specific Cloud NAT and IAP firewall setup for Docker/GHCR egress." >&2
       exit 1
       ;;
@@ -261,10 +261,10 @@ find_vms() {
 
 # --- Teardown ---
 do_teardown() {
-  echo "==> Looking for evaluation VMs..."
+  echo "==> Looking for HighPerfASR VMs..."
   VMS=$(find_vms)
   if [[ -z "$VMS" ]]; then
-    echo "    No evaluation VMs found."
+    echo "    No HighPerfASR VMs found."
   else
     while IFS=$'\t' read -r name zone _ip status; do
       echo "    Deleting $name ($zone, $status)..."
@@ -311,7 +311,7 @@ IMAGE=${STARTUP_IMAGE}
 CONTAINER_NAME=${STARTUP_CONTAINER_NAME}
 PORT=${PORT}
 
-shutdown -h +${TTL_MINUTES} "Auto-shutdown: evaluation TTL expired" &
+shutdown -h +${TTL_MINUTES} "Auto-shutdown: TTL expired" &
 
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com | sh
@@ -341,10 +341,10 @@ docker run -d --gpus all -p "\${PORT}:8000" \\
 SCRIPT
 )
 
-  # Check for existing eval VMs
+  # Check for existing HighPerfASR VMs
   EXISTING_VMS=$(find_vms)
   if [[ -n "$EXISTING_VMS" ]]; then
-    echo "WARNING: existing evaluation VM(s) found:" >&2
+    echo "WARNING: existing HighPerfASR VM(s) found:" >&2
     while IFS=$'\t' read -r name zone _ip status; do
       echo "    $name ($zone, $status)" >&2
     done <<< "$EXISTING_VMS"
@@ -365,8 +365,8 @@ SCRIPT
       --project="$PROJECT" \
       --allow=tcp:8000,tcp:8001 \
       --source-ranges=0.0.0.0/0 \
-      --target-tags=highperfasr-eval \
-      --description="HighPerfASR evaluation — auto-created by launch-gce.sh" \
+      --target-tags=highperfasr \
+      --description="HighPerfASR — auto-created by launch-gce.sh" \
       --quiet 2>&1); then
       echo "" >&2
       echo "ERROR: firewall rule creation failed." >&2
@@ -379,7 +379,7 @@ SCRIPT
       echo "Cleanup: $(basename "$0") teardown" >&2
       exit 1
     fi
-    echo "    Created $FW_RULE (ports 8000-8001, tag: highperfasr-eval)."
+    echo "    Created $FW_RULE (ports 8000-8001, tag: highperfasr)."
   fi
 
   # Create VM
@@ -393,7 +393,7 @@ SCRIPT
     --image-project=deeplearning-platform-release
     --boot-disk-size=50GB
     --boot-disk-type=pd-balanced
-    --tags=highperfasr-eval
+    --tags=highperfasr
     "--labels=app=$LABEL_APP,created-by=$LABEL_CREATOR,mode=$MODE,image-tag=${VERSION//./-}"
     "--metadata=startup-script=$STARTUP_SCRIPT,install-nvidia-driver=True"
     --no-service-account

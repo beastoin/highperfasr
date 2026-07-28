@@ -155,7 +155,7 @@ def test_stream_deploy_uses_pinned_image_public_port_and_locked_vm_credentials(t
     assert "ws://203.0.113.10:8001" in result.stdout
 
     log = cloud_log(env)
-    assert "gcloud compute instances create hpfasr-eval-" in log
+    assert "gcloud compute instances create hpfasr-" in log
     assert "ghcr.io/beastoin/highperfasr-stream:0.3.0" in log
     assert "PORT=8001" in log
     assert "-p \"${PORT}:8000\"" in log
@@ -249,19 +249,19 @@ def test_billing_api_error_warns_but_continues(tmp_path: Path) -> None:
     assert "VM creation will fail if billing is not enabled" in result.stdout
 
 
-def test_teardown_deletes_existing_eval_vm_and_firewall(tmp_path: Path) -> None:
+def test_teardown_deletes_existing_vm_and_firewall(tmp_path: Path) -> None:
     env = fake_cloud_env(
         tmp_path,
-        GCE_FAKE_INSTANCES="hpfasr-eval-123\tus-central1-a\t203.0.113.10\tRUNNING\n",
+        GCE_FAKE_INSTANCES="hpfasr-123\tus-central1-a\t203.0.113.10\tRUNNING\n",
         GCE_FAKE_FIREWALL_EXISTS="1",
     )
 
     result = run_launcher(["teardown"], env=env)
 
     assert result.returncode == 0, result.stderr
-    assert "Deleting hpfasr-eval-123 (us-central1-a, RUNNING)" in result.stdout
-    assert "Deleting firewall rule allow-highperfasr-eval" in result.stdout
+    assert "Deleting hpfasr-123 (us-central1-a, RUNNING)" in result.stdout
+    assert "Deleting firewall rule allow-highperfasr" in result.stdout
 
     log = cloud_log(env)
-    assert "gcloud compute instances delete hpfasr-eval-123" in log
-    assert "gcloud compute firewall-rules delete allow-highperfasr-eval" in log
+    assert "gcloud compute instances delete hpfasr-123" in log
+    assert "gcloud compute firewall-rules delete allow-highperfasr" in log

@@ -321,8 +321,8 @@ const SCOPES = 'https://www.googleapis.com/auth/compute https://www.googleapis.c
 const VERSION = '0.3.0';
 const L4_ZONES = ['us-central1-a','us-east1-b','us-west1-b','us-east4-c','europe-west4-b'];
 const T4_ZONES = ['us-central1-a','us-east1-b','us-west1-b','europe-west4-b','asia-east1-b'];
-const FW_RULE = 'allow-highperfasr-eval';
-const VM_PREFIX = 'hpfasr-eval';
+const FW_RULE = 'allow-highperfasr';
+const VM_PREFIX = 'hpfasr';
 
 // ─── State ───────────────────────────────────────────────────────
 let token = null;
@@ -483,8 +483,8 @@ async function deploy() {
           name: FW_RULE,
           allowed: [{ IPProtocol: 'tcp', ports: ['8000', '8001'] }],
           sourceRanges: ['0.0.0.0/0'],
-          targetTags: ['highperfasr-eval'],
-          description: 'HighPerfASR evaluation — auto-created by deploy page'
+          targetTags: ['highperfasr'],
+          description: 'HighPerfASR — auto-created by deploy page'
         })
       });
       await waitForOp(project, fwOp.name, 'global');
@@ -551,7 +551,7 @@ IMAGE=${image}
 CONTAINER_NAME=${containerName}
 PORT=${port}
 
-shutdown -h +${ttlMin} "Auto-shutdown: evaluation TTL expired" &
+shutdown -h +${ttlMin} "Auto-shutdown: TTL expired" &
 
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com | sh
@@ -599,7 +599,7 @@ function buildVmBody(name, zone, machine, accelType, startupScript, cfg) {
       { key: 'install-nvidia-driver', value: 'True' }
     ]},
     labels: { app: 'highperfasr', 'created-by': 'launch-gce-web', mode: cfg.mode, 'image-tag': VERSION.replace(/\./g, '-') },
-    tags: { items: ['highperfasr-eval'] }
+    tags: { items: ['highperfasr'] }
   };
   if (cfg.gpu === 't4') {
     body.guestAccelerators = [{ acceleratorType: `zones/${zone}/acceleratorTypes/${accelType}`, acceleratorCount: 1 }];

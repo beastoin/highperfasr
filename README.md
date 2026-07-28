@@ -35,9 +35,9 @@ docker compose up -d
 curl http://localhost:8001/health
 ```
 
-### Try it on Google Cloud
+### Deploy on Google Cloud
 
-No GPU? No Docker? Deploy a server on your own GCP project in one click:
+No GPU? No Docker? Get a ready-to-use ASR server on your own GCP project in one click:
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/beastoin/highperfasr&cloudshell_tutorial=examples/cloud-shell-tutorial.md&cloudshell_workspace=.)
 
