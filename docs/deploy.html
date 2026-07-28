@@ -292,8 +292,8 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
       <button class="copy-btn" onclick="copyQuickTest()">Copy</button>
     </div>
     <div class="card">
-      <div class="card-title">Teardown</div>
-      <div class="code-block">./examples/launch-gce.sh teardown</div>
+      <div class="card-title">Teardown (CLI)</div>
+      <div class="code-block">./examples/launch-gce.sh --project=&lt;PROJECT_ID&gt; teardown</div>
       <button class="copy-btn" onclick="copyEl(this.previousElementSibling)">Copy</button>
     </div>
   </div>
@@ -337,6 +337,8 @@ function signIn() {
     alert('OAuth Client ID not configured.\n\nSee the setup instructions in the page source or PR description.');
     return;
   }
+  const state = crypto.randomUUID();
+  sessionStorage.setItem('oauth_state', state);
   const redirect = window.location.origin + window.location.pathname;
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -344,7 +346,8 @@ function signIn() {
     response_type: 'token',
     scope: SCOPES,
     include_granted_scopes: 'true',
-    prompt: 'select_account'
+    prompt: 'select_account',
+    state: state
   });
   window.location = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
 }
@@ -364,6 +367,13 @@ function checkAuth() {
   const params = new URLSearchParams(hash);
   const t = params.get('access_token');
   if (!t) return;
+  const returnedState = params.get('state');
+  const savedState = sessionStorage.getItem('oauth_state');
+  if (!returnedState || returnedState !== savedState) {
+    console.error('OAuth state mismatch — possible CSRF');
+    return;
+  }
+  sessionStorage.removeItem('oauth_state');
   token = t;
   window.location.hash = '';
   history.replaceState(null, '', window.location.pathname + window.location.search);

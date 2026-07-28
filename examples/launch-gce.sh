@@ -143,17 +143,17 @@ for quota in region.get("quotas", []):
         sys.exit(0)
 sys.exit(2)
 ' "$GPU_QUOTA_METRIC"); then
-    echo "ERROR: cannot read $GPU GPU quota ($GPU_QUOTA_METRIC) in region $region." >&2
-    echo "Need compute.regions.get permission and quota visibility in project $PROJECT." >&2
-    exit 1
+    echo "    WARNING: cannot read $GPU GPU quota ($GPU_QUOTA_METRIC) in region $region." >&2
+    echo "    (will attempt deployment anyway — zone fallback handles stockouts)" >&2
+    return 0
   fi
 
   read -r quota_limit quota_usage quota_available <<< "$quota_check"
   if ! python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) >= 1 else 1)' "$quota_available"; then
-    echo "ERROR: insufficient $GPU GPU quota in region $region." >&2
-    echo "Quota $GPU_QUOTA_METRIC: ${quota_usage}/${quota_limit} used; need 1 available GPU." >&2
-    echo "Request quota at https://console.cloud.google.com/iam-admin/quotas?project=$PROJECT" >&2
-    exit 1
+    echo "    WARNING: $GPU GPU quota may be insufficient in $region (${quota_usage}/${quota_limit} used)." >&2
+    echo "    Will attempt deployment — zone fallback may find capacity in another region." >&2
+    echo "    Request more quota at https://console.cloud.google.com/iam-admin/quotas?project=$PROJECT" >&2
+    return 0
   fi
 
   echo "    GPU quota: ${quota_usage}/${quota_limit} $GPU_QUOTA_METRIC used (${quota_available} available)"
@@ -252,7 +252,7 @@ preflight() {
 find_vms() {
   gcloud compute instances list \
     --project="$PROJECT" \
-    --filter="labels.app=$LABEL_APP AND labels.created-by=$LABEL_CREATOR" \
+    --filter="labels.app=$LABEL_APP AND (labels.created-by=$LABEL_CREATOR OR labels.created-by=launch-gce-web)" \
     --format="value(name,zone.basename(),networkInterfaces[0].accessConfigs[0].natIP,status)" \
     2>/dev/null
 }
