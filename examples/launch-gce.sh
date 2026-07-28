@@ -78,6 +78,7 @@ require_value() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --key)         require_value "$1" "${2-}"; KEY_FILE="$2"; shift 2 ;;
+    --project)     require_value "$1" "${2-}"; CLI_PROJECT="$2"; shift 2 ;;
     --zone)        require_value "$1" "${2-}"; ZONE="$2"; ZONE_EXPLICIT=true; shift 2 ;;
     --mode)        require_value "$1" "${2-}"; MODE="$2"; shift 2 ;;
     --gpu)         require_value "$1" "${2-}"; GPU="$2"; shift 2 ;;
@@ -196,9 +197,10 @@ preflight() {
       echo "ERROR: no active gcloud auth. Run: gcloud auth login" >&2
       exit 1
     fi
-    PROJECT=$(gcloud config get-value project 2>/dev/null)
+    PROJECT="${CLI_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
     if [[ -z "$PROJECT" || "$PROJECT" == "(unset)" ]]; then
       echo "ERROR: no project set. Run: gcloud config set project PROJECT_ID" >&2
+      echo "  Or pass --project PROJECT_ID" >&2
       exit 1
     fi
     echo "    Auth: $ACCOUNT"
