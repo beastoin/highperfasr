@@ -482,7 +482,9 @@ function setGpu(gpu, btn) {
 
 // ─── Deploy ──────────────────────────────────────────────────────
 async function deploy() {
-  const project = document.getElementById('project-select').value || document.getElementById('project-manual').value.trim();
+  const projectSelect = document.getElementById('project-select');
+  const manualProject = document.getElementById('project-manual').value.trim();
+  const project = projectSelect.classList.contains('hidden') ? manualProject : (projectSelect.value || manualProject);
   if (!project) { alert('Select or enter a GCP project ID.'); return; }
 
   cfg.ttl = parseInt(document.getElementById('ttl-input').value);
@@ -507,13 +509,14 @@ async function deploy() {
     try {
       await gapi(`https://compute.googleapis.com/compute/v1/projects/${project}`);
     } catch (e) {
-      if (e.message.includes('has not been used') || e.message.includes('disabled') || e.message.includes('not enabled') || e.message.includes('not activated')) {
+      const message = String(e.message || e).toLowerCase();
+      if (message.includes('has not been used') || message.includes('disabled') || message.includes('not enabled') || message.includes('not activated')) {
         throw new Error(`Compute Engine API is not enabled. Enable it at https://console.developers.google.com/apis/api/compute.googleapis.com/overview?project=${project} — then click "Back to Configure" and retry.`);
       }
-      if (e.message.includes('not found')) {
+      if (message.includes('not found')) {
         throw new Error(`Project "${project}" not found. Check the project ID and try again.`);
       }
-      if (e.message.includes('forbidden') || e.message.includes('403') || e.message.includes('permission')) {
+      if (message.includes('forbidden') || message.includes('403') || message.includes('permission')) {
         throw new Error(`No access to project "${project}". You need Editor or Owner role on this project.`);
       }
       throw e;
@@ -561,11 +564,12 @@ async function deploy() {
         log(`VM created in ${zone}.`);
         break;
       } catch (e) {
-        if (e.message.includes('ZONE_RESOURCE_POOL_EXHAUSTED') || e.message.includes('resource_availability') || e.message.includes('does not have enough resources')) {
+        const message = String(e.message || e).toLowerCase();
+        if (message.includes('zone_resource_pool_exhausted') || message.includes('resource_availability') || message.includes('does not have enough resources')) {
           log(`No capacity in ${zone}, trying next...`);
-        } else if (e.message.includes('billing') || e.message.includes('BILLING')) {
+        } else if (message.includes('billing')) {
           throw new Error(`Billing is not enabled for project "${project}". Enable it at https://console.cloud.google.com/billing/linkedaccount?project=${project}`);
-        } else if (e.message.includes('quota') || e.message.includes('QUOTA')) {
+        } else if (message.includes('quota')) {
           throw new Error(`GPU quota exceeded. Request GPU quota at https://console.cloud.google.com/iam-admin/quotas?project=${project} — filter for "${cfg.gpu === 'l4' ? 'NVIDIA_L4' : 'NVIDIA_T4'}_GPUS".`);
         } else {
           throw e;
