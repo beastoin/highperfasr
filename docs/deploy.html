@@ -187,6 +187,10 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
     <div class="field">
       <label>GCP Project</label>
       <select id="project-select"><option value="">Loading projects...</option></select>
+      <div id="project-notice" class="setup-notice hidden" style="margin-top:8px"></div>
+      <input type="text" id="project-manual" placeholder="e.g. my-project-123" class="hidden" style="margin-top:8px">
+      <div id="project-manual-help" class="hidden" style="font-size:11px;color:var(--text3);margin-top:4px">Find it at <a href="https://console.cloud.google.com" target="_blank" rel="noopener" style="color:var(--blue)">console.cloud.google.com</a> or run <code style="font-family:var(--mono);font-size:11px">gcloud config get-value project</code></div>
+      <div id="project-manual-toggle" class="hidden" style="font-size:12px;color:var(--text2);cursor:pointer;margin-top:6px;text-decoration:underline" onclick="toggleManualProject()">Or enter project ID manually</div>
     </div>
     <div class="field">
       <label>Mode</label>
@@ -203,8 +207,15 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
       </div>
     </div>
     <div class="field">
-      <label>Auto-shutdown (hours)</label>
-      <input type="number" id="ttl-input" value="4" min="1" max="24">
+      <label>Auto-shutdown</label>
+      <select id="ttl-input">
+        <option value="1">1 hour</option>
+        <option value="2">2 hours</option>
+        <option value="4" selected>4 hours (default)</option>
+        <option value="8">8 hours</option>
+        <option value="24">24 hours</option>
+        <option value="0">Never</option>
+      </select>
     </div>
     <button class="deploy-btn" id="deploy-btn" onclick="deploy()">Deploy Server</button>
   </div>
@@ -251,6 +262,7 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
     </div>
     <div class="elapsed-bar"><div class="fill" id="progress-fill" style="width:0%"></div></div>
     <div id="progress-error" class="error-box hidden"></div>
+    <button id="retry-btn" class="action-btn hidden" onclick="retryDeploy()" style="margin-top:12px">Back to Configure</button>
     <div class="log-toggle" onclick="toggleLog()">&#9662; Show log</div>
     <div class="log-panel" id="log-panel"></div>
   </div>
@@ -420,13 +432,34 @@ async function loadProjects() {
   try {
     const data = await gapi('https://cloudresourcemanager.googleapis.com/v1/projects?filter=lifecycleState%3DACTIVE&pageSize=100');
     const projects = (data.projects || []).sort((a, b) => a.name.localeCompare(b.name));
-    sel.innerHTML = '<option value="">Select a project</option>';
-    for (const p of projects) {
-      sel.innerHTML += `<option value="${p.projectId}">${p.name} (${p.projectId})</option>`;
+    if (projects.length === 0) {
+      sel.classList.add('hidden');
+      showProjectFallback('No active projects found for this account. Enter your project ID below.');
+    } else {
+      sel.innerHTML = '<option value="">Select a project</option>';
+      for (const p of projects) {
+        sel.innerHTML += `<option value="${p.projectId}">${p.name} (${p.projectId})</option>`;
+      }
+      document.getElementById('project-manual-toggle').classList.remove('hidden');
     }
   } catch (e) {
-    sel.innerHTML = `<option value="">Failed to load: ${e.message}</option>`;
+    sel.classList.add('hidden');
+    showProjectFallback('Enter your GCP project ID to continue.');
   }
+}
+
+function showProjectFallback(message) {
+  document.getElementById('project-notice').innerHTML = message;
+  document.getElementById('project-notice').classList.remove('hidden');
+  document.getElementById('project-manual').classList.remove('hidden');
+  document.getElementById('project-manual-help').classList.remove('hidden');
+}
+
+function toggleManualProject() {
+  document.getElementById('project-select').classList.add('hidden');
+  document.getElementById('project-manual').classList.remove('hidden');
+  document.getElementById('project-manual-help').classList.remove('hidden');
+  document.getElementById('project-manual-toggle').classList.add('hidden');
 }
 
 // ─── Config toggles ──────────────────────────────────────────────
@@ -443,10 +476,10 @@ function setGpu(gpu, btn) {
 
 // ─── Deploy ──────────────────────────────────────────────────────
 async function deploy() {
-  const project = document.getElementById('project-select').value;
-  if (!project) { alert('Select a project first.'); return; }
+  const project = document.getElementById('project-select').value || document.getElementById('project-manual').value.trim();
+  if (!project) { alert('Select or enter a GCP project ID.'); return; }
 
-  cfg.ttl = parseInt(document.getElementById('ttl-input').value) || 4;
+  cfg.ttl = parseInt(document.getElementById('ttl-input').value);
   deployState.project = project;
   deployState.vmName = VM_PREFIX + '-' + Date.now().toString().slice(-6);
   deployState.startTime = Date.now();
@@ -465,7 +498,20 @@ async function deploy() {
     // Preflight
     setStage('preflight', 'active');
     log('Checking Compute Engine API...');
-    await gapi(`https://compute.googleapis.com/compute/v1/projects/${project}`);
+    try {
+      await gapi(`https://compute.googleapis.com/compute/v1/projects/${project}`);
+    } catch (e) {
+      if (e.message.includes('has not been used') || e.message.includes('disabled') || e.message.includes('not enabled') || e.message.includes('not activated')) {
+        throw new Error(`Compute Engine API is not enabled. Enable it at https://console.developers.google.com/apis/api/compute.googleapis.com/overview?project=${project} — then click "Back to Configure" and retry.`);
+      }
+      if (e.message.includes('not found')) {
+        throw new Error(`Project "${project}" not found. Check the project ID and try again.`);
+      }
+      if (e.message.includes('forbidden') || e.message.includes('403') || e.message.includes('permission')) {
+        throw new Error(`No access to project "${project}". You need Editor or Owner role on this project.`);
+      }
+      throw e;
+    }
     log('Compute Engine API enabled.');
     setStage('preflight', 'done');
 
@@ -511,6 +557,10 @@ async function deploy() {
       } catch (e) {
         if (e.message.includes('ZONE_RESOURCE_POOL_EXHAUSTED') || e.message.includes('resource_availability') || e.message.includes('does not have enough resources')) {
           log(`No capacity in ${zone}, trying next...`);
+        } else if (e.message.includes('billing') || e.message.includes('BILLING')) {
+          throw new Error(`Billing is not enabled for project "${project}". Enable it at https://console.cloud.google.com/billing/linkedaccount?project=${project}`);
+        } else if (e.message.includes('quota') || e.message.includes('QUOTA')) {
+          throw new Error(`GPU quota exceeded. Request GPU quota at https://console.cloud.google.com/iam-admin/quotas?project=${project} — filter for "${cfg.gpu === 'l4' ? 'NVIDIA_L4' : 'NVIDIA_T4'}_GPUS".`);
         } else {
           throw e;
         }
@@ -543,7 +593,9 @@ async function deploy() {
 }
 
 function buildStartupScript(image, containerName, port, ttlHours) {
-  const ttlMin = ttlHours * 60;
+  const shutdownLine = ttlHours > 0
+    ? `shutdown -h +${ttlHours * 60} "Auto-shutdown: TTL expired" &`
+    : '# No auto-shutdown configured';
   return `#!/bin/bash
 set -ex
 
@@ -551,7 +603,7 @@ IMAGE=${image}
 CONTAINER_NAME=${containerName}
 PORT=${port}
 
-shutdown -h +${ttlMin} "Auto-shutdown: TTL expired" &
+${shutdownLine}
 
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com | sh
@@ -707,7 +759,7 @@ function showReady(serverUrl, port) {
   document.getElementById('ready-mode').textContent = cfg.mode;
   document.getElementById('ready-gpu').textContent = cfg.gpu.toUpperCase();
   document.getElementById('ready-image').textContent = `ghcr.io/beastoin/highperfasr-${cfg.mode}:${VERSION}`;
-  document.getElementById('ready-ttl').textContent = `${cfg.ttl}h auto-shutdown`;
+  document.getElementById('ready-ttl').textContent = cfg.ttl > 0 ? `${cfg.ttl}h auto-shutdown` : 'No auto-shutdown';
   document.getElementById('ready-vm').textContent = deployState.vmName;
   document.getElementById('ready-zone').textContent = deployState.zone;
 
@@ -765,8 +817,21 @@ function setStageError(msg) {
   const stages = document.querySelectorAll('.progress-stage.active');
   stages.forEach(s => s.className = 'progress-stage error');
   const errBox = document.getElementById('progress-error');
-  errBox.textContent = msg;
+  errBox.innerHTML = msg.replace(/(https:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;word-break:break-all">$1</a>');
   errBox.classList.remove('hidden');
+  document.getElementById('retry-btn').classList.remove('hidden');
+}
+
+function retryDeploy() {
+  hide('step-progress');
+  show('step-config');
+  document.querySelectorAll('.progress-stage').forEach(s => {
+    s.className = 'progress-stage';
+    s.querySelector('.time').textContent = '';
+  });
+  document.getElementById('progress-fill').style.width = '0%';
+  document.getElementById('progress-error').classList.add('hidden');
+  document.getElementById('retry-btn').classList.add('hidden');
 }
 
 function log(msg) {

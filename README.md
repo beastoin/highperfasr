@@ -37,7 +37,11 @@ curl http://localhost:8001/health
 
 ### Deploy on Google Cloud
 
-No GPU? No Docker? Get a ready-to-use ASR server on your own GCP project in one click:
+No GPU? No Docker? Deploy a ready-to-use ASR server on your own GCP project:
+
+**[Launch Deploy Page](https://beastoin.github.io/highperfasr/deploy.html)** — sign in with Google, pick your project, click Deploy.
+
+Or use Cloud Shell:
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/beastoin/highperfasr&cloudshell_tutorial=examples/cloud-shell-tutorial.md&cloudshell_workspace=.)
 
