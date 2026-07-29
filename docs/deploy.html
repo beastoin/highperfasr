@@ -436,9 +436,15 @@ async function loadProjects() {
       sel.classList.add('hidden');
       showProjectFallback('No active projects found for this account. Enter your project ID below.');
     } else {
-      sel.innerHTML = '<option value="">Select a project</option>';
+      const defaultOption = document.createElement('option');
+      defaultOption.value = '';
+      defaultOption.textContent = 'Select a project';
+      sel.replaceChildren(defaultOption);
       for (const p of projects) {
-        sel.innerHTML += `<option value="${p.projectId}">${p.name} (${p.projectId})</option>`;
+        const option = document.createElement('option');
+        option.value = p.projectId;
+        option.textContent = `${p.name} (${p.projectId})`;
+        sel.appendChild(option);
       }
       document.getElementById('project-manual-toggle').classList.remove('hidden');
     }
@@ -449,7 +455,7 @@ async function loadProjects() {
 }
 
 function showProjectFallback(message) {
-  document.getElementById('project-notice').innerHTML = message;
+  document.getElementById('project-notice').textContent = message;
   document.getElementById('project-notice').classList.remove('hidden');
   document.getElementById('project-manual').classList.remove('hidden');
   document.getElementById('project-manual-help').classList.remove('hidden');
@@ -817,9 +823,34 @@ function setStageError(msg) {
   const stages = document.querySelectorAll('.progress-stage.active');
   stages.forEach(s => s.className = 'progress-stage error');
   const errBox = document.getElementById('progress-error');
-  errBox.innerHTML = msg.replace(/(https:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;word-break:break-all">$1</a>');
+  renderLinkedText(errBox, msg);
   errBox.classList.remove('hidden');
   document.getElementById('retry-btn').classList.remove('hidden');
+}
+
+function renderLinkedText(el, text) {
+  const nodes = [];
+  const urlPattern = /https:\/\/[^\s<]+/g;
+  let lastIndex = 0;
+  for (const match of text.matchAll(urlPattern)) {
+    if (match.index > lastIndex) {
+      nodes.push(document.createTextNode(text.slice(lastIndex, match.index)));
+    }
+    const link = document.createElement('a');
+    link.href = match[0];
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.style.color = 'inherit';
+    link.style.textDecoration = 'underline';
+    link.style.wordBreak = 'break-all';
+    link.textContent = match[0];
+    nodes.push(link);
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    nodes.push(document.createTextNode(text.slice(lastIndex)));
+  }
+  el.replaceChildren(...nodes);
 }
 
 function retryDeploy() {
