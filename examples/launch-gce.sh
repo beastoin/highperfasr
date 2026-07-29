@@ -250,7 +250,7 @@ preflight() {
   echo ""
 }
 
-# --- Find existing eval VMs ---
+# --- Find existing HighPerfASR VMs ---
 find_vms() {
   gcloud compute instances list \
     --project="$PROJECT" \
