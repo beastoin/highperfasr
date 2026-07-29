@@ -35,6 +35,23 @@ docker compose up -d
 curl http://localhost:8001/health
 ```
 
+### Deploy on Google Cloud
+
+No GPU? No Docker? Get a ready-to-use ASR server on your own GCP project in one click:
+
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/beastoin/highperfasr&cloudshell_tutorial=examples/cloud-shell-tutorial.md&cloudshell_workspace=.)
+
+Or from any terminal with `gcloud`:
+
+```bash
+git clone https://github.com/beastoin/highperfasr && cd highperfasr
+./examples/launch-gce.sh
+```
+
+The script creates a GCE VM with an L4 GPU, starts the server, and prints
+benchmark commands when ready. The VM auto-shuts down after 4 hours. Run
+`./examples/launch-gce.sh teardown` to stop early.
+
 The GHCR images are published by GitHub Actions on `main` pushes and `v*` tags.
 If the first publish has not completed yet, build locally from a clone:
 

@@ -800,6 +800,7 @@ for d in sorted(RESULTS_DIR.iterdir()):
     html = builder(run_id, d)
     if html:
         out = DOCS_DIR / f"{run_id}.html"
+        html = "\n".join(line.rstrip() for line in html.splitlines()) + "\n"
         out.write_text(html)
         generated.append(run_id)
         print(f"OK: {out.name}")

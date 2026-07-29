@@ -1,0 +1,798 @@
+<title>Deploy HighPerfASR</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  --ground: #080a10; --surface: #10131c; --elevated: #181c28;
+  --border: #1e2436; --border-focus: #00e5a0;
+  --accent: #00e5a0; --accent-dim: #00e5a033; --accent-glow: #00e5a066;
+  --blue: #5a7fff; --blue-dim: #5a7fff22;
+  --error: #ff5757; --error-dim: #ff575722;
+  --warn: #ffb347; --warn-dim: #ffb34722;
+  --text: #cdd4e0; --text2: #6b7394; --text3: #3d4560;
+  --mono: 'SF Mono','Cascadia Code','JetBrains Mono','Fira Code',monospace;
+  --radius: 6px;
+}
+@media(prefers-color-scheme:light){:root{
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --error:#d93636;--error-dim:#d9363615;
+  --warn:#cc8800;--warn-dim:#cc880015;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}}
+:root[data-theme="light"]{
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --error:#d93636;--error-dim:#d9363615;
+  --warn:#cc8800;--warn-dim:#cc880015;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}
+:root[data-theme="dark"]{
+  --ground:#080a10;--surface:#10131c;--elevated:#181c28;
+  --border:#1e2436;--border-focus:#00e5a0;
+  --accent:#00e5a0;--accent-dim:#00e5a033;--accent-glow:#00e5a066;
+  --blue:#5a7fff;--blue-dim:#5a7fff22;
+  --error:#ff5757;--error-dim:#ff575722;
+  --warn:#ffb347;--warn-dim:#ffb34722;
+  --text:#cdd4e0;--text2:#6b7394;--text3:#3d4560;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--ground);color:var(--text);font-size:14px;line-height:1.6;min-height:100vh}
+
+.container{max-width:640px;margin:0 auto;padding:32px 20px}
+
+/* Header */
+.header{text-align:center;margin-bottom:40px}
+.header h1{font-size:28px;font-weight:700;letter-spacing:-0.5px;margin-bottom:6px}
+.header h1 span{color:var(--accent)}
+.header p{color:var(--text2);font-size:15px}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:16px}
+.card-title{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text2);margin-bottom:16px}
+
+/* Auth */
+.auth-btn{display:inline-flex;align-items:center;gap:10px;padding:10px 24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;cursor:pointer;transition:all .15s}
+.auth-btn:hover{border-color:var(--accent);background:var(--accent-dim)}
+.auth-btn svg{width:18px;height:18px}
+.auth-info{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--accent)}
+.auth-info .email{color:var(--text)}
+.sign-out{color:var(--text2);cursor:pointer;margin-left:auto;font-size:12px;text-decoration:underline}
+.sign-out:hover{color:var(--text)}
+
+/* Form */
+.field{margin-bottom:16px}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em}
+select,.field input{width:100%;padding:8px 12px;background:var(--elevated);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit}
+select:focus,.field input:focus{outline:none;border-color:var(--accent)}
+select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='7'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7394' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+
+/* Toggle group */
+.toggle-group{display:flex;gap:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.toggle-group button{flex:1;padding:8px 16px;background:var(--elevated);border:none;color:var(--text2);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;font-family:inherit}
+.toggle-group button.active{background:var(--accent-dim);color:var(--accent);font-weight:600}
+.toggle-group button:hover:not(.active){background:var(--surface)}
+
+/* Deploy button */
+.deploy-btn{width:100%;padding:12px;background:var(--accent);color:var(--ground);border:none;border-radius:var(--radius);font-size:15px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit}
+.deploy-btn:hover:not(:disabled){opacity:.9;transform:translateY(-1px)}
+.deploy-btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* Progress */
+.progress-stage{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px}
+.progress-stage .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;border:2px solid var(--border)}
+.progress-stage.done .dot{background:var(--accent);border-color:var(--accent)}
+.progress-stage.active .dot{border-color:var(--accent);animation:pulse .8s ease-in-out infinite}
+.progress-stage.error .dot{background:var(--error);border-color:var(--error)}
+.progress-stage .label{flex:1;color:var(--text2)}
+.progress-stage.done .label{color:var(--text)}
+.progress-stage.active .label{color:var(--accent)}
+.progress-stage.error .label{color:var(--error)}
+.progress-stage .time{font-family:var(--mono);font-size:12px;color:var(--text3)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+.elapsed-bar{margin-top:12px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.elapsed-bar .fill{height:100%;background:var(--accent);border-radius:2px;transition:width .5s ease}
+
+/* Ready banner */
+.ready-banner{text-align:center;padding:20px}
+.ready-banner .check{font-size:48px;margin-bottom:8px}
+.ready-banner h2{font-size:20px;font-weight:600;color:var(--accent);margin-bottom:4px}
+.ready-banner .time{color:var(--text2);font-size:13px}
+
+/* Info grid */
+.info-grid{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px;margin:16px 0}
+.info-grid .key{color:var(--text2);font-weight:500}
+.info-grid .val{font-family:var(--mono);font-size:12px;word-break:break-all}
+
+/* Code block */
+.code-block{position:relative;background:var(--elevated);border:1px solid var(--border);border-radius:var(--radius);padding:12px 40px 12px 14px;font-family:var(--mono);font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-all;overflow-x:auto;color:var(--text)}
+.copy-btn{position:absolute;top:8px;right:8px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:11px;color:var(--text2);cursor:pointer;font-family:inherit}
+.copy-btn:hover{border-color:var(--accent);color:var(--accent)}
+.copy-btn.copied{color:var(--accent);border-color:var(--accent)}
+
+/* Action buttons */
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.action-btn{padding:8px 16px;border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;transition:all .15s}
+.action-btn:hover{border-color:var(--accent)}
+.action-btn.primary{background:var(--accent);color:var(--ground);border-color:var(--accent)}
+.action-btn.danger{color:var(--error);border-color:var(--error-dim)}
+.action-btn.danger:hover{background:var(--error-dim);border-color:var(--error)}
+
+/* Error */
+.error-box{background:var(--error-dim);border:1px solid var(--error);border-radius:var(--radius);padding:12px 16px;font-size:13px;color:var(--error);margin-top:12px}
+
+/* Log */
+.log-toggle{font-size:12px;color:var(--text2);cursor:pointer;margin-top:12px}
+.log-toggle:hover{color:var(--text)}
+.log-panel{max-height:200px;overflow-y:auto;margin-top:8px;font-family:var(--mono);font-size:11px;line-height:1.6;color:var(--text3);background:var(--elevated);border:1px solid var(--border);border-radius:var(--radius);padding:10px;display:none}
+.log-panel.open{display:block}
+
+/* Sections */
+.section{margin-top:32px}
+.section-title{font-size:18px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.section-title .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+
+/* Footer */
+.footer{text-align:center;color:var(--text3);font-size:12px;margin-top:40px;padding-top:20px;border-top:1px solid var(--border)}
+.footer a{color:var(--text2);text-decoration:none}
+.footer a:hover{color:var(--accent)}
+
+/* Setup notice */
+.setup-notice{background:var(--warn-dim);border:1px solid var(--warn);border-radius:var(--radius);padding:16px;font-size:13px;margin-bottom:16px}
+.setup-notice h3{color:var(--warn);font-size:14px;margin-bottom:8px}
+.setup-notice code{background:var(--elevated);padding:2px 6px;border-radius:3px;font-family:var(--mono);font-size:12px}
+.setup-notice ol{padding-left:20px;margin-top:8px}
+.setup-notice li{margin-bottom:4px}
+
+/* Alt path */
+.alt-path{margin-top:24px;text-align:center;font-size:13px;color:var(--text3)}
+.alt-path a{color:var(--blue);text-decoration:none}
+.alt-path a:hover{text-decoration:underline}
+
+.hidden{display:none !important}
+</style>
+
+<div class="container">
+  <div class="header">
+    <h1>Deploy <span>HighPerfASR</span></h1>
+    <p>GPU-accelerated ASR server on your GCP project</p>
+  </div>
+
+  <!-- Step 1: Auth -->
+  <div id="step-auth" class="card">
+    <div class="card-title">Sign in</div>
+    <div id="auth-prompt" style="text-align:center;padding:8px 0">
+      <p style="color:var(--text2);margin-bottom:16px;font-size:13px">Sign in with Google to deploy on your GCP project. We request Compute Engine access to create a GPU VM — no data leaves your browser.</p>
+      <button class="auth-btn" onclick="signIn()">
+        <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Sign in with Google
+      </button>
+    </div>
+    <div id="auth-info" class="auth-info hidden">
+      <span style="color:var(--accent)">&#10003;</span>
+      <span class="email" id="auth-email"></span>
+      <span class="sign-out" onclick="signOut()">Sign out</span>
+    </div>
+  </div>
+
+  <!-- Step 2: Configure -->
+  <div id="step-config" class="card hidden">
+    <div class="card-title">Configure</div>
+    <div class="field">
+      <label>GCP Project</label>
+      <select id="project-select"><option value="">Loading projects...</option></select>
+    </div>
+    <div class="field">
+      <label>Mode</label>
+      <div class="toggle-group">
+        <button class="active" onclick="setMode('stream',this)">Streaming</button>
+        <button onclick="setMode('batch',this)">Batch</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>GPU</label>
+      <div class="toggle-group">
+        <button class="active" onclick="setGpu('l4',this)">L4 (recommended)</button>
+        <button onclick="setGpu('t4',this)">T4 (lower cost)</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Auto-shutdown (hours)</label>
+      <input type="number" id="ttl-input" value="4" min="1" max="24">
+    </div>
+    <button class="deploy-btn" id="deploy-btn" onclick="deploy()">Deploy Server</button>
+  </div>
+
+  <!-- Step 3: Progress -->
+  <div id="step-progress" class="card hidden">
+    <div class="card-title">Deploying</div>
+    <div id="progress-stages">
+      <div class="progress-stage" data-stage="preflight">
+        <div class="dot"></div>
+        <div class="label">Preflight checks</div>
+        <div class="time"></div>
+      </div>
+      <div class="progress-stage" data-stage="firewall">
+        <div class="dot"></div>
+        <div class="label">Firewall rule</div>
+        <div class="time"></div>
+      </div>
+      <div class="progress-stage" data-stage="vm">
+        <div class="dot"></div>
+        <div class="label">Creating VM</div>
+        <div class="time"></div>
+      </div>
+      <div class="progress-stage" data-stage="drivers">
+        <div class="dot"></div>
+        <div class="label">Installing GPU drivers</div>
+        <div class="time"></div>
+      </div>
+      <div class="progress-stage" data-stage="pull">
+        <div class="dot"></div>
+        <div class="label">Pulling container image</div>
+        <div class="time"></div>
+      </div>
+      <div class="progress-stage" data-stage="model">
+        <div class="dot"></div>
+        <div class="label">Loading ASR model into GPU</div>
+        <div class="time"></div>
+      </div>
+      <div class="progress-stage" data-stage="health">
+        <div class="dot"></div>
+        <div class="label">Health check</div>
+        <div class="time"></div>
+      </div>
+    </div>
+    <div class="elapsed-bar"><div class="fill" id="progress-fill" style="width:0%"></div></div>
+    <div id="progress-error" class="error-box hidden"></div>
+    <div class="log-toggle" onclick="toggleLog()">&#9662; Show log</div>
+    <div class="log-panel" id="log-panel"></div>
+  </div>
+
+  <!-- Step 4: Ready -->
+  <div id="step-ready" class="card hidden">
+    <div class="ready-banner">
+      <div class="check">&#10003;</div>
+      <h2>Server Ready!</h2>
+      <div class="time" id="ready-time"></div>
+    </div>
+    <div class="info-grid">
+      <div class="key">Server</div><div class="val" id="ready-url"></div>
+      <div class="key">Mode</div><div class="val" id="ready-mode"></div>
+      <div class="key">GPU</div><div class="val" id="ready-gpu"></div>
+      <div class="key">Image</div><div class="val" id="ready-image"></div>
+      <div class="key">TTL</div><div class="val" id="ready-ttl"></div>
+      <div class="key">VM</div><div class="val" id="ready-vm"></div>
+      <div class="key">Zone</div><div class="val" id="ready-zone"></div>
+    </div>
+    <div class="actions">
+      <button class="action-btn primary" onclick="copyUrl()">Copy Server URL</button>
+      <button class="action-btn" onclick="openHealth()">Open /health</button>
+      <button class="action-btn danger" onclick="teardown()">Teardown</button>
+    </div>
+  </div>
+
+  <!-- Benchmark section -->
+  <div id="step-benchmark" class="section hidden">
+    <div class="section-title"><div class="dot"></div> Benchmark Commands</div>
+    <div class="card">
+      <div class="card-title" id="bench-title">Streaming Benchmark</div>
+      <div class="code-block" id="bench-command"></div>
+      <button class="copy-btn" onclick="copyBench()">Copy</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Quick Test</div>
+      <div class="code-block" id="quick-test-command"></div>
+      <button class="copy-btn" onclick="copyQuickTest()">Copy</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Teardown (CLI)</div>
+      <div class="code-block">./examples/launch-gce.sh teardown</div>
+      <button class="copy-btn" onclick="copyEl(this.previousElementSibling)">Copy</button>
+    </div>
+  </div>
+
+  <!-- Alt path -->
+  <div class="alt-path" id="alt-path">
+    Or deploy via CLI: <code style="font-family:var(--mono);font-size:12px">./examples/launch-gce.sh --mode stream</code>
+    <br><a href="https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/beastoin/highperfasr&cloudshell_tutorial=examples/cloud-shell-tutorial.md" target="_blank" rel="noopener">Open in Cloud Shell</a>
+  </div>
+
+  <div class="footer">
+    <a href="https://github.com/beastoin/highperfasr">HighPerfASR</a> &middot; GPU-accelerated ASR serving
+  </div>
+</div>
+
+<script>
+// ─── Configuration ───────────────────────────────────────────────
+// Create an OAuth Client ID at:
+//   Cloud Console → APIs & Services → Credentials → Create OAuth Client ID
+//   Type: Web application
+//   Authorized redirect URIs: this page's URL
+//   (e.g. https://beastoin.github.io/highperfasr/deploy.html)
+const CLIENT_ID = '380632925882-v23qrf0dnpvjesmib3dl53vlvr44jmsu.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/compute https://www.googleapis.com/auth/cloud-platform.read-only';
+const VERSION = '0.3.0';
+const L4_ZONES = ['us-central1-a','us-east1-b','us-west1-b','us-east4-c','europe-west4-b'];
+const T4_ZONES = ['us-central1-a','us-east1-b','us-west1-b','europe-west4-b','asia-east1-b'];
+const FW_RULE = 'allow-highperfasr';
+const VM_PREFIX = 'hpfasr';
+
+// ─── State ───────────────────────────────────────────────────────
+let token = null;
+let userEmail = '';
+let cfg = { mode: 'stream', gpu: 'l4', ttl: 4 };
+let deployState = { project: '', zone: '', vmName: '', ip: '', startTime: 0 };
+let healthPollId = null;
+
+// ─── OAuth ───────────────────────────────────────────────────────
+function signIn() {
+  if (!CLIENT_ID) {
+    alert('OAuth Client ID not configured.\n\nSee the setup instructions in the page source or PR description.');
+    return;
+  }
+  const state = crypto.randomUUID();
+  sessionStorage.setItem('oauth_state', state);
+  const redirect = window.location.origin + window.location.pathname;
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: redirect,
+    response_type: 'token',
+    scope: SCOPES,
+    include_granted_scopes: 'true',
+    prompt: 'select_account',
+    state: state
+  });
+  window.location = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
+}
+
+function signOut() {
+  token = null;
+  userEmail = '';
+  window.location.hash = '';
+  show('step-auth'); hide('step-config'); hide('step-progress'); hide('step-ready'); hide('step-benchmark');
+  document.getElementById('auth-prompt').classList.remove('hidden');
+  document.getElementById('auth-info').classList.add('hidden');
+}
+
+function checkAuth() {
+  const hash = window.location.hash.substring(1);
+  if (!hash) return;
+  const params = new URLSearchParams(hash);
+  const t = params.get('access_token');
+  if (!t) return;
+  const returnedState = params.get('state');
+  const savedState = sessionStorage.getItem('oauth_state');
+  if (!returnedState || returnedState !== savedState) {
+    console.error('OAuth state mismatch — possible CSRF');
+    return;
+  }
+  sessionStorage.removeItem('oauth_state');
+  token = t;
+  window.location.hash = '';
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  onSignedIn();
+}
+
+async function onSignedIn() {
+  try {
+    const res = await gapi('https://www.googleapis.com/oauth2/v2/userinfo');
+    userEmail = res.email || 'Authenticated';
+  } catch { userEmail = 'Authenticated'; }
+
+  document.getElementById('auth-prompt').classList.add('hidden');
+  document.getElementById('auth-info').classList.remove('hidden');
+  document.getElementById('auth-email').textContent = userEmail;
+
+  show('step-config');
+  loadProjects();
+}
+
+// ─── API helpers ─────────────────────────────────────────────────
+async function gapi(url, opts = {}) {
+  const res = await fetch(url, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: { message: res.statusText } }));
+    throw new Error(err.error?.message || err.error?.errors?.[0]?.message || res.statusText);
+  }
+  return res.json();
+}
+
+async function gapiRaw(url, opts = {}) {
+  return fetch(url, {
+    ...opts,
+    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  });
+}
+
+// ─── Projects ────────────────────────────────────────────────────
+async function loadProjects() {
+  const sel = document.getElementById('project-select');
+  try {
+    const data = await gapi('https://cloudresourcemanager.googleapis.com/v1/projects?filter=lifecycleState%3DACTIVE&pageSize=100');
+    const projects = (data.projects || []).sort((a, b) => a.name.localeCompare(b.name));
+    sel.innerHTML = '<option value="">Select a project</option>';
+    for (const p of projects) {
+      sel.innerHTML += `<option value="${p.projectId}">${p.name} (${p.projectId})</option>`;
+    }
+  } catch (e) {
+    sel.innerHTML = `<option value="">Failed to load: ${e.message}</option>`;
+  }
+}
+
+// ─── Config toggles ──────────────────────────────────────────────
+function setMode(mode, btn) {
+  cfg.mode = mode;
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+function setGpu(gpu, btn) {
+  cfg.gpu = gpu;
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ─── Deploy ──────────────────────────────────────────────────────
+async function deploy() {
+  const project = document.getElementById('project-select').value;
+  if (!project) { alert('Select a project first.'); return; }
+
+  cfg.ttl = parseInt(document.getElementById('ttl-input').value) || 4;
+  deployState.project = project;
+  deployState.vmName = VM_PREFIX + '-' + Date.now().toString().slice(-6);
+  deployState.startTime = Date.now();
+
+  hide('step-config');
+  show('step-progress');
+  clearLog();
+
+  const zones = cfg.gpu === 'l4' ? L4_ZONES : T4_ZONES;
+  const machine = cfg.gpu === 'l4' ? 'g2-standard-4' : 'n1-standard-4';
+  const accelType = cfg.gpu === 'l4' ? 'nvidia-l4' : 'nvidia-tesla-t4';
+  const image = `ghcr.io/beastoin/highperfasr-${cfg.mode}:${VERSION}`;
+  const port = cfg.mode === 'batch' ? 8000 : 8001;
+
+  try {
+    // Preflight
+    setStage('preflight', 'active');
+    log('Checking Compute Engine API...');
+    await gapi(`https://compute.googleapis.com/compute/v1/projects/${project}`);
+    log('Compute Engine API enabled.');
+    setStage('preflight', 'done');
+
+    // Firewall
+    setStage('firewall', 'active');
+    log('Checking firewall rule...');
+    const fwRes = await gapiRaw(`https://compute.googleapis.com/compute/v1/projects/${project}/global/firewalls/${FW_RULE}`);
+    if (fwRes.ok) {
+      log('Firewall rule already exists.');
+    } else {
+      log('Creating firewall rule...');
+      const fwOp = await gapi(`https://compute.googleapis.com/compute/v1/projects/${project}/global/firewalls`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: FW_RULE,
+          allowed: [{ IPProtocol: 'tcp', ports: ['8000', '8001'] }],
+          sourceRanges: ['0.0.0.0/0'],
+          targetTags: ['highperfasr'],
+          description: 'HighPerfASR — auto-created by deploy page'
+        })
+      });
+      await waitForOp(project, fwOp.name, 'global');
+      log('Firewall rule created.');
+    }
+    setStage('firewall', 'done');
+
+    // Create VM with zone fallback
+    setStage('vm', 'active');
+    let created = false;
+    for (const zone of zones) {
+      log(`Trying zone ${zone}...`);
+      try {
+        const startupScript = buildStartupScript(image, cfg.mode === 'batch' ? 'highperfasr-batch' : 'highperfasr-stream', port, cfg.ttl);
+        const body = buildVmBody(deployState.vmName, zone, machine, accelType, startupScript, cfg);
+        const op = await gapi(`https://compute.googleapis.com/compute/v1/projects/${project}/zones/${zone}/instances`, {
+          method: 'POST', body: JSON.stringify(body)
+        });
+        await waitForOp(project, op.name, 'zone', zone);
+        deployState.zone = zone;
+        created = true;
+        log(`VM created in ${zone}.`);
+        break;
+      } catch (e) {
+        if (e.message.includes('ZONE_RESOURCE_POOL_EXHAUSTED') || e.message.includes('resource_availability') || e.message.includes('does not have enough resources')) {
+          log(`No capacity in ${zone}, trying next...`);
+        } else {
+          throw e;
+        }
+      }
+    }
+    if (!created) throw new Error('No GPU capacity in any zone. Try again later or request quota.');
+    setStage('vm', 'done');
+
+    // Get IP
+    const inst = await gapi(`https://compute.googleapis.com/compute/v1/projects/${project}/zones/${deployState.zone}/instances/${deployState.vmName}`);
+    deployState.ip = inst.networkInterfaces?.[0]?.accessConfigs?.[0]?.natIP;
+    if (!deployState.ip) throw new Error('VM has no external IP');
+    log(`External IP: ${deployState.ip}`);
+
+    // Wait for health — estimate via elapsed time + serial port
+    const serverUrl = `http://${deployState.ip}:${port}`;
+    setStage('drivers', 'active');
+    log('Waiting for startup script (GPU drivers, container pull, model load)...');
+
+    await pollHealth(project, deployState.zone, deployState.vmName, serverUrl, port);
+
+    // Ready!
+    clearInterval(healthPollId);
+    showReady(serverUrl, port);
+
+  } catch (e) {
+    setStageError(e.message);
+    log('ERROR: ' + e.message);
+  }
+}
+
+function buildStartupScript(image, containerName, port, ttlHours) {
+  const ttlMin = ttlHours * 60;
+  return `#!/bin/bash
+set -ex
+
+IMAGE=${image}
+CONTAINER_NAME=${containerName}
+PORT=${port}
+
+shutdown -h +${ttlMin} "Auto-shutdown: TTL expired" &
+
+if ! command -v docker &>/dev/null; then
+  curl -fsSL https://get.docker.com | sh
+fi
+
+if ! command -v nvidia-ctk &>/dev/null; then
+  curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \\
+    gpg --batch --yes --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+  ARCH=$(dpkg --print-architecture)
+  echo "deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://nvidia.github.io/libnvidia-container/stable/deb/$ARCH /" | \\
+    tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+  apt-get update && apt-get install -y nvidia-container-toolkit
+fi
+nvidia-ctk runtime configure --runtime=docker
+systemctl restart docker
+
+docker pull "$IMAGE"
+docker run -d --gpus all -p "\${PORT}:8000" \\
+  -v hf-cache:/app/.cache/huggingface \\
+  -e NVIDIA_VISIBLE_DEVICES=all \\
+  -e HF_HOME=/app/.cache/huggingface \\
+  -e NUMBA_CACHE_DIR=/tmp/numba_cache \\
+  -e HPFASR_CORS_ORIGINS='*' \\
+  --name "$CONTAINER_NAME" \\
+  --restart unless-stopped \\
+  "$IMAGE"`;
+}
+
+function buildVmBody(name, zone, machine, accelType, startupScript, cfg) {
+  const body = {
+    name,
+    machineType: `zones/${zone}/machineTypes/${machine}`,
+    disks: [{
+      boot: true, autoDelete: true,
+      initializeParams: {
+        sourceImage: 'projects/deeplearning-platform-release/global/images/family/common-cu129-ubuntu-2204-nvidia-580',
+        diskSizeGb: '50', diskType: `zones/${zone}/diskTypes/pd-balanced`
+      }
+    }],
+    networkInterfaces: [{ accessConfigs: [{ type: 'ONE_TO_ONE_NAT', name: 'External NAT' }] }],
+    scheduling: { onHostMaintenance: 'TERMINATE', automaticRestart: false },
+    serviceAccounts: [],
+    metadata: { items: [
+      { key: 'startup-script', value: startupScript },
+      { key: 'install-nvidia-driver', value: 'True' }
+    ]},
+    labels: { app: 'highperfasr', 'created-by': 'launch-gce-web', mode: cfg.mode, 'image-tag': VERSION.replace(/\./g, '-') },
+    tags: { items: ['highperfasr'] }
+  };
+  if (cfg.gpu === 't4') {
+    body.guestAccelerators = [{ acceleratorType: `zones/${zone}/acceleratorTypes/${accelType}`, acceleratorCount: 1 }];
+  }
+  return body;
+}
+
+async function waitForOp(project, opName, scope, zone) {
+  const base = scope === 'global'
+    ? `https://compute.googleapis.com/compute/v1/projects/${project}/global/operations/${opName}`
+    : `https://compute.googleapis.com/compute/v1/projects/${project}/zones/${zone}/operations/${opName}`;
+  for (let i = 0; i < 60; i++) {
+    await sleep(2000);
+    const op = await gapi(base);
+    if (op.status === 'DONE') {
+      if (op.error) throw new Error(op.error.errors.map(e => e.message || e.code).join('; '));
+      return op;
+    }
+  }
+  throw new Error('Operation timed out');
+}
+
+async function pollHealth(project, zone, vmName, serverUrl, port) {
+  const started = Date.now();
+  const maxWait = 720000; // 12 min
+
+  for (let i = 0; i < 144; i++) { // 144 * 5s = 12 min
+    const elapsed = Date.now() - started;
+    const elapsedSec = Math.round(elapsed / 1000);
+    updateProgress(elapsed);
+
+    // Try serial port for stage detection
+    try {
+      const serial = await gapi(`https://compute.googleapis.com/compute/v1/projects/${project}/zones/${zone}/instances/${vmName}/serialPortOutput?start=-4096`);
+      const content = serial.contents || '';
+      if (content.includes('docker run')) {
+        setStage('drivers', 'done');
+        setStage('pull', 'done');
+        setStage('model', 'active');
+      } else if (content.includes('docker pull')) {
+        setStage('drivers', 'done');
+        setStage('pull', 'active');
+      } else if (content.includes('nvidia-ctk') || content.includes('apt-get')) {
+        setStage('drivers', 'active');
+      }
+    } catch {}
+
+    // Try health check (may fail due to mixed content on HTTPS pages)
+    try {
+      const hRes = await fetch(serverUrl + '/health', { mode: 'cors', signal: AbortSignal.timeout(3000) });
+      if (hRes.ok) {
+        setStage('drivers', 'done');
+        setStage('pull', 'done');
+        setStage('model', 'done');
+        setStage('health', 'done');
+        log(`Server healthy at ${elapsedSec}s`);
+        return;
+      }
+    } catch {}
+
+    await sleep(5000);
+  }
+
+  // Timeout — show manual verification option
+  setStage('health', 'active');
+  log('Server may be ready — HTTPS mixed-content policy may block the health check from this page.');
+  log(`Verify manually: curl ${serverUrl}/health`);
+
+  const proceed = confirm(
+    `The server is likely ready but this page cannot verify it over HTTPS.\n\n` +
+    `Click OK if you have verified the server is healthy, or Cancel to keep waiting.\n\n` +
+    `Verify: curl ${serverUrl}/health`
+  );
+  if (proceed) {
+    setStage('health', 'done');
+    return;
+  }
+  throw new Error(`Health check timed out. Verify manually: curl ${serverUrl}/health`);
+}
+
+function updateProgress(elapsed) {
+  const pct = Math.min(95, (elapsed / 360000) * 100);
+  document.getElementById('progress-fill').style.width = pct + '%';
+
+  if (elapsed < 60000) {
+    setStage('drivers', 'active');
+  } else if (elapsed < 180000) {
+    setStage('drivers', 'done');
+    setStage('pull', 'active');
+  } else if (elapsed < 420000) {
+    setStage('drivers', 'done');
+    setStage('pull', 'done');
+    setStage('model', 'active');
+  }
+}
+
+function showReady(serverUrl, port) {
+  const elapsed = Math.round((Date.now() - deployState.startTime) / 1000);
+  hide('step-progress');
+  show('step-ready');
+  show('step-benchmark');
+
+  document.getElementById('ready-time').textContent = `Ready in ${elapsed}s`;
+  document.getElementById('ready-url').textContent = serverUrl;
+  document.getElementById('ready-mode').textContent = cfg.mode;
+  document.getElementById('ready-gpu').textContent = cfg.gpu.toUpperCase();
+  document.getElementById('ready-image').textContent = `ghcr.io/beastoin/highperfasr-${cfg.mode}:${VERSION}`;
+  document.getElementById('ready-ttl').textContent = `${cfg.ttl}h auto-shutdown`;
+  document.getElementById('ready-vm').textContent = deployState.vmName;
+  document.getElementById('ready-zone').textContent = deployState.zone;
+
+  if (cfg.mode === 'batch') {
+    document.getElementById('bench-title').textContent = 'Batch Benchmark';
+    document.getElementById('bench-command').textContent =
+      `python3 benchmarks/scripts/bench_batch.py \\\n  --server ${serverUrl} \\\n  --concurrency 1,8,16,32,64 \\\n  --image-tag ${VERSION} \\\n  --output /tmp/bench_batch.json`;
+    document.getElementById('quick-test-command').textContent =
+      `curl -F 'file=@audio.wav' ${serverUrl}/v1/transcriptions`;
+  } else {
+    document.getElementById('bench-title').textContent = 'Streaming Benchmark';
+    document.getElementById('bench-command').textContent =
+      `python3 benchmarks/scripts/bench_stream.py \\\n  --server ws://${deployState.ip}:${port} \\\n  --endpoint /v1/stream \\\n  --concurrency 1,16,32 \\\n  --image-tag ${VERSION} \\\n  --output /tmp/bench_stream.json`;
+    document.getElementById('quick-test-command').textContent =
+      `python3 -c "import asyncio, websockets\nasyncio.run(websockets.connect('ws://${deployState.ip}:${port}/v1/stream'))"`;
+  }
+}
+
+// ─── Teardown ────────────────────────────────────────────────────
+async function teardown() {
+  if (!confirm(`Delete VM ${deployState.vmName} and firewall rule?`)) return;
+  try {
+    log('Deleting VM...');
+    await gapi(`https://compute.googleapis.com/compute/v1/projects/${deployState.project}/zones/${deployState.zone}/instances/${deployState.vmName}`, { method: 'DELETE' });
+    log('VM deleted.');
+
+    log('Deleting firewall rule...');
+    await gapi(`https://compute.googleapis.com/compute/v1/projects/${deployState.project}/global/firewalls/${FW_RULE}`, { method: 'DELETE' }).catch(() => {});
+    log('Firewall rule deleted.');
+
+    alert('Teardown complete. VM and firewall rule deleted.');
+    hide('step-ready'); hide('step-benchmark');
+    show('step-config');
+  } catch (e) {
+    alert('Teardown error: ' + e.message);
+  }
+}
+
+// ─── UI helpers ──────────────────────────────────────────────────
+function show(id) { document.getElementById(id).classList.remove('hidden'); }
+function hide(id) { document.getElementById(id).classList.add('hidden'); }
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function setStage(name, state) {
+  const el = document.querySelector(`[data-stage="${name}"]`);
+  if (!el) return;
+  el.className = 'progress-stage ' + state;
+  if (state === 'done') {
+    const elapsed = Math.round((Date.now() - deployState.startTime) / 1000);
+    el.querySelector('.time').textContent = elapsed + 's';
+  }
+}
+
+function setStageError(msg) {
+  const stages = document.querySelectorAll('.progress-stage.active');
+  stages.forEach(s => s.className = 'progress-stage error');
+  const errBox = document.getElementById('progress-error');
+  errBox.textContent = msg;
+  errBox.classList.remove('hidden');
+}
+
+function log(msg) {
+  const panel = document.getElementById('log-panel');
+  panel.textContent += msg + '\n';
+  panel.scrollTop = panel.scrollHeight;
+}
+function clearLog() { document.getElementById('log-panel').textContent = ''; }
+function toggleLog() {
+  document.getElementById('log-panel').classList.toggle('open');
+}
+
+function copyUrl() {
+  navigator.clipboard.writeText(document.getElementById('ready-url').textContent);
+}
+function openHealth() {
+  window.open(document.getElementById('ready-url').textContent + '/health', '_blank');
+}
+function copyBench() {
+  navigator.clipboard.writeText(document.getElementById('bench-command').textContent);
+}
+function copyQuickTest() {
+  navigator.clipboard.writeText(document.getElementById('quick-test-command').textContent);
+}
+function copyEl(el) { navigator.clipboard.writeText(el.textContent); }
+
+// ─── Init ────────────────────────────────────────────────────────
+checkAuth();
+</script>

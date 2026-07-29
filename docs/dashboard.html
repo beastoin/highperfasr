@@ -1293,6 +1293,8 @@ function dlZIP(){
 // ===== INIT =====
 setupDrop('batchDrop','batchFiles',S.batchFiles,'batchFileList');
 $id('sweepFileIn')?.addEventListener('change',function(){addFiles(Array.from(this.files),S.sweepFiles,'sweepFileList');this.value=''});
+const _qp=new URLSearchParams(location.search);
+if(_qp.get('server')) $id('serverUrl').value=_qp.get('server');
 if($id('serverUrl').value) setTimeout(connectServer,500);
 drawHistogram();
 </script>
