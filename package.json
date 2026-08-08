@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "scripts": {
+    "test:deploy": "node web/deploy/tests/e2e/deploy.spec.mjs",
+    "sync:pages": "bash web/scripts/sync-pages.sh"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
