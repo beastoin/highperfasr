@@ -345,6 +345,7 @@ let userEmail = '';
 let cfg = { mode: 'stream', gpu: 'l4', ttl: 4 };
 let deployState = { project: '', zone: '', vmName: '', ip: '', startTime: 0 };
 let projectValidationSeq = 0;
+let projectSelectionSeq = 0;
 
 // ─── OAuth ───────────────────────────────────────────────────────
 function signIn() {
@@ -484,6 +485,7 @@ async function loadProjects() {
 
 async function detectPreviousProject(projectIds) {
   const sel = document.getElementById('project-select');
+  const selectionSeq = projectSelectionSeq;
   const results = await Promise.allSettled(
     projectIds.map(pid =>
       gapiRaw(`https://compute.googleapis.com/compute/v1/projects/${encodeURIComponent(pid)}/global/firewalls/${FW_RULE}`)
@@ -491,13 +493,14 @@ async function detectPreviousProject(projectIds) {
         .catch(() => null)
     )
   );
+  if (selectionSeq !== projectSelectionSeq || sel.value || sel.classList.contains('hidden')) return;
   const found = results.find(r => r.status === 'fulfilled' && r.value);
   if (found) {
     const pid = found.value;
     sel.value = pid;
     const opt = sel.querySelector(`option[value="${pid}"]`);
     if (opt) opt.textContent = opt.textContent.replace(/\)$/, ' — previously used)');
-    onProjectSelected();
+    onProjectSelected(true);
   }
 }
 
@@ -525,13 +528,15 @@ function showProjectFallback(title, detailNodes) {
 }
 
 function toggleManualProject() {
+  projectSelectionSeq++;
   document.getElementById('project-select').classList.add('hidden');
   document.getElementById('project-manual').classList.remove('hidden');
   document.getElementById('project-manual-help').classList.remove('hidden');
   document.getElementById('project-manual-toggle').classList.add('hidden');
 }
 
-async function onProjectSelected() {
+async function onProjectSelected(autoSelected = false) {
+  if (!autoSelected) projectSelectionSeq++;
   const sel = document.getElementById('project-select');
   if (sel.value === '__create__') {
     window.open('https://console.cloud.google.com/projectcreate', '_blank', 'noopener');
@@ -542,6 +547,7 @@ async function onProjectSelected() {
 }
 
 async function onProjectManualBlur() {
+  projectSelectionSeq++;
   const val = document.getElementById('project-manual').value.trim();
   if (val) validateProject(val);
 }
@@ -838,7 +844,24 @@ docker run -d --gpus all -p "\${PORT}:8000" \\
   -e HPFASR_CORS_ORIGINS='*' \\
   --name "$CONTAINER_NAME" \\
   --restart unless-stopped \\
-  "$IMAGE"`;
+  "$IMAGE"
+
+for i in {1..144}; do
+  if curl -fsS "http://127.0.0.1:\${PORT}/health" >/dev/null; then
+    echo "HPFASR_HEALTH_READY"
+    exit 0
+  fi
+  if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+    echo "HPFASR_CONTAINER_EXITED"
+    docker logs "$CONTAINER_NAME" || true
+    exit 1
+  fi
+  sleep 5
+done
+
+echo "HPFASR_HEALTH_TIMEOUT"
+docker logs --tail 100 "$CONTAINER_NAME" || true
+exit 1`;
 }
 
 function buildVmBody(name, zone, machine, accelType, startupScript, cfg) {
@@ -896,6 +919,20 @@ async function pollHealth(project, zone, vmName, serverUrl) {
     try {
       const serial = await gapi(`https://compute.googleapis.com/compute/v1/projects/${project}/zones/${zone}/instances/${vmName}/serialPortOutput?start=-4096`);
       lastSerialContent = serial.contents || '';
+      if (lastSerialContent.includes('HPFASR_HEALTH_READY')) {
+        setStage('drivers', 'done');
+        setStage('pull', 'done');
+        setStage('model', 'done');
+        setStage('health', 'done');
+        log(`Server healthy at ${elapsedSec}s`);
+        return;
+      }
+      if (lastSerialContent.includes('HPFASR_CONTAINER_EXITED')) {
+        throw new Error(`Container exited before health check passed. Verify manually: curl ${serverUrl}/health`);
+      }
+      if (lastSerialContent.includes('HPFASR_HEALTH_TIMEOUT')) {
+        throw new Error(`Container health check timed out. Verify manually: curl ${serverUrl}/health`);
+      }
       if (lastSerialContent.includes('docker run')) {
         setStage('drivers', 'done');
         setStage('pull', 'done');
@@ -906,7 +943,10 @@ async function pollHealth(project, zone, vmName, serverUrl) {
       } else if (lastSerialContent.includes('nvidia-ctk') || lastSerialContent.includes('apt-get')) {
         setStage('drivers', 'active');
       }
-    } catch {}
+    } catch (e) {
+      const msg = String(e.message || e);
+      if (msg.includes('Container exited') || msg.includes('Container health check timed out')) throw e;
+    }
 
     // Try health check (may fail due to mixed content on HTTPS pages)
     try {
@@ -924,14 +964,15 @@ async function pollHealth(project, zone, vmName, serverUrl) {
     await sleep(5000);
   }
 
-  // Timeout — if on HTTPS and serial shows container started, assume ready
-  const containerStarted = lastSerialContent.includes('docker run');
-  if (window.location.protocol === 'https:' && containerStarted) {
+  // Timeout — HTTPS pages can rely on the VM-side health sentinel when browser fetch is blocked.
+  const healthReady = lastSerialContent.includes('HPFASR_HEALTH_READY');
+  const containerStarted = healthReady || lastSerialContent.includes('docker run');
+  if (window.location.protocol === 'https:' && healthReady) {
     setStage('drivers', 'done');
     setStage('pull', 'done');
     setStage('model', 'done');
     setStage('health', 'done');
-    log('Container started. Health check skipped (HTTPS mixed-content policy).');
+    log('VM-side health check passed. Browser health fetch skipped (HTTPS mixed-content policy).');
     log(`Verify: curl ${serverUrl}/health`);
     return;
   }
