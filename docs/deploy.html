@@ -218,7 +218,7 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
         <option value="0">Never</option>
       </select>
     </div>
-    <button class="deploy-btn" id="deploy-btn" onclick="deploy()">Deploy Server</button>
+    <button class="deploy-btn" id="deploy-btn" onclick="deploy()" disabled>Deploy Server</button>
   </div>
 
   <!-- Step 3: Progress -->
@@ -529,6 +529,7 @@ function showProjectFallback(title, detailNodes) {
 
 function toggleManualProject() {
   projectSelectionSeq++;
+  clearProjectStatus();
   document.getElementById('project-select').classList.add('hidden');
   document.getElementById('project-manual').classList.remove('hidden');
   document.getElementById('project-manual-help').classList.remove('hidden');
@@ -541,15 +542,32 @@ async function onProjectSelected(autoSelected = false) {
   if (sel.value === '__create__') {
     window.open('https://console.cloud.google.com/projectcreate', '_blank', 'noopener');
     sel.value = '';
+    clearProjectStatus();
     return;
   }
-  if (sel.value) validateProject(sel.value);
+  if (sel.value) {
+    validateProject(sel.value);
+  } else {
+    clearProjectStatus();
+  }
 }
 
 async function onProjectManualBlur() {
   projectSelectionSeq++;
   const val = document.getElementById('project-manual').value.trim();
-  if (val) validateProject(val);
+  if (val) {
+    validateProject(val);
+  } else {
+    clearProjectStatus();
+  }
+}
+
+function clearProjectStatus() {
+  projectValidationSeq++;
+  const status = document.getElementById('project-status');
+  status.classList.add('hidden');
+  status.replaceChildren();
+  document.getElementById('deploy-btn').disabled = true;
 }
 
 function setProjectStatus(level, nodes) {
@@ -561,7 +579,7 @@ function setProjectStatus(level, nodes) {
   status.style.background = bg;
   status.style.color = fg;
   status.replaceChildren(...(Array.isArray(nodes) ? nodes : [document.createTextNode(nodes)]));
-  deployBtn.disabled = (level === 'error' || level === 'warn');
+  deployBtn.disabled = level !== 'ok';
 }
 
 function statusLink(text, url) {
@@ -1103,8 +1121,15 @@ function retryDeploy() {
   document.getElementById('progress-fill').style.width = '0%';
   document.getElementById('progress-error').classList.add('hidden');
   document.getElementById('retry-btn').classList.add('hidden');
-  document.getElementById('project-status').classList.add('hidden');
-  document.getElementById('deploy-btn').disabled = false;
+  const projectSelect = document.getElementById('project-select');
+  const manualProject = document.getElementById('project-manual').value.trim();
+  const selVal = projectSelect.value === '__create__' ? '' : projectSelect.value;
+  const project = projectSelect.classList.contains('hidden') ? manualProject : (selVal || manualProject);
+  if (project) {
+    validateProject(project);
+  } else {
+    clearProjectStatus();
+  }
 }
 
 function log(msg) {
