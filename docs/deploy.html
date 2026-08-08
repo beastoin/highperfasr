@@ -435,6 +435,7 @@ async function gapiRaw(url, opts = {}) {
 // ─── Projects ────────────────────────────────────────────────────
 async function loadProjects() {
   const sel = document.getElementById('project-select');
+  resetProjectUiForLoading();
   try {
     const data = await gapi('https://cloudresourcemanager.googleapis.com/v1/projects?filter=lifecycleState%3DACTIVE&pageSize=100');
     const projects = (data.projects || []).sort((a, b) => a.name.localeCompare(b.name));
@@ -450,6 +451,7 @@ async function loadProjects() {
       defaultOption.value = '';
       defaultOption.textContent = 'Select a project (' + projects.length + ' found)';
       sel.replaceChildren(defaultOption);
+      sel.classList.remove('hidden');
 
       const createOption = document.createElement('option');
       createOption.value = '__create__';
@@ -481,6 +483,27 @@ async function loadProjects() {
       document.createTextNode('.')
     ]);
   }
+}
+
+function resetProjectUiForLoading() {
+  projectSelectionSeq++;
+  clearProjectStatus();
+  const sel = document.getElementById('project-select');
+  const loadingOption = document.createElement('option');
+  loadingOption.value = '';
+  loadingOption.textContent = 'Loading projects...';
+  sel.replaceChildren(loadingOption);
+  sel.classList.remove('hidden');
+
+  const notice = document.getElementById('project-notice');
+  notice.classList.add('hidden');
+  notice.replaceChildren();
+
+  const manual = document.getElementById('project-manual');
+  manual.value = '';
+  manual.classList.add('hidden');
+  document.getElementById('project-manual-help').classList.add('hidden');
+  document.getElementById('project-manual-toggle').classList.add('hidden');
 }
 
 async function detectPreviousProject(projectIds) {
