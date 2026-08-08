@@ -449,6 +449,12 @@ async function loadProjects() {
       defaultOption.value = '';
       defaultOption.textContent = 'Select a project (' + projects.length + ' found)';
       sel.replaceChildren(defaultOption);
+
+      const createOption = document.createElement('option');
+      createOption.value = '__create__';
+      createOption.textContent = '+ Create new project...';
+      sel.appendChild(createOption);
+
       for (const p of projects) {
         const option = document.createElement('option');
         option.value = p.projectId;
@@ -456,6 +462,8 @@ async function loadProjects() {
         sel.appendChild(option);
       }
       document.getElementById('project-manual-toggle').classList.remove('hidden');
+
+      detectPreviousProject(projects.map(p => p.projectId));
     }
   } catch (e) {
     sel.classList.add('hidden');
@@ -471,6 +479,22 @@ async function loadProjects() {
       statusLink('Resource Manager', 'https://console.cloud.google.com/cloud-resource-manager'),
       document.createTextNode('.')
     ]);
+  }
+}
+
+async function detectPreviousProject(projectIds) {
+  const sel = document.getElementById('project-select');
+  for (const pid of projectIds) {
+    try {
+      const res = await gapiRaw(`https://compute.googleapis.com/compute/v1/projects/${encodeURIComponent(pid)}/global/firewalls/${FW_RULE}`);
+      if (res.ok) {
+        sel.value = pid;
+        const opt = sel.querySelector(`option[value="${pid}"]`);
+        if (opt) opt.textContent = opt.textContent.replace(/\)$/, ' — previously used)');
+        onProjectSelected();
+        return;
+      }
+    } catch {}
   }
 }
 
@@ -506,6 +530,11 @@ function toggleManualProject() {
 
 async function onProjectSelected() {
   const sel = document.getElementById('project-select');
+  if (sel.value === '__create__') {
+    window.open('https://console.cloud.google.com/projectcreate', '_blank', 'noopener');
+    sel.value = '';
+    return;
+  }
   if (sel.value) validateProject(sel.value);
 }
 
@@ -627,7 +656,8 @@ async function deploy() {
 
   const projectSelect = document.getElementById('project-select');
   const manualProject = document.getElementById('project-manual').value.trim();
-  const project = projectSelect.classList.contains('hidden') ? manualProject : (projectSelect.value || manualProject);
+  const selVal = projectSelect.value === '__create__' ? '' : projectSelect.value;
+  const project = projectSelect.classList.contains('hidden') ? manualProject : (selVal || manualProject);
   if (!project) { alert('Select or enter a GCP project ID.'); return; }
   if (!PROJECT_ID_RE.test(project)) { alert('Invalid project ID format.'); return; }
 
