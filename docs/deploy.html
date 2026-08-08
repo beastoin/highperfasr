@@ -484,17 +484,20 @@ async function loadProjects() {
 
 async function detectPreviousProject(projectIds) {
   const sel = document.getElementById('project-select');
-  for (const pid of projectIds) {
-    try {
-      const res = await gapiRaw(`https://compute.googleapis.com/compute/v1/projects/${encodeURIComponent(pid)}/global/firewalls/${FW_RULE}`);
-      if (res.ok) {
-        sel.value = pid;
-        const opt = sel.querySelector(`option[value="${pid}"]`);
-        if (opt) opt.textContent = opt.textContent.replace(/\)$/, ' — previously used)');
-        onProjectSelected();
-        return;
-      }
-    } catch {}
+  const results = await Promise.allSettled(
+    projectIds.map(pid =>
+      gapiRaw(`https://compute.googleapis.com/compute/v1/projects/${encodeURIComponent(pid)}/global/firewalls/${FW_RULE}`)
+        .then(res => res.ok ? pid : null)
+        .catch(() => null)
+    )
+  );
+  const found = results.find(r => r.status === 'fulfilled' && r.value);
+  if (found) {
+    const pid = found.value;
+    sel.value = pid;
+    const opt = sel.querySelector(`option[value="${pid}"]`);
+    if (opt) opt.textContent = opt.textContent.replace(/\)$/, ' — previously used)');
+    onProjectSelected();
   }
 }
 
