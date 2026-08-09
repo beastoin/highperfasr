@@ -287,6 +287,107 @@ await test('validateProject keeps deploy disabled without billing read access', 
   assert.equal(btnDisabled, true, 'deploy button should remain disabled without billing read access');
 });
 
+await test('validateProject success checks Compute and billing then enables deploy', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    const calls = [];
+    gapi = async url => {
+      calls.push(url);
+      if (url.includes('compute.googleapis.com')) return {};
+      if (url.includes('cloudbilling.googleapis.com')) return { billingEnabled: true };
+      throw new Error('unexpected URL: ' + url);
+    };
+    await validateProject('my-project-123');
+    return {
+      calls,
+      text: document.getElementById('project-status').textContent,
+      disabled: document.getElementById('deploy-btn').disabled,
+    };
+  });
+  assert.ok(result.calls.some(url => url.includes('compute.googleapis.com')), 'should check Compute API');
+  assert.ok(result.calls.some(url => url.includes('cloudbilling.googleapis.com')), 'should check Cloud Billing API');
+  assert.ok(result.text.includes('Project ready'), `should show ready status, got: ${result.text}`);
+  assert.equal(result.disabled, false, 'deploy button should be enabled after successful validation');
+});
+
+await test('validateProject invalid ID returns before any API call', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    let calls = 0;
+    gapi = async () => {
+      calls++;
+      throw new Error('validateProject should not call APIs for invalid IDs');
+    };
+    await validateProject('Bad_Project');
+    return {
+      calls,
+      text: document.getElementById('project-status').textContent,
+      disabled: document.getElementById('deploy-btn').disabled,
+    };
+  });
+  assert.equal(result.calls, 0, 'invalid project ID should not trigger API calls');
+  assert.ok(result.text.includes('Invalid project ID'), `should show invalid-ID status, got: ${result.text}`);
+  assert.equal(result.disabled, true, 'deploy button should stay disabled for invalid IDs');
+});
+
+await test('validateProject ignores stale results during rapid project switching', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    let resolveOldCompute;
+    gapi = async url => {
+      if (url.includes('/old-project')) {
+        return new Promise(resolve => { resolveOldCompute = () => resolve({}); });
+      }
+      if (url.includes('/new-project') && url.includes('compute.googleapis.com')) return {};
+      if (url.includes('/new-project') && url.includes('cloudbilling.googleapis.com')) return { billingEnabled: true };
+      throw new Error('unexpected URL: ' + url);
+    };
+
+    const oldValidation = validateProject('old-project');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const newValidation = validateProject('new-project');
+    await newValidation;
+    resolveOldCompute();
+    await oldValidation;
+
+    return {
+      text: document.getElementById('project-status').textContent,
+      disabled: document.getElementById('deploy-btn').disabled,
+    };
+  });
+  assert.ok(result.text.includes('Project ready'), `stale validation should not overwrite new status, got: ${result.text}`);
+  assert.equal(result.disabled, false, 'new valid project should remain deployable');
+});
+
+await test('detectPreviousProject ignores stale auto-selection after manual toggle', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    const sel = document.getElementById('project-select');
+    sel.replaceChildren(new Option('Select a project', ''), new Option('Old Project', 'old-project'));
+    sel.classList.remove('hidden');
+
+    let resolveFirewall;
+    gapiRaw = async () => new Promise(resolve => {
+      resolveFirewall = () => resolve({ ok: true });
+    });
+
+    const detection = detectPreviousProject(['old-project']);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    toggleManualProject();
+    resolveFirewall();
+    await detection;
+
+    return {
+      selectHidden: sel.classList.contains('hidden'),
+      selectedValue: sel.value,
+      manualHidden: document.getElementById('project-manual').classList.contains('hidden'),
+    };
+  });
+  assert.equal(result.selectHidden, true, 'manual toggle should keep select hidden');
+  assert.equal(result.selectedValue, '', 'stale detection should not auto-select old project');
+  assert.equal(result.manualHidden, false, 'manual input should remain visible');
+});
+
 await test('setProjectStatus accepts DOM nodes', async () => {
   await simulateSignedIn();
   await page.evaluate(() => {
@@ -337,6 +438,101 @@ await test('statusLink creates DOM-safe link', async () => {
   assert.equal(result.target, '_blank');
   assert.ok(result.rel.includes('noopener'), 'should have noopener');
   assert.equal(result.text, 'Click here');
+});
+
+await test('deploy blocks expired token and signs out before API calls', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    tokenExpiry = Date.now() - 1000;
+    document.getElementById('project-manual').value = 'my-project-123';
+    document.getElementById('project-select').classList.add('hidden');
+    let calls = 0;
+    gapi = async () => {
+      calls++;
+      throw new Error('deploy should not call APIs with an expired token');
+    };
+    const alerts = [];
+    window.alert = msg => alerts.push(msg);
+    await deploy();
+    return {
+      calls,
+      alerts,
+      authPromptHidden: document.getElementById('auth-prompt').classList.contains('hidden'),
+      configHidden: document.getElementById('step-config').classList.contains('hidden'),
+    };
+  });
+  assert.equal(result.calls, 0, 'expired token should stop deploy before API calls');
+  assert.ok(result.alerts.some(msg => msg.includes('session has expired')), `should alert expired session, got: ${result.alerts.join(' | ')}`);
+  assert.equal(result.authPromptHidden, false, 'sign-out should show auth prompt');
+  assert.equal(result.configHidden, true, 'sign-out should hide config');
+});
+
+await test('deploy cancels when orphaned VM warning is declined', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    tokenExpiry = Date.now() + 3600000;
+    document.getElementById('project-manual').value = 'my-project-123';
+    document.getElementById('project-select').classList.add('hidden');
+    const calls = [];
+    gapi = async url => {
+      calls.push(url);
+      if (url.includes('/aggregated/instances')) {
+        return {
+          items: {
+            'zones/us-central1-a': {
+              instances: [{ name: 'hpfasr-old', status: 'RUNNING' }],
+            },
+          },
+        };
+      }
+      if (url.includes('compute.googleapis.com')) return {};
+      throw new Error('unexpected URL: ' + url);
+    };
+    gapiRaw = async url => {
+      calls.push(url);
+      return { ok: true };
+    };
+    window.confirm = () => false;
+    await deploy();
+    return {
+      calls,
+      errorText: document.getElementById('progress-error').textContent,
+      retryVisible: !document.getElementById('retry-btn').classList.contains('hidden'),
+    };
+  });
+  assert.ok(result.calls.some(url => url.includes('/aggregated/instances')), 'should check for existing HighPerfASR VMs');
+  assert.ok(!result.calls.some(url => url.includes('/global/firewalls/')), 'declining warning should stop before firewall work');
+  assert.ok(result.errorText.includes('Deploy cancelled'), `should show cancellation error, got: ${result.errorText}`);
+  assert.equal(result.retryVisible, true, 'retry button should be visible after cancellation');
+});
+
+await test('pollHealth accepts serial-port health on HTTPS mixed-content path', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    const originalProtocol = Object.getOwnPropertyDescriptor(Location.prototype, 'protocol');
+    Object.defineProperty(Location.prototype, 'protocol', { configurable: true, get: () => 'https:' });
+    gapi = async url => {
+      if (url.includes('serialPortOutput')) return { contents: 'docker run\nHPFASR_HEALTH_READY\n' };
+      throw new Error('unexpected URL: ' + url);
+    };
+    window.fetch = async () => { throw new TypeError('Mixed content blocked'); };
+    sleep = async () => {};
+    deployState.startTime = Date.now() - 1000;
+    document.getElementById('step-progress').classList.remove('hidden');
+
+    try {
+      await pollHealth('my-project-123', 'us-central1-a', 'hpfasr-test', 'http://10.0.0.1:8001');
+    } finally {
+      if (originalProtocol) Object.defineProperty(Location.prototype, 'protocol', originalProtocol);
+    }
+
+    return {
+      healthClass: document.querySelector('[data-stage="health"]').className,
+      logText: document.getElementById('log-panel').textContent,
+    };
+  });
+  assert.ok(result.healthClass.includes('done'), `health stage should be done, got: ${result.healthClass}`);
+  assert.ok(result.logText.includes('Server healthy'), `serial sentinel should mark healthy, got: ${result.logText}`);
 });
 
 await test('showProjectFallback renders notice with DOM nodes', async () => {
