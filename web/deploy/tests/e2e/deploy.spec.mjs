@@ -218,6 +218,399 @@ await test('renderLinkedText converts URLs to clickable links', async () => {
   assert.equal(linkTarget, '_blank');
 });
 
+// --- PR #36 features: project validation, setProjectStatus, PROJECT_ID_RE ---
+
+await test('setProjectStatus ok shows green status and enables deploy', async () => {
+  await simulateSignedIn();
+  await page.evaluate(() => {
+    setProjectStatus('ok', 'Project ready — Compute Engine API and billing enabled');
+  });
+  const statusVisible = await page.$eval('#project-status', el => !el.classList.contains('hidden'));
+  assert.ok(statusVisible, 'status should be visible');
+  const text = await page.$eval('#project-status', el => el.textContent);
+  assert.ok(text.includes('Project ready'), 'should show ok message');
+  const btnDisabled = await page.$eval('#deploy-btn', el => el.disabled);
+  assert.equal(btnDisabled, false, 'deploy button should be enabled on ok');
+});
+
+await test('setProjectStatus error shows red status and disables deploy', async () => {
+  await simulateSignedIn();
+  await page.evaluate(() => {
+    setProjectStatus('error', 'Invalid project ID format.');
+  });
+  const text = await page.$eval('#project-status', el => el.textContent);
+  assert.ok(text.includes('Invalid project ID'), 'should show error text');
+  const btnDisabled = await page.$eval('#deploy-btn', el => el.disabled);
+  assert.equal(btnDisabled, true, 'deploy button should be disabled on error');
+});
+
+await test('setProjectStatus warn disables deploy', async () => {
+  await simulateSignedIn();
+  await page.evaluate(() => {
+    setProjectStatus('warn', 'Billing not enabled.');
+  });
+  const btnDisabled = await page.$eval('#deploy-btn', el => el.disabled);
+  assert.equal(btnDisabled, true, 'deploy button should be disabled on warn');
+});
+
+await test('validateProject keeps deploy disabled when billing cannot be verified', async () => {
+  await simulateSignedIn();
+  await page.evaluate(async () => {
+    gapi = async url => {
+      if (url.includes('compute.googleapis.com')) return {};
+      if (url.includes('cloudbilling.googleapis.com')) throw new Error('backendError');
+      throw new Error('unexpected URL: ' + url);
+    };
+    document.getElementById('deploy-btn').disabled = false;
+    await validateProject('my-project-123');
+  });
+  const text = await page.$eval('#project-status', el => el.textContent);
+  assert.ok(text.includes('Could not verify billing'), `should show billing verification warning, got: ${text}`);
+  const btnDisabled = await page.$eval('#deploy-btn', el => el.disabled);
+  assert.equal(btnDisabled, true, 'deploy button should remain disabled when billing check fails');
+});
+
+await test('validateProject keeps deploy disabled without billing read access', async () => {
+  await simulateSignedIn();
+  await page.evaluate(async () => {
+    gapi = async url => {
+      if (url.includes('compute.googleapis.com')) return {};
+      if (url.includes('cloudbilling.googleapis.com')) throw new Error('403 forbidden');
+      throw new Error('unexpected URL: ' + url);
+    };
+    document.getElementById('deploy-btn').disabled = false;
+    await validateProject('my-project-123');
+  });
+  const text = await page.$eval('#project-status', el => el.textContent);
+  assert.ok(text.includes('Billing status could not be verified'), `should show billing access warning, got: ${text}`);
+  const btnDisabled = await page.$eval('#deploy-btn', el => el.disabled);
+  assert.equal(btnDisabled, true, 'deploy button should remain disabled without billing read access');
+});
+
+await test('validateProject success checks Compute and billing then enables deploy', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    const calls = [];
+    gapi = async url => {
+      calls.push(url);
+      if (url.includes('compute.googleapis.com')) return {};
+      if (url.includes('cloudbilling.googleapis.com')) return { billingEnabled: true };
+      throw new Error('unexpected URL: ' + url);
+    };
+    await validateProject('my-project-123');
+    return {
+      calls,
+      text: document.getElementById('project-status').textContent,
+      disabled: document.getElementById('deploy-btn').disabled,
+    };
+  });
+  assert.ok(result.calls.some(url => url.includes('compute.googleapis.com')), 'should check Compute API');
+  assert.ok(result.calls.some(url => url.includes('cloudbilling.googleapis.com')), 'should check Cloud Billing API');
+  assert.ok(result.text.includes('Project ready'), `should show ready status, got: ${result.text}`);
+  assert.equal(result.disabled, false, 'deploy button should be enabled after successful validation');
+});
+
+await test('validateProject invalid ID returns before any API call', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    let calls = 0;
+    gapi = async () => {
+      calls++;
+      throw new Error('validateProject should not call APIs for invalid IDs');
+    };
+    await validateProject('Bad_Project');
+    return {
+      calls,
+      text: document.getElementById('project-status').textContent,
+      disabled: document.getElementById('deploy-btn').disabled,
+    };
+  });
+  assert.equal(result.calls, 0, 'invalid project ID should not trigger API calls');
+  assert.ok(result.text.includes('Invalid project ID'), `should show invalid-ID status, got: ${result.text}`);
+  assert.equal(result.disabled, true, 'deploy button should stay disabled for invalid IDs');
+});
+
+await test('validateProject ignores stale results during rapid project switching', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    let resolveOldCompute;
+    gapi = async url => {
+      if (url.includes('/old-project')) {
+        return new Promise(resolve => { resolveOldCompute = () => resolve({}); });
+      }
+      if (url.includes('/new-project') && url.includes('compute.googleapis.com')) return {};
+      if (url.includes('/new-project') && url.includes('cloudbilling.googleapis.com')) return { billingEnabled: true };
+      throw new Error('unexpected URL: ' + url);
+    };
+
+    const oldValidation = validateProject('old-project');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const newValidation = validateProject('new-project');
+    await newValidation;
+    resolveOldCompute();
+    await oldValidation;
+
+    return {
+      text: document.getElementById('project-status').textContent,
+      disabled: document.getElementById('deploy-btn').disabled,
+    };
+  });
+  assert.ok(result.text.includes('Project ready'), `stale validation should not overwrite new status, got: ${result.text}`);
+  assert.equal(result.disabled, false, 'new valid project should remain deployable');
+});
+
+await test('detectPreviousProject ignores stale auto-selection after manual toggle', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    const sel = document.getElementById('project-select');
+    sel.replaceChildren(new Option('Select a project', ''), new Option('Old Project', 'old-project'));
+    sel.classList.remove('hidden');
+
+    let resolveFirewall;
+    gapiRaw = async () => new Promise(resolve => {
+      resolveFirewall = () => resolve({ ok: true });
+    });
+
+    const detection = detectPreviousProject(['old-project']);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    toggleManualProject();
+    resolveFirewall();
+    await detection;
+
+    return {
+      selectHidden: sel.classList.contains('hidden'),
+      selectedValue: sel.value,
+      manualHidden: document.getElementById('project-manual').classList.contains('hidden'),
+    };
+  });
+  assert.equal(result.selectHidden, true, 'manual toggle should keep select hidden');
+  assert.equal(result.selectedValue, '', 'stale detection should not auto-select old project');
+  assert.equal(result.manualHidden, false, 'manual input should remain visible');
+});
+
+await test('setProjectStatus accepts DOM nodes', async () => {
+  await simulateSignedIn();
+  await page.evaluate(() => {
+    setProjectStatus('warn', [
+      document.createTextNode('Billing not enabled. '),
+      statusLink('Enable billing', 'https://console.cloud.google.com/billing'),
+    ]);
+  });
+  const link = await page.$eval('#project-status a', el => el.href);
+  assert.ok(link.includes('console.cloud.google.com/billing'), 'should contain billing link');
+  const linkTarget = await page.$eval('#project-status a', el => el.target);
+  assert.equal(linkTarget, '_blank', 'link should open in new tab');
+});
+
+await test('PROJECT_ID_RE validates format correctly', async () => {
+  await simulateSignedIn();
+  const results = await page.evaluate(() => {
+    return {
+      valid: PROJECT_ID_RE.test('my-project-123'),
+      validMin: PROJECT_ID_RE.test('abcdef'),
+      tooShort: PROJECT_ID_RE.test('abcde'),
+      uppercase: PROJECT_ID_RE.test('MY-PROJECT'),
+      startsWithDigit: PROJECT_ID_RE.test('123project'),
+      hasUnderscore: PROJECT_ID_RE.test('my_project_id'),
+    };
+  });
+  assert.equal(results.valid, true, 'valid project ID should pass');
+  assert.equal(results.validMin, true, '6-char ID should pass');
+  assert.equal(results.tooShort, false, '5-char ID should fail');
+  assert.equal(results.uppercase, false, 'uppercase should fail');
+  assert.equal(results.startsWithDigit, false, 'starting with digit should fail');
+});
+
+await test('statusLink creates DOM-safe link', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(() => {
+    const link = statusLink('Click here', 'https://example.com');
+    return {
+      tagName: link.tagName,
+      href: link.href,
+      target: link.target,
+      rel: link.rel,
+      text: link.textContent,
+    };
+  });
+  assert.equal(result.tagName, 'A');
+  assert.equal(result.href, 'https://example.com/');
+  assert.equal(result.target, '_blank');
+  assert.ok(result.rel.includes('noopener'), 'should have noopener');
+  assert.equal(result.text, 'Click here');
+});
+
+await test('deploy blocks expired token and signs out before API calls', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    tokenExpiry = Date.now() - 1000;
+    document.getElementById('project-manual').value = 'my-project-123';
+    document.getElementById('project-select').classList.add('hidden');
+    let calls = 0;
+    gapi = async () => {
+      calls++;
+      throw new Error('deploy should not call APIs with an expired token');
+    };
+    const alerts = [];
+    window.alert = msg => alerts.push(msg);
+    await deploy();
+    return {
+      calls,
+      alerts,
+      authPromptHidden: document.getElementById('auth-prompt').classList.contains('hidden'),
+      configHidden: document.getElementById('step-config').classList.contains('hidden'),
+    };
+  });
+  assert.equal(result.calls, 0, 'expired token should stop deploy before API calls');
+  assert.ok(result.alerts.some(msg => msg.includes('session has expired')), `should alert expired session, got: ${result.alerts.join(' | ')}`);
+  assert.equal(result.authPromptHidden, false, 'sign-out should show auth prompt');
+  assert.equal(result.configHidden, true, 'sign-out should hide config');
+});
+
+await test('deploy cancels when orphaned VM warning is declined', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    tokenExpiry = Date.now() + 3600000;
+    document.getElementById('project-manual').value = 'my-project-123';
+    document.getElementById('project-select').classList.add('hidden');
+    const calls = [];
+    gapi = async url => {
+      calls.push(url);
+      if (url.includes('/aggregated/instances')) {
+        return {
+          items: {
+            'zones/us-central1-a': {
+              instances: [{ name: 'hpfasr-old', status: 'RUNNING' }],
+            },
+          },
+        };
+      }
+      if (url.includes('compute.googleapis.com')) return {};
+      throw new Error('unexpected URL: ' + url);
+    };
+    gapiRaw = async url => {
+      calls.push(url);
+      return { ok: true };
+    };
+    window.confirm = () => false;
+    await deploy();
+    return {
+      calls,
+      errorText: document.getElementById('progress-error').textContent,
+      retryVisible: !document.getElementById('retry-btn').classList.contains('hidden'),
+    };
+  });
+  assert.ok(result.calls.some(url => url.includes('/aggregated/instances')), 'should check for existing HighPerfASR VMs');
+  assert.ok(!result.calls.some(url => url.includes('/global/firewalls/')), 'declining warning should stop before firewall work');
+  assert.ok(result.errorText.includes('Deploy cancelled'), `should show cancellation error, got: ${result.errorText}`);
+  assert.equal(result.retryVisible, true, 'retry button should be visible after cancellation');
+});
+
+await test('pollHealth accepts serial-port health on HTTPS mixed-content path', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    const originalProtocol = Object.getOwnPropertyDescriptor(Location.prototype, 'protocol');
+    Object.defineProperty(Location.prototype, 'protocol', { configurable: true, get: () => 'https:' });
+    gapi = async url => {
+      if (url.includes('serialPortOutput')) return { contents: 'docker run\nHPFASR_HEALTH_READY\n' };
+      throw new Error('unexpected URL: ' + url);
+    };
+    window.fetch = async () => { throw new TypeError('Mixed content blocked'); };
+    sleep = async () => {};
+    deployState.startTime = Date.now() - 1000;
+    document.getElementById('step-progress').classList.remove('hidden');
+
+    try {
+      await pollHealth('my-project-123', 'us-central1-a', 'hpfasr-test', 'http://10.0.0.1:8001');
+    } finally {
+      if (originalProtocol) Object.defineProperty(Location.prototype, 'protocol', originalProtocol);
+    }
+
+    return {
+      healthClass: document.querySelector('[data-stage="health"]').className,
+      logText: document.getElementById('log-panel').textContent,
+    };
+  });
+  assert.ok(result.healthClass.includes('done'), `health stage should be done, got: ${result.healthClass}`);
+  assert.ok(result.logText.includes('Server healthy'), `serial sentinel should mark healthy, got: ${result.logText}`);
+});
+
+await test('loadProjects permission failure shows manual fallback with Resource Manager link', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    gapi = async url => {
+      if (url.includes('cloudresourcemanager.googleapis.com')) {
+        throw new Error('403 forbidden: permission denied');
+      }
+      throw new Error('unexpected URL: ' + url);
+    };
+    await loadProjects();
+    const notice = document.getElementById('project-notice');
+    const link = notice.querySelector('a');
+    return {
+      selectHidden: document.getElementById('project-select').classList.contains('hidden'),
+      manualHidden: document.getElementById('project-manual').classList.contains('hidden'),
+      manualHelpHidden: document.getElementById('project-manual-help').classList.contains('hidden'),
+      noticeHidden: notice.classList.contains('hidden'),
+      noticeText: notice.textContent,
+      linkText: link?.textContent,
+      linkHref: link?.href,
+    };
+  });
+  assert.equal(result.selectHidden, true, 'project select should be hidden after list permission failure');
+  assert.equal(result.manualHidden, false, 'manual project input should be visible after list permission failure');
+  assert.equal(result.manualHelpHidden, false, 'manual project help should be visible after list permission failure');
+  assert.equal(result.noticeHidden, false, 'fallback notice should be visible after list permission failure');
+  assert.ok(result.noticeText.includes('Your account may lack permission to list projects'), `should classify permission error, got: ${result.noticeText}`);
+  assert.equal(result.linkText, 'Resource Manager', 'fallback should render Resource Manager action link text');
+  assert.ok(result.linkHref.includes('console.cloud.google.com/cloud-resource-manager'), 'fallback should link to Resource Manager');
+});
+
+await test('loadProjects API-disabled failure shows manual fallback with Resource Manager link', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    gapi = async url => {
+      if (url.includes('cloudresourcemanager.googleapis.com')) {
+        throw new Error('Cloud Resource Manager API has not been used in project before or it is disabled');
+      }
+      throw new Error('unexpected URL: ' + url);
+    };
+    await loadProjects();
+    const notice = document.getElementById('project-notice');
+    const link = notice.querySelector('a');
+    return {
+      selectHidden: document.getElementById('project-select').classList.contains('hidden'),
+      manualHidden: document.getElementById('project-manual').classList.contains('hidden'),
+      manualHelpHidden: document.getElementById('project-manual-help').classList.contains('hidden'),
+      noticeHidden: notice.classList.contains('hidden'),
+      noticeText: notice.textContent,
+      linkText: link?.textContent,
+      linkHref: link?.href,
+    };
+  });
+  assert.equal(result.selectHidden, true, 'project select should be hidden when Resource Manager is disabled');
+  assert.equal(result.manualHidden, false, 'manual project input should be visible when Resource Manager is disabled');
+  assert.equal(result.manualHelpHidden, false, 'manual project help should be visible when Resource Manager is disabled');
+  assert.equal(result.noticeHidden, false, 'fallback notice should be visible when Resource Manager is disabled');
+  assert.ok(result.noticeText.includes('Cloud Resource Manager API is not enabled'), `should classify API-disabled error, got: ${result.noticeText}`);
+  assert.equal(result.linkText, 'Resource Manager', 'fallback should render Resource Manager action link text');
+  assert.ok(result.linkHref.includes('console.cloud.google.com/cloud-resource-manager'), 'fallback should link to Resource Manager');
+});
+
+await test('showProjectFallback renders notice with DOM nodes', async () => {
+  await simulateSignedIn();
+  await page.evaluate(() => {
+    showProjectFallback('Could not load projects.', [
+      document.createTextNode('Enter your project ID below.'),
+    ]);
+  });
+  const noticeVisible = await page.$eval('#project-notice', el => !el.classList.contains('hidden'));
+  assert.ok(noticeVisible, 'notice should be visible');
+  const text = await page.$eval('#project-notice', el => el.textContent);
+  assert.ok(text.includes('Could not load projects'), 'should show title');
+  assert.ok(text.includes('Enter your project ID'), 'should show detail');
+});
+
 await teardown();
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

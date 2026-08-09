@@ -187,10 +187,11 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
     <div class="card-title">Configure</div>
     <div class="field">
       <label>GCP Project</label>
-      <select id="project-select"><option value="">Loading projects...</option></select>
+      <select id="project-select" onchange="onProjectSelected()"><option value="">Loading projects...</option></select>
       <div id="project-notice" class="setup-notice hidden" style="margin-top:8px"></div>
-      <input type="text" id="project-manual" placeholder="e.g. my-project-123" class="hidden" style="margin-top:8px">
-      <div id="project-manual-help" class="hidden" style="font-size:11px;color:var(--text3);margin-top:4px">Find it at <a href="https://console.cloud.google.com" target="_blank" rel="noopener" style="color:var(--blue)">console.cloud.google.com</a> or run <code style="font-family:var(--mono);font-size:11px">gcloud config get-value project</code></div>
+      <input type="text" id="project-manual" placeholder="e.g. my-project-123" class="hidden" style="margin-top:8px" onblur="onProjectManualBlur()">
+      <div id="project-manual-help" class="hidden" style="font-size:11px;color:var(--text3);margin-top:4px">Find it at <a href="https://console.cloud.google.com/cloud-resource-manager" target="_blank" rel="noopener" style="color:var(--blue)">console.cloud.google.com/cloud-resource-manager</a> or run <code style="font-family:var(--mono);font-size:11px">gcloud config get-value project</code></div>
+      <div id="project-status" class="hidden" style="font-size:12px;margin-top:6px;padding:8px 12px;border-radius:var(--radius)"></div>
       <div id="project-manual-toggle" class="hidden" style="font-size:12px;color:var(--text2);cursor:pointer;margin-top:6px;text-decoration:underline" onclick="toggleManualProject()">Or enter project ID manually</div>
     </div>
     <div class="field">
@@ -218,7 +219,7 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
         <option value="0">Never</option>
       </select>
     </div>
-    <button class="deploy-btn" id="deploy-btn" onclick="deploy()">Deploy Server</button>
+    <button class="deploy-btn" id="deploy-btn" onclick="deploy()" disabled>Deploy Server</button>
   </div>
 
   <!-- Step 3: Progress -->
@@ -275,6 +276,7 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
       <h2>Server Ready!</h2>
       <div class="time" id="ready-time"></div>
     </div>
+    <div id="ready-verify-note" class="hidden" style="background:var(--blue-dim);border:1px solid var(--blue);border-radius:var(--radius);padding:10px 14px;font-size:12px;color:var(--blue);margin-bottom:12px">Verify your server is healthy: <code style="font-family:var(--mono);font-size:11px" id="ready-curl-cmd"></code></div>
     <div class="info-grid">
       <div class="key">Server</div><div class="val" id="ready-url"></div>
       <div class="key">Mode</div><div class="val" id="ready-mode"></div>
@@ -330,7 +332,7 @@ select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%
 //   Authorized redirect URIs: this page's URL
 //   (e.g. https://beastoin.github.io/highperfasr/deploy.html)
 const CLIENT_ID = '380632925882-v23qrf0dnpvjesmib3dl53vlvr44jmsu.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/compute https://www.googleapis.com/auth/cloud-platform.read-only';
+const SCOPES = 'https://www.googleapis.com/auth/compute https://www.googleapis.com/auth/cloud-platform.read-only https://www.googleapis.com/auth/cloud-billing.readonly';
 const VERSION = '0.3.0';
 const L4_ZONES = ['us-central1-a','us-east1-b','us-west1-b','us-east4-c','europe-west4-b'];
 const T4_ZONES = ['us-central1-a','us-east1-b','us-west1-b','europe-west4-b','asia-east1-b'];
@@ -339,10 +341,12 @@ const VM_PREFIX = 'hpfasr';
 
 // ─── State ───────────────────────────────────────────────────────
 let token = null;
+let tokenExpiry = 0;
 let userEmail = '';
 let cfg = { mode: 'stream', gpu: 'l4', ttl: 4 };
 let deployState = { project: '', zone: '', vmName: '', ip: '', startTime: 0 };
-let healthPollId = null;
+let projectValidationSeq = 0;
+let projectSelectionSeq = 0;
 
 // ─── OAuth ───────────────────────────────────────────────────────
 function signIn() {
@@ -388,6 +392,8 @@ function checkAuth() {
   }
   sessionStorage.removeItem('oauth_state');
   token = t;
+  const expiresIn = parseInt(params.get('expires_in') || '3600');
+  tokenExpiry = Date.now() + expiresIn * 1000;
   window.location.hash = '';
   history.replaceState(null, '', window.location.pathname + window.location.search);
   onSignedIn();
@@ -430,17 +436,29 @@ async function gapiRaw(url, opts = {}) {
 // ─── Projects ────────────────────────────────────────────────────
 async function loadProjects() {
   const sel = document.getElementById('project-select');
+  resetProjectUiForLoading();
   try {
     const data = await gapi('https://cloudresourcemanager.googleapis.com/v1/projects?filter=lifecycleState%3DACTIVE&pageSize=100');
     const projects = (data.projects || []).sort((a, b) => a.name.localeCompare(b.name));
     if (projects.length === 0) {
       sel.classList.add('hidden');
-      showProjectFallback('No active projects found for this account. Enter your project ID below.');
+      showProjectFallback('No active projects found.', [
+        document.createTextNode('Create a project at '),
+        statusLink('console.cloud.google.com/projectcreate', 'https://console.cloud.google.com/projectcreate'),
+        document.createTextNode(', then enter the project ID below.')
+      ]);
     } else {
       const defaultOption = document.createElement('option');
       defaultOption.value = '';
-      defaultOption.textContent = 'Select a project';
+      defaultOption.textContent = 'Select a project (' + projects.length + ' found)';
       sel.replaceChildren(defaultOption);
+      sel.classList.remove('hidden');
+
+      const createOption = document.createElement('option');
+      createOption.value = '__create__';
+      createOption.textContent = '+ Create new project...';
+      sel.appendChild(createOption);
+
       for (const p of projects) {
         const option = document.createElement('option');
         option.value = p.projectId;
@@ -448,25 +466,221 @@ async function loadProjects() {
         sel.appendChild(option);
       }
       document.getElementById('project-manual-toggle').classList.remove('hidden');
+
+      detectPreviousProject(projects.map(p => p.projectId));
     }
   } catch (e) {
     sel.classList.add('hidden');
-    showProjectFallback('Enter your GCP project ID to continue.');
+    const msg = String(e.message || e).toLowerCase();
+    let detail = 'Enter your project ID below, or ';
+    if (msg.includes('permission') || msg.includes('forbidden') || msg.includes('403')) {
+      detail = 'Your account may lack permission to list projects. Enter your project ID below, or ';
+    } else if (msg.includes('not enabled') || msg.includes('disabled') || msg.includes('has not been used')) {
+      detail = 'Cloud Resource Manager API is not enabled. Enter your project ID below, or ';
+    }
+    showProjectFallback('Could not load projects.', [
+      document.createTextNode(detail),
+      statusLink('Resource Manager', 'https://console.cloud.google.com/cloud-resource-manager'),
+      document.createTextNode('.')
+    ]);
   }
 }
 
-function showProjectFallback(message) {
-  document.getElementById('project-notice').textContent = message;
-  document.getElementById('project-notice').classList.remove('hidden');
+function resetProjectUiForLoading() {
+  projectSelectionSeq++;
+  clearProjectStatus();
+  const sel = document.getElementById('project-select');
+  const loadingOption = document.createElement('option');
+  loadingOption.value = '';
+  loadingOption.textContent = 'Loading projects...';
+  sel.replaceChildren(loadingOption);
+  sel.classList.remove('hidden');
+
+  const notice = document.getElementById('project-notice');
+  notice.classList.add('hidden');
+  notice.replaceChildren();
+
+  const manual = document.getElementById('project-manual');
+  manual.value = '';
+  manual.classList.add('hidden');
+  document.getElementById('project-manual-help').classList.add('hidden');
+  document.getElementById('project-manual-toggle').classList.add('hidden');
+}
+
+async function detectPreviousProject(projectIds) {
+  const sel = document.getElementById('project-select');
+  const selectionSeq = projectSelectionSeq;
+  const results = await Promise.allSettled(
+    projectIds.map(pid =>
+      gapiRaw(`https://compute.googleapis.com/compute/v1/projects/${encodeURIComponent(pid)}/global/firewalls/${FW_RULE}`)
+        .then(res => res.ok ? pid : null)
+        .catch(() => null)
+    )
+  );
+  if (selectionSeq !== projectSelectionSeq || sel.value || sel.classList.contains('hidden')) return;
+  const found = results.find(r => r.status === 'fulfilled' && r.value);
+  if (found) {
+    const pid = found.value;
+    sel.value = pid;
+    const opt = sel.querySelector(`option[value="${pid}"]`);
+    if (opt) opt.textContent = opt.textContent.replace(/\)$/, ' — previously used)');
+    onProjectSelected(true);
+  }
+}
+
+function showProjectFallback(title, detailNodes) {
+  const notice = document.getElementById('project-notice');
+  notice.replaceChildren();
+  const h = document.createElement('h3');
+  h.textContent = title;
+  notice.appendChild(h);
+  if (detailNodes) {
+    const p = document.createElement('p');
+    p.style.marginTop = '4px';
+    if (typeof detailNodes === 'string') {
+      p.textContent = detailNodes;
+    } else if (Array.isArray(detailNodes)) {
+      p.replaceChildren(...detailNodes);
+    } else {
+      p.appendChild(detailNodes);
+    }
+    notice.appendChild(p);
+  }
+  notice.classList.remove('hidden');
   document.getElementById('project-manual').classList.remove('hidden');
   document.getElementById('project-manual-help').classList.remove('hidden');
 }
 
 function toggleManualProject() {
+  projectSelectionSeq++;
+  clearProjectStatus();
   document.getElementById('project-select').classList.add('hidden');
   document.getElementById('project-manual').classList.remove('hidden');
   document.getElementById('project-manual-help').classList.remove('hidden');
   document.getElementById('project-manual-toggle').classList.add('hidden');
+}
+
+async function onProjectSelected(autoSelected = false) {
+  if (!autoSelected) projectSelectionSeq++;
+  const sel = document.getElementById('project-select');
+  if (sel.value === '__create__') {
+    window.open('https://console.cloud.google.com/projectcreate', '_blank', 'noopener');
+    sel.value = '';
+    clearProjectStatus();
+    return;
+  }
+  if (sel.value) {
+    validateProject(sel.value);
+  } else {
+    clearProjectStatus();
+  }
+}
+
+async function onProjectManualBlur() {
+  projectSelectionSeq++;
+  const val = document.getElementById('project-manual').value.trim();
+  if (val) {
+    validateProject(val);
+  } else {
+    clearProjectStatus();
+  }
+}
+
+function clearProjectStatus() {
+  projectValidationSeq++;
+  const status = document.getElementById('project-status');
+  status.classList.add('hidden');
+  status.replaceChildren();
+  document.getElementById('deploy-btn').disabled = true;
+}
+
+function setProjectStatus(level, nodes) {
+  const status = document.getElementById('project-status');
+  const deployBtn = document.getElementById('deploy-btn');
+  status.classList.remove('hidden');
+  const colors = { ok: ['var(--accent-dim)', 'var(--accent)'], warn: ['var(--warn-dim)', 'var(--warn)'], error: ['var(--error-dim)', 'var(--error)'], info: ['var(--blue-dim)', 'var(--blue)'] };
+  const [bg, fg] = colors[level] || colors.info;
+  status.style.background = bg;
+  status.style.color = fg;
+  status.replaceChildren(...(Array.isArray(nodes) ? nodes : [document.createTextNode(nodes)]));
+  deployBtn.disabled = level !== 'ok';
+}
+
+function statusLink(text, url) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.style.color = 'inherit';
+  a.style.textDecoration = 'underline';
+  a.textContent = text;
+  return a;
+}
+
+const PROJECT_ID_RE = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+
+async function validateProject(projectId) {
+  const seq = ++projectValidationSeq;
+
+  if (!PROJECT_ID_RE.test(projectId)) {
+    setProjectStatus('error', 'Invalid project ID format. Must be 6-30 lowercase letters, digits, or hyphens.');
+    return;
+  }
+  setProjectStatus('info', 'Checking project...');
+  document.getElementById('deploy-btn').disabled = true;
+
+  try {
+    await gapi(`https://compute.googleapis.com/compute/v1/projects/${encodeURIComponent(projectId)}`);
+  } catch (e) {
+    if (seq !== projectValidationSeq) return;
+    const msg = String(e.message || e).toLowerCase();
+
+    if (msg.includes('not found')) {
+      setProjectStatus('error', 'Project not found. Check the project ID.');
+    } else if (msg.includes('has not been used') || msg.includes('disabled') || msg.includes('not enabled') || msg.includes('not activated')) {
+      setProjectStatus('warn', [
+        document.createTextNode('Compute Engine API not enabled. '),
+        statusLink('Enable it', `https://console.developers.google.com/apis/api/compute.googleapis.com/overview?project=${encodeURIComponent(projectId)}`),
+        document.createTextNode(', then re-select your project.')
+      ]);
+    } else if (msg.includes('forbidden') || msg.includes('403') || msg.includes('permission')) {
+      setProjectStatus('error', 'No access — you need Editor or Owner role on this project.');
+    } else {
+      setProjectStatus('warn', 'Could not verify project: ' + (e.message || e));
+    }
+    return;
+  }
+
+  if (seq !== projectValidationSeq) return;
+
+  try {
+    const billing = await gapi(`https://cloudbilling.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/billingInfo`);
+    if (seq !== projectValidationSeq) return;
+    if (!billing.billingEnabled) {
+      setProjectStatus('warn', [
+        document.createTextNode('Billing not enabled. '),
+        statusLink('Enable billing', `https://console.cloud.google.com/billing/linkedaccount?project=${encodeURIComponent(projectId)}`),
+        document.createTextNode(', then re-select your project.')
+      ]);
+      return;
+    }
+  } catch (e) {
+    if (seq !== projectValidationSeq) return;
+    const msg = String(e.message || e).toLowerCase();
+    if (msg.includes('permission') || msg.includes('forbidden') || msg.includes('403')) {
+      setProjectStatus('warn', [
+        document.createTextNode('Billing status could not be verified. Grant Cloud Billing read access or '),
+        statusLink('check billing', `https://console.cloud.google.com/billing/linkedaccount?project=${encodeURIComponent(projectId)}`),
+        document.createTextNode(', then re-select your project.')
+      ]);
+    } else {
+      setProjectStatus('warn', 'Could not verify billing: ' + (e.message || e));
+    }
+    return;
+  }
+
+  if (seq !== projectValidationSeq) return;
+  setProjectStatus('ok', 'Project ready — Compute Engine API and billing enabled');
 }
 
 // ─── Config toggles ──────────────────────────────────────────────
@@ -483,10 +697,18 @@ function setGpu(gpu, btn) {
 
 // ─── Deploy ──────────────────────────────────────────────────────
 async function deploy() {
+  if (tokenExpiry && Date.now() > tokenExpiry - 60000) {
+    alert('Your session has expired. Please sign in again.');
+    signOut();
+    return;
+  }
+
   const projectSelect = document.getElementById('project-select');
   const manualProject = document.getElementById('project-manual').value.trim();
-  const project = projectSelect.classList.contains('hidden') ? manualProject : (projectSelect.value || manualProject);
+  const selVal = projectSelect.value === '__create__' ? '' : projectSelect.value;
+  const project = projectSelect.classList.contains('hidden') ? manualProject : (selVal || manualProject);
   if (!project) { alert('Select or enter a GCP project ID.'); return; }
+  if (!PROJECT_ID_RE.test(project)) { alert('Invalid project ID format.'); return; }
 
   cfg.ttl = parseInt(document.getElementById('ttl-input').value);
   deployState.project = project;
@@ -508,11 +730,11 @@ async function deploy() {
     setStage('preflight', 'active');
     log('Checking Compute Engine API...');
     try {
-      await gapi(`https://compute.googleapis.com/compute/v1/projects/${project}`);
+      await gapi(`https://compute.googleapis.com/compute/v1/projects/${encodeURIComponent(project)}`);
     } catch (e) {
       const message = String(e.message || e).toLowerCase();
       if (message.includes('has not been used') || message.includes('disabled') || message.includes('not enabled') || message.includes('not activated')) {
-        throw new Error(`Compute Engine API is not enabled. Enable it at https://console.developers.google.com/apis/api/compute.googleapis.com/overview?project=${project} — then click "Back to Configure" and retry.`);
+        throw new Error(`Compute Engine API is not enabled. Enable it at https://console.developers.google.com/apis/api/compute.googleapis.com/overview?project=${encodeURIComponent(project)} — then click "Back to Configure" and retry.`);
       }
       if (message.includes('not found')) {
         throw new Error(`Project "${project}" not found. Check the project ID and try again.`);
@@ -523,6 +745,29 @@ async function deploy() {
       throw e;
     }
     log('Compute Engine API enabled.');
+
+    // Check for orphaned VMs from previous deploys
+    try {
+      const existing = await gapi(`https://compute.googleapis.com/compute/v1/projects/${encodeURIComponent(project)}/aggregated/instances?filter=labels.app%3Dhighperfasr%20AND%20labels.created-by%3Dlaunch-gce-web&maxResults=5`);
+      const vms = [];
+      for (const [zone, data] of Object.entries(existing.items || {})) {
+        for (const inst of data.instances || []) {
+          if (inst.status === 'RUNNING' || inst.status === 'STAGING') {
+            vms.push({ name: inst.name, zone: zone.replace('zones/', ''), status: inst.status });
+          }
+        }
+      }
+      if (vms.length > 0) {
+        const names = vms.map(v => v.name).join(', ');
+        log(`Found existing VM(s): ${names}`);
+        if (!confirm(`Found ${vms.length} existing HighPerfASR VM(s): ${names}\n\nClick OK to continue (creates a new VM), or Cancel to go back and teardown the old one first.`)) {
+          throw new Error('Deploy cancelled — teardown existing VMs first.');
+        }
+      }
+    } catch (e) {
+      if (e.message.includes('Deploy cancelled')) throw e;
+    }
+
     setStage('preflight', 'done');
 
     // Firewall
@@ -591,10 +836,9 @@ async function deploy() {
     setStage('drivers', 'active');
     log('Waiting for startup script (GPU drivers, container pull, model load)...');
 
-    await pollHealth(project, deployState.zone, deployState.vmName, serverUrl, port);
+    await pollHealth(project, deployState.zone, deployState.vmName, serverUrl);
 
     // Ready!
-    clearInterval(healthPollId);
     showReady(serverUrl, port);
 
   } catch (e) {
@@ -640,7 +884,24 @@ docker run -d --gpus all -p "\${PORT}:8000" \\
   -e HPFASR_CORS_ORIGINS='*' \\
   --name "$CONTAINER_NAME" \\
   --restart unless-stopped \\
-  "$IMAGE"`;
+  "$IMAGE"
+
+for i in {1..144}; do
+  if curl -fsS "http://127.0.0.1:\${PORT}/health" >/dev/null; then
+    echo "HPFASR_HEALTH_READY"
+    exit 0
+  fi
+  if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER_NAME"; then
+    echo "HPFASR_CONTAINER_EXITED"
+    docker logs "$CONTAINER_NAME" || true
+    exit 1
+  fi
+  sleep 5
+done
+
+echo "HPFASR_HEALTH_TIMEOUT"
+docker logs --tail 100 "$CONTAINER_NAME" || true
+exit 1`;
 }
 
 function buildVmBody(name, zone, machine, accelType, startupScript, cfg) {
@@ -685,9 +946,9 @@ async function waitForOp(project, opName, scope, zone) {
   throw new Error('Operation timed out');
 }
 
-async function pollHealth(project, zone, vmName, serverUrl, port) {
+async function pollHealth(project, zone, vmName, serverUrl) {
   const started = Date.now();
-  const maxWait = 720000; // 12 min
+  let lastSerialContent = '';
 
   for (let i = 0; i < 144; i++) { // 144 * 5s = 12 min
     const elapsed = Date.now() - started;
@@ -697,18 +958,35 @@ async function pollHealth(project, zone, vmName, serverUrl, port) {
     // Try serial port for stage detection
     try {
       const serial = await gapi(`https://compute.googleapis.com/compute/v1/projects/${project}/zones/${zone}/instances/${vmName}/serialPortOutput?start=-4096`);
-      const content = serial.contents || '';
-      if (content.includes('docker run')) {
+      lastSerialContent = serial.contents || '';
+      if (lastSerialContent.includes('HPFASR_HEALTH_READY')) {
+        setStage('drivers', 'done');
+        setStage('pull', 'done');
+        setStage('model', 'done');
+        setStage('health', 'done');
+        log(`Server healthy at ${elapsedSec}s`);
+        return;
+      }
+      if (lastSerialContent.includes('HPFASR_CONTAINER_EXITED')) {
+        throw new Error(`Container exited before health check passed. Verify manually: curl ${serverUrl}/health`);
+      }
+      if (lastSerialContent.includes('HPFASR_HEALTH_TIMEOUT')) {
+        throw new Error(`Container health check timed out. Verify manually: curl ${serverUrl}/health`);
+      }
+      if (lastSerialContent.includes('docker run')) {
         setStage('drivers', 'done');
         setStage('pull', 'done');
         setStage('model', 'active');
-      } else if (content.includes('docker pull')) {
+      } else if (lastSerialContent.includes('docker pull')) {
         setStage('drivers', 'done');
         setStage('pull', 'active');
-      } else if (content.includes('nvidia-ctk') || content.includes('apt-get')) {
+      } else if (lastSerialContent.includes('nvidia-ctk') || lastSerialContent.includes('apt-get')) {
         setStage('drivers', 'active');
       }
-    } catch {}
+    } catch (e) {
+      const msg = String(e.message || e);
+      if (msg.includes('Container exited') || msg.includes('Container health check timed out')) throw e;
+    }
 
     // Try health check (may fail due to mixed content on HTTPS pages)
     try {
@@ -726,21 +1004,20 @@ async function pollHealth(project, zone, vmName, serverUrl, port) {
     await sleep(5000);
   }
 
-  // Timeout — show manual verification option
-  setStage('health', 'active');
-  log('Server may be ready — HTTPS mixed-content policy may block the health check from this page.');
-  log(`Verify manually: curl ${serverUrl}/health`);
-
-  const proceed = confirm(
-    `The server is likely ready but this page cannot verify it over HTTPS.\n\n` +
-    `Click OK if you have verified the server is healthy, or Cancel to keep waiting.\n\n` +
-    `Verify: curl ${serverUrl}/health`
-  );
-  if (proceed) {
+  // Timeout — HTTPS pages can rely on the VM-side health sentinel when browser fetch is blocked.
+  const healthReady = lastSerialContent.includes('HPFASR_HEALTH_READY');
+  const containerStarted = healthReady || lastSerialContent.includes('docker run');
+  if (window.location.protocol === 'https:' && healthReady) {
+    setStage('drivers', 'done');
+    setStage('pull', 'done');
+    setStage('model', 'done');
     setStage('health', 'done');
+    log('VM-side health check passed. Browser health fetch skipped (HTTPS mixed-content policy).');
+    log(`Verify: curl ${serverUrl}/health`);
     return;
   }
-  throw new Error(`Health check timed out. Verify manually: curl ${serverUrl}/health`);
+
+  throw new Error(`Health check timed out after 12 minutes. ${containerStarted ? 'Container started but server did not respond.' : 'Container may still be starting.'} Verify manually: curl ${serverUrl}/health`);
 }
 
 function updateProgress(elapsed) {
@@ -767,6 +1044,10 @@ function showReady(serverUrl, port) {
 
   document.getElementById('ready-time').textContent = `Ready in ${elapsed}s`;
   document.getElementById('ready-url').textContent = serverUrl;
+  if (window.location.protocol === 'https:') {
+    document.getElementById('ready-verify-note').classList.remove('hidden');
+    document.getElementById('ready-curl-cmd').textContent = `curl ${serverUrl}/health`;
+  }
   document.getElementById('ready-mode').textContent = cfg.mode;
   document.getElementById('ready-gpu').textContent = cfg.gpu.toUpperCase();
   document.getElementById('ready-image').textContent = `ghcr.io/beastoin/highperfasr-${cfg.mode}:${VERSION}`;
@@ -841,14 +1122,8 @@ function renderLinkedText(el, text) {
     if (match.index > lastIndex) {
       nodes.push(document.createTextNode(text.slice(lastIndex, match.index)));
     }
-    const link = document.createElement('a');
-    link.href = match[0];
-    link.target = '_blank';
-    link.rel = 'noopener';
-    link.style.color = 'inherit';
-    link.style.textDecoration = 'underline';
+    const link = statusLink(match[0], match[0]);
     link.style.wordBreak = 'break-all';
-    link.textContent = match[0];
     nodes.push(link);
     lastIndex = match.index + match[0].length;
   }
@@ -868,6 +1143,15 @@ function retryDeploy() {
   document.getElementById('progress-fill').style.width = '0%';
   document.getElementById('progress-error').classList.add('hidden');
   document.getElementById('retry-btn').classList.add('hidden');
+  const projectSelect = document.getElementById('project-select');
+  const manualProject = document.getElementById('project-manual').value.trim();
+  const selVal = projectSelect.value === '__create__' ? '' : projectSelect.value;
+  const project = projectSelect.classList.contains('hidden') ? manualProject : (selVal || manualProject);
+  if (project) {
+    validateProject(project);
+  } else {
+    clearProjectStatus();
+  }
 }
 
 function log(msg) {
