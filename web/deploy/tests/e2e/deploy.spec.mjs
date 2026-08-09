@@ -218,6 +218,107 @@ await test('renderLinkedText converts URLs to clickable links', async () => {
   assert.equal(linkTarget, '_blank');
 });
 
+// --- PR #36 features: project validation, setProjectStatus, PROJECT_ID_RE ---
+
+await test('setProjectStatus ok shows green status and enables deploy', async () => {
+  await simulateSignedIn();
+  await page.evaluate(() => {
+    setProjectStatus('ok', 'Project ready — Compute Engine API and billing enabled');
+  });
+  const statusVisible = await page.$eval('#project-status', el => !el.classList.contains('hidden'));
+  assert.ok(statusVisible, 'status should be visible');
+  const text = await page.$eval('#project-status', el => el.textContent);
+  assert.ok(text.includes('Project ready'), 'should show ok message');
+  const btnDisabled = await page.$eval('#deploy-btn', el => el.disabled);
+  assert.equal(btnDisabled, false, 'deploy button should be enabled on ok');
+});
+
+await test('setProjectStatus error shows red status and disables deploy', async () => {
+  await simulateSignedIn();
+  await page.evaluate(() => {
+    setProjectStatus('error', 'Invalid project ID format.');
+  });
+  const text = await page.$eval('#project-status', el => el.textContent);
+  assert.ok(text.includes('Invalid project ID'), 'should show error text');
+  const btnDisabled = await page.$eval('#deploy-btn', el => el.disabled);
+  assert.equal(btnDisabled, true, 'deploy button should be disabled on error');
+});
+
+await test('setProjectStatus warn disables deploy', async () => {
+  await simulateSignedIn();
+  await page.evaluate(() => {
+    setProjectStatus('warn', 'Billing not enabled.');
+  });
+  const btnDisabled = await page.$eval('#deploy-btn', el => el.disabled);
+  assert.equal(btnDisabled, true, 'deploy button should be disabled on warn');
+});
+
+await test('setProjectStatus accepts DOM nodes', async () => {
+  await simulateSignedIn();
+  await page.evaluate(() => {
+    setProjectStatus('warn', [
+      document.createTextNode('Billing not enabled. '),
+      statusLink('Enable billing', 'https://console.cloud.google.com/billing'),
+    ]);
+  });
+  const link = await page.$eval('#project-status a', el => el.href);
+  assert.ok(link.includes('console.cloud.google.com/billing'), 'should contain billing link');
+  const linkTarget = await page.$eval('#project-status a', el => el.target);
+  assert.equal(linkTarget, '_blank', 'link should open in new tab');
+});
+
+await test('PROJECT_ID_RE validates format correctly', async () => {
+  await simulateSignedIn();
+  const results = await page.evaluate(() => {
+    return {
+      valid: PROJECT_ID_RE.test('my-project-123'),
+      validMin: PROJECT_ID_RE.test('abcdef'),
+      tooShort: PROJECT_ID_RE.test('abcde'),
+      uppercase: PROJECT_ID_RE.test('MY-PROJECT'),
+      startsWithDigit: PROJECT_ID_RE.test('123project'),
+      hasUnderscore: PROJECT_ID_RE.test('my_project_id'),
+    };
+  });
+  assert.equal(results.valid, true, 'valid project ID should pass');
+  assert.equal(results.validMin, true, '6-char ID should pass');
+  assert.equal(results.tooShort, false, '5-char ID should fail');
+  assert.equal(results.uppercase, false, 'uppercase should fail');
+  assert.equal(results.startsWithDigit, false, 'starting with digit should fail');
+});
+
+await test('statusLink creates DOM-safe link', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(() => {
+    const link = statusLink('Click here', 'https://example.com');
+    return {
+      tagName: link.tagName,
+      href: link.href,
+      target: link.target,
+      rel: link.rel,
+      text: link.textContent,
+    };
+  });
+  assert.equal(result.tagName, 'A');
+  assert.equal(result.href, 'https://example.com/');
+  assert.equal(result.target, '_blank');
+  assert.ok(result.rel.includes('noopener'), 'should have noopener');
+  assert.equal(result.text, 'Click here');
+});
+
+await test('showProjectFallback renders notice with DOM nodes', async () => {
+  await simulateSignedIn();
+  await page.evaluate(() => {
+    showProjectFallback('Could not load projects.', [
+      document.createTextNode('Enter your project ID below.'),
+    ]);
+  });
+  const noticeVisible = await page.$eval('#project-notice', el => !el.classList.contains('hidden'));
+  assert.ok(noticeVisible, 'notice should be visible');
+  const text = await page.$eval('#project-notice', el => el.textContent);
+  assert.ok(text.includes('Could not load projects'), 'should show title');
+  assert.ok(text.includes('Enter your project ID'), 'should show detail');
+});
+
 await teardown();
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
