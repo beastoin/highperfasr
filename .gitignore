@@ -16,5 +16,8 @@ venv/
 *.log
 .DS_Store
 
+node_modules/
+package-lock.json
+
 # Research notes (not for publication)
 research-*.md
