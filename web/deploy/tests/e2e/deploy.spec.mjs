@@ -535,6 +535,68 @@ await test('pollHealth accepts serial-port health on HTTPS mixed-content path', 
   assert.ok(result.logText.includes('Server healthy'), `serial sentinel should mark healthy, got: ${result.logText}`);
 });
 
+await test('loadProjects permission failure shows manual fallback with Resource Manager link', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    gapi = async url => {
+      if (url.includes('cloudresourcemanager.googleapis.com')) {
+        throw new Error('403 forbidden: permission denied');
+      }
+      throw new Error('unexpected URL: ' + url);
+    };
+    await loadProjects();
+    const notice = document.getElementById('project-notice');
+    const link = notice.querySelector('a');
+    return {
+      selectHidden: document.getElementById('project-select').classList.contains('hidden'),
+      manualHidden: document.getElementById('project-manual').classList.contains('hidden'),
+      manualHelpHidden: document.getElementById('project-manual-help').classList.contains('hidden'),
+      noticeHidden: notice.classList.contains('hidden'),
+      noticeText: notice.textContent,
+      linkText: link?.textContent,
+      linkHref: link?.href,
+    };
+  });
+  assert.equal(result.selectHidden, true, 'project select should be hidden after list permission failure');
+  assert.equal(result.manualHidden, false, 'manual project input should be visible after list permission failure');
+  assert.equal(result.manualHelpHidden, false, 'manual project help should be visible after list permission failure');
+  assert.equal(result.noticeHidden, false, 'fallback notice should be visible after list permission failure');
+  assert.ok(result.noticeText.includes('Your account may lack permission to list projects'), `should classify permission error, got: ${result.noticeText}`);
+  assert.equal(result.linkText, 'Resource Manager', 'fallback should render Resource Manager action link text');
+  assert.ok(result.linkHref.includes('console.cloud.google.com/cloud-resource-manager'), 'fallback should link to Resource Manager');
+});
+
+await test('loadProjects API-disabled failure shows manual fallback with Resource Manager link', async () => {
+  await simulateSignedIn();
+  const result = await page.evaluate(async () => {
+    gapi = async url => {
+      if (url.includes('cloudresourcemanager.googleapis.com')) {
+        throw new Error('Cloud Resource Manager API has not been used in project before or it is disabled');
+      }
+      throw new Error('unexpected URL: ' + url);
+    };
+    await loadProjects();
+    const notice = document.getElementById('project-notice');
+    const link = notice.querySelector('a');
+    return {
+      selectHidden: document.getElementById('project-select').classList.contains('hidden'),
+      manualHidden: document.getElementById('project-manual').classList.contains('hidden'),
+      manualHelpHidden: document.getElementById('project-manual-help').classList.contains('hidden'),
+      noticeHidden: notice.classList.contains('hidden'),
+      noticeText: notice.textContent,
+      linkText: link?.textContent,
+      linkHref: link?.href,
+    };
+  });
+  assert.equal(result.selectHidden, true, 'project select should be hidden when Resource Manager is disabled');
+  assert.equal(result.manualHidden, false, 'manual project input should be visible when Resource Manager is disabled');
+  assert.equal(result.manualHelpHidden, false, 'manual project help should be visible when Resource Manager is disabled');
+  assert.equal(result.noticeHidden, false, 'fallback notice should be visible when Resource Manager is disabled');
+  assert.ok(result.noticeText.includes('Cloud Resource Manager API is not enabled'), `should classify API-disabled error, got: ${result.noticeText}`);
+  assert.equal(result.linkText, 'Resource Manager', 'fallback should render Resource Manager action link text');
+  assert.ok(result.linkHref.includes('console.cloud.google.com/cloud-resource-manager'), 'fallback should link to Resource Manager');
+});
+
 await test('showProjectFallback renders notice with DOM nodes', async () => {
   await simulateSignedIn();
   await page.evaluate(() => {
