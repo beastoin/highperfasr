@@ -253,6 +253,40 @@ await test('setProjectStatus warn disables deploy', async () => {
   assert.equal(btnDisabled, true, 'deploy button should be disabled on warn');
 });
 
+await test('validateProject keeps deploy disabled when billing cannot be verified', async () => {
+  await simulateSignedIn();
+  await page.evaluate(async () => {
+    gapi = async url => {
+      if (url.includes('compute.googleapis.com')) return {};
+      if (url.includes('cloudbilling.googleapis.com')) throw new Error('backendError');
+      throw new Error('unexpected URL: ' + url);
+    };
+    document.getElementById('deploy-btn').disabled = false;
+    await validateProject('my-project-123');
+  });
+  const text = await page.$eval('#project-status', el => el.textContent);
+  assert.ok(text.includes('Could not verify billing'), `should show billing verification warning, got: ${text}`);
+  const btnDisabled = await page.$eval('#deploy-btn', el => el.disabled);
+  assert.equal(btnDisabled, true, 'deploy button should remain disabled when billing check fails');
+});
+
+await test('validateProject keeps deploy disabled without billing read access', async () => {
+  await simulateSignedIn();
+  await page.evaluate(async () => {
+    gapi = async url => {
+      if (url.includes('compute.googleapis.com')) return {};
+      if (url.includes('cloudbilling.googleapis.com')) throw new Error('403 forbidden');
+      throw new Error('unexpected URL: ' + url);
+    };
+    document.getElementById('deploy-btn').disabled = false;
+    await validateProject('my-project-123');
+  });
+  const text = await page.$eval('#project-status', el => el.textContent);
+  assert.ok(text.includes('Billing status could not be verified'), `should show billing access warning, got: ${text}`);
+  const btnDisabled = await page.$eval('#deploy-btn', el => el.disabled);
+  assert.equal(btnDisabled, true, 'deploy button should remain disabled without billing read access');
+});
+
 await test('setProjectStatus accepts DOM nodes', async () => {
   await simulateSignedIn();
   await page.evaluate(() => {

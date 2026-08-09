@@ -652,7 +652,6 @@ async function validateProject(projectId) {
 
   if (seq !== projectValidationSeq) return;
 
-  let billingStatus = 'unknown';
   try {
     const billing = await gapi(`https://cloudbilling.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/billingInfo`);
     if (seq !== projectValidationSeq) return;
@@ -664,24 +663,23 @@ async function validateProject(projectId) {
       ]);
       return;
     }
-    billingStatus = 'enabled';
   } catch (e) {
     if (seq !== projectValidationSeq) return;
     const msg = String(e.message || e).toLowerCase();
     if (msg.includes('permission') || msg.includes('forbidden') || msg.includes('403')) {
-      billingStatus = 'unverified';
+      setProjectStatus('warn', [
+        document.createTextNode('Billing status could not be verified. Grant Cloud Billing read access or '),
+        statusLink('check billing', `https://console.cloud.google.com/billing/linkedaccount?project=${encodeURIComponent(projectId)}`),
+        document.createTextNode(', then re-select your project.')
+      ]);
+    } else {
+      setProjectStatus('warn', 'Could not verify billing: ' + (e.message || e));
     }
+    return;
   }
 
   if (seq !== projectValidationSeq) return;
-  if (billingStatus === 'enabled') {
-    setProjectStatus('ok', 'Project ready — Compute Engine API and billing enabled');
-  } else {
-    setProjectStatus('ok', [
-      document.createTextNode('Compute Engine API enabled. '),
-      document.createTextNode('Billing status could not be verified — deploy will fail if billing is not enabled.')
-    ]);
-  }
+  setProjectStatus('ok', 'Project ready — Compute Engine API and billing enabled');
 }
 
 // ─── Config toggles ──────────────────────────────────────────────
