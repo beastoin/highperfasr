@@ -18,9 +18,9 @@ batch_model:
   auto_local_attn_threshold_sec: 300
   local_attn_context: [128, 128]
   max_file_duration_sec: 3600
-  compile: true
+  compile: false
   amp: true
-  cuda_graphs: true
+  cuda_graphs: false
 
 batcher:
   max_batch_size: 32

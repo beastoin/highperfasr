@@ -81,7 +81,46 @@ def _patch_ws_upgrade():
     log.info("compat: patched uvicorn WebSocket upgrade (byte-constant safety)")
 
 
+def _patch_dataloader_no_workers():
+    """Force num_workers=0 and pin_memory=False on all DataLoaders.
+
+    NeMo's transcribe() creates internal Lhotse DataLoaders that may fork
+    worker processes. Forked processes inherit the parent's CUDA tensor
+    pointers; when the child exits, tensor destructors crash trying to free
+    CUDA memory without a valid context.
+    """
+    if not _once("dataloader_no_workers"):
+        return
+    import torch.utils.data
+
+    _orig_init = torch.utils.data.DataLoader.__init__
+
+    def _safe_init(self, *args, **kwargs):
+        kwargs["num_workers"] = 0
+        kwargs["pin_memory"] = False
+        kwargs.pop("prefetch_factor", None)
+        kwargs.pop("persistent_workers", None)
+        _orig_init(self, *args, **kwargs)
+
+    torch.utils.data.DataLoader.__init__ = _safe_init
+    log.info("compat: forced DataLoader num_workers=0, pin_memory=False (fork-safety)")
+
+
+def _patch_mp_spawn():
+    """Set multiprocessing start method to 'spawn' to avoid fork+CUDA crashes."""
+    if not _once("mp_spawn"):
+        return
+    try:
+        import torch.multiprocessing as mp
+        mp.set_start_method("spawn", force=True)
+        log.info("compat: set multiprocessing start method to 'spawn' (fork-safety)")
+    except Exception as exc:
+        log.debug(f"compat: could not set mp start method: {exc}")
+
+
 def apply_compat():
     """Apply all NeMo/runtime compatibility patches. Safe to call multiple times."""
     _patch_gc_disable()
     _patch_ws_upgrade()
+    _patch_dataloader_no_workers()
+    _patch_mp_spawn()

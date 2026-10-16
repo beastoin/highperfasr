@@ -108,11 +108,9 @@ class GPUWorker:
         self._thread.start()
 
     def _maybe_gc(self) -> None:
-        gc.collect(0)
-        self._gc_counter += 1
-        if self._gc_counter >= self._gc_interval:
-            gc.collect()
-            self._gc_counter = 0
+        torch.cuda.synchronize()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def wait_ready(self, timeout: float = 600) -> None:
         if not self._ready.wait(timeout=timeout):
@@ -645,6 +643,16 @@ class GPUWorker:
         model = self._load_asr_model(nemo_asr, self._batch_cfg["name"], device)
         model.eval()
 
+        try:
+            from omegaconf import open_dict
+            with open_dict(model.cfg):
+                for ds_key in ('train_ds', 'validation_ds', 'test_ds'):
+                    if ds_key in model.cfg and 'pin_memory' in model.cfg[ds_key]:
+                        model.cfg[ds_key].pin_memory = False
+            log.info(f"Disabled pin_memory in model DataLoader configs{tag} (pinned-memory safety)")
+        except Exception as exc:
+            log.debug(f"Could not disable pin_memory{tag}: {exc}")
+
         self._attn_mode = self._batch_cfg.get("attention_mode", "full")
         self._attn_local_context = self._batch_cfg.get("local_attn_context", [128, 128])
         self._attn_auto_threshold_sec = self._batch_cfg.get("auto_local_attn_threshold_sec", 600)
@@ -897,6 +905,8 @@ class GPUWorker:
         )
         serialized = self._extract_results(results, timestamps)
         del results
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
         return serialized
 
     @staticmethod

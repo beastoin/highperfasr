@@ -349,6 +349,26 @@ def _require_stream():
         )
 
 
+_MIN_AUDIO_DURATION_SEC = 0.1
+
+
+def _check_audio_duration(path: str) -> None:
+    """Reject files with too little audio data for the ASR model."""
+    try:
+        import wave
+        with wave.open(path) as wf:
+            dur = wf.getnframes() / wf.getframerate()
+            if dur < _MIN_AUDIO_DURATION_SEC:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Audio too short ({dur:.3f}s). Minimum duration is {_MIN_AUDIO_DURATION_SEC}s.",
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+
 @app.post("/v1/transcriptions")
 async def transcribe(
     file: UploadFile = File(...),
@@ -363,6 +383,8 @@ async def transcribe(
         tmp_path = await loop.run_in_executor(None, functools.partial(_save_upload_sync, file.file, suffix, max_bytes))
     except ValueError as exc:
         raise HTTPException(status_code=413, detail=str(exc))
+
+    _check_audio_duration(tmp_path)
 
     try:
         result = await batch_engine.submit(tmp_path, timestamps=timestamps, owns_file=True)
