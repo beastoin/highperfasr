@@ -19,8 +19,8 @@ Measured on one GKE L4 GPU with model quality preserved:
 | Streaming concurrency | 512 WebSocket streams, 0 failures |
 | Streaming quality | 3.21% WER on LibriSpeech test-clean |
 | Streaming throughput | 297 sessions/min, 38.69x realtime |
-| Batch throughput | 178x realtime, about 3 hours of audio per minute |
-| Batch quality | 1.57% WER on LibriSpeech test-clean |
+| Batch throughput | 148x realtime, about 2.5 hours of audio per minute |
+| Batch quality | 1.92% WER on LibriSpeech test-clean |
 | Cost | About $0.70/hr on GKE L4 |
 
 > "We use the highperfasr recipe for the Omi batch sync engine. It helped reduce cost from $7,830 to $614 — 12.7x savings — and there is still a lot of headroom in that $614 L4 GPU."
@@ -90,8 +90,8 @@ Full report: [benchmarks/results/l4-stream-20260705T000000/](benchmarks/results/
 
 ![Batch Cost Efficiency](benchmarks/results/l4-batch-20260710T000000/cost-efficiency.png)
 
-REST concurrency sweep c=1..512, LibriSpeech test-clean (200 files).
-WER 1.57%, peak 19.5 RPS (178x realtime), 0 failures at every level.
+REST concurrency sweep c=1..512, LibriSpeech test-clean (2620 files).
+WER 1.92%, peak 19.49 RPS (145x realtime), sustained 19.96 RPS (148x realtime), 0 failures at every level including c=512.
 
 Full report: [benchmarks/results/l4-batch-20260710T000000/](benchmarks/results/l4-batch-20260710T000000/)
 
