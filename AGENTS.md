@@ -66,7 +66,7 @@ beastoin/highperfasr (main branch)
 
 | Mode | WER | Peak Throughput | Max Concurrency |
 |------|-----|-----------------|-----------------|
-| Batch (dedicated) | 1.57% | 19.5 RPS / 178x RTFx | c=512, 0 failures |
+| Batch (dedicated) | 1.92% | 19.22 RPS / 142x RTFx | c=64, 0 failures |
 | Batch (both) | 1.92% | 13.49 RPS / 100x RTFx | c=32, 0 failures |
 | Stream (dedicated) | 3.21% | 297 sess/min / 38.69x RTFx | c=512, 0 failures |
 | Stream (both) | 3.21% | 87.4 sess/min / 11.48x RTFx | c=32, 0 failures |

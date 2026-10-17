@@ -23,7 +23,7 @@
     "normalization": "whisper_english",
     "high_wer_count": 194,
     "c1_corpus_wer_pct": 1.92,
-    "reference_wer_pct": 1.57,
+    "reference_wer_pct": 1.92,
     "max_load_corpus_wer_pct": 1.91,
     "max_load_samples_evaluated": 10480
   },

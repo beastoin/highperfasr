@@ -1,9 +1,9 @@
 # highperfasr — Batch Only (L4/A10/A100)
 #
-# Benchmarked on L4 24GB:
-#   WER: 1.57% (LibriSpeech test-clean)
-#   Throughput: 20 RPS sustained at c=64, 178x real-time
-#   VRAM: ~4 GB
+# Benchmarked on L4 24GB (2620 LibriSpeech test-clean, Whisper normalization):
+#   WER: 1.92%
+#   Throughput: 19 RPS sustained at c=64, 142x real-time
+#   VRAM: ~5 GB
 mode: batch
 
 server:
@@ -18,9 +18,9 @@ batch_model:
   auto_local_attn_threshold_sec: 300
   local_attn_context: [128, 128]
   max_file_duration_sec: 3600
-  compile: true
+  compile: false
   amp: true
-  cuda_graphs: true
+  cuda_graphs: false
 
 batcher:
   max_batch_size: 32

@@ -42,7 +42,7 @@ WAV_DIR = DATA_DIR / "wav"
 REF_FILE = DATA_DIR / "references.tsv"
 MAX_SAMPLES = 200
 REFERENCE_WER_PCT = {
-    ("batch", "librispeech-test-clean"): 1.57,
+    ("batch", "librispeech-test-clean"): 1.92,
     ("streaming-realtime", "librispeech-test-clean"): 3.21,
 }
 

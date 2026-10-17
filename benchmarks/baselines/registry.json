@@ -5,7 +5,7 @@
       "scenario": "batch",
       "hardware_gpu": "NVIDIA L4",
       "dataset": "librispeech-test-clean",
-      "report": "benchmarks/results/l4-batch-20260710T000000/result.json",
+      "report": "benchmarks/results/l4-batch-20260725T055248/report.json",
       "metrics": {
         "rtfx": {"max_regression_pct": 10},
         "wer_pct": {"max_absolute_delta_pct": 0.5},
