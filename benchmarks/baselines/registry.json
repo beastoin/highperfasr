@@ -5,7 +5,7 @@
       "scenario": "batch",
       "hardware_gpu": "NVIDIA L4",
       "dataset": "librispeech-test-clean",
-      "report": "benchmarks/results/l4-batch-20260725T055248/report.json",
+      "report": "benchmarks/results/l4-batch-20261017T085112/report.json",
       "metrics": {
         "rtfx": {"max_regression_pct": 10},
         "wer_pct": {"max_absolute_delta_pct": 0.5},
@@ -15,9 +15,9 @@
     {
       "id": "t4-nemo-batch-2026",
       "scenario": "batch",
-      "hardware_gpu": "NVIDIA T4",
+      "hardware_gpu": "Tesla T4",
       "dataset": "librispeech-test-clean",
-      "report": "benchmarks/results/t4-batch-20260712T125257/result.json",
+      "report": "benchmarks/results/t4-batch-20261017T083839/report.json",
       "metrics": {
         "rtfx": {"max_regression_pct": 10},
         "wer_pct": {"max_absolute_delta_pct": 0.5}
@@ -28,9 +28,21 @@
       "scenario": "streaming-realtime",
       "hardware_gpu": "NVIDIA L4",
       "dataset": "librispeech-test-clean",
-      "report": "benchmarks/results/l4-stream-20260705T000000/result.json",
+      "report": "benchmarks/results/l4-stream-20261017T092022/report.json",
       "metrics": {
-        "wer_pct": {"max_absolute_delta_pct": 1.0}
+        "wer_pct": {"max_absolute_delta_pct": 1.0},
+        "rtfx": {"max_regression_pct": 10}
+      }
+    },
+    {
+      "id": "t4-nemo-stream-2026",
+      "scenario": "streaming-realtime",
+      "hardware_gpu": "Tesla T4",
+      "dataset": "librispeech-test-clean",
+      "report": "benchmarks/results/t4-stream-20261017T101725/report.json",
+      "metrics": {
+        "wer_pct": {"max_absolute_delta_pct": 1.0},
+        "rtfx": {"max_regression_pct": 10}
       }
     }
   ]
