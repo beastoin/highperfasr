@@ -16,9 +16,9 @@ Measured on one GKE L4 GPU with model quality preserved:
 
 | Workload | Result |
 |----------|--------|
-| Streaming concurrency | 512 WebSocket streams, 0 failures |
-| Streaming quality | 3.21% WER on LibriSpeech test-clean |
-| Streaming throughput | 297 sessions/min, 38.69x realtime |
+| Streaming concurrency | 256 WebSocket streams, 0 failures |
+| Streaming quality | 2.93% WER on LibriSpeech test-clean |
+| Streaming throughput | 218 sessions/min, 32x realtime |
 | Batch throughput | 148x realtime, about 2.5 hours of audio per minute |
 | Batch quality | 1.92% WER on LibriSpeech test-clean |
 | Cost | About $0.70/hr on GKE L4 |
@@ -69,31 +69,31 @@ HPFASR_STREAM_IMAGE=highperfasr-stream:dev docker compose up -d --build
 
 ### Streaming (Nemotron 3.5 ASR 0.6B)
 
-![RTFx Scaling](benchmarks/results/l4-stream-20260705T000000/rtfx-scaling.png)
+![RTFx Scaling](benchmarks/results/l4-stream-20261017T092022/rtfx-scaling.png)
 
-![Throughput Scaling](benchmarks/results/l4-stream-20260705T000000/throughput-scaling.png)
+![Throughput Scaling](benchmarks/results/l4-stream-20261017T092022/throughput-scaling.png)
 
-![Cost Efficiency](benchmarks/results/l4-stream-20260705T000000/cost-efficiency.png)
+![Cost Efficiency](benchmarks/results/l4-stream-20261017T092022/cost-efficiency.png)
 
-512 persistent WebSocket streams, 10-minute real-time soak, all 2,620 LibriSpeech
-test-clean files. WER 3.21%, 297 sessions/min, 8672 MB VRAM (38%), 0 failures.
+256 concurrent WebSocket streams, 0 failures, LibriSpeech test-clean.
+WER 2.93%, 218 sessions/min, 32x realtime.
 
-Full report: [benchmarks/results/l4-stream-20260705T000000/](benchmarks/results/l4-stream-20260705T000000/)
+Full report: [benchmarks/results/l4-stream-20261017T092022/](benchmarks/results/l4-stream-20261017T092022/)
 
 ### Batch (Parakeet TDT 0.6B)
 
-![Batch RTFx Scaling](benchmarks/results/l4-batch-20260710T000000/rtfx-scaling.png)
+![Batch RTFx Scaling](benchmarks/results/l4-batch-20261017T085112/rtfx-scaling.png)
 
-![Batch Throughput](benchmarks/results/l4-batch-20260710T000000/throughput-scaling.png)
+![Batch Throughput](benchmarks/results/l4-batch-20261017T085112/throughput-scaling.png)
 
-![Batch Latency](benchmarks/results/l4-batch-20260710T000000/latency-scaling.png)
+![Batch Latency](benchmarks/results/l4-batch-20261017T085112/latency-scaling.png)
 
-![Batch Cost Efficiency](benchmarks/results/l4-batch-20260710T000000/cost-efficiency.png)
+![Batch Cost Efficiency](benchmarks/results/l4-batch-20261017T085112/cost-efficiency.png)
 
 REST concurrency sweep c=1..512, LibriSpeech test-clean (2620 files).
 WER 1.92%, peak 19.49 RPS (145x realtime), sustained 19.96 RPS (148x realtime), 0 failures at every level including c=512.
 
-Full report: [benchmarks/results/l4-batch-20260710T000000/](benchmarks/results/l4-batch-20260710T000000/)
+Full report: [benchmarks/results/l4-batch-20261017T085112/](benchmarks/results/l4-batch-20261017T085112/)
 
 ### Methodology
 
@@ -109,8 +109,8 @@ and gated by [automated thresholds](benchmarks/config/quality-gates.json)
 CI runs all checks on every PR.
 
 Verify:
-[streaming result.json](benchmarks/results/l4-stream-20260705T000000/result.json),
-[batch result.json](benchmarks/results/l4-batch-20260710T000000/result.json),
+[streaming report.json](benchmarks/results/l4-stream-20261017T092022/report.json),
+[batch report.json](benchmarks/results/l4-batch-20261017T085112/report.json),
 [benchmark scripts](benchmarks/scripts/).
 
 ## Deploy
