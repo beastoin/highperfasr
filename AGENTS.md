@@ -62,7 +62,18 @@ beastoin/highperfasr (main branch)
 | wer_delta (vs baseline) | 0.3% | 0.3% |
 | min_rtfx | 1.0 | 1.0 |
 
-## Current Baselines (v0.3.0)
+## Current Baselines (L4, v0.3.0)
+
+| Mode | WER | Peak Throughput | Max Concurrency |
+|------|-----|-----------------|-----------------|
+| Batch (dedicated) | 1.57% | 19.5 RPS / 178x RTFx | c=512, 0 failures |
+| Batch (both) | 1.92% | 13.49 RPS / 100x RTFx | c=32, 0 failures |
+| Stream (dedicated) | 3.21% | 297 sess/min / 38.69x RTFx | c=512, 0 failures |
+| Stream (both) | 3.21% | 87.4 sess/min / 11.48x RTFx | c=32, 0 failures |
+
+"Dedicated" = one model per GPU. "Both" = batch + stream on one GPU (unified docker).
+
+## Recent Measurements (v0.3.0, October 17)
 
 ### L4 (24 GB VRAM)
 
