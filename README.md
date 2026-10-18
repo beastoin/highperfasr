@@ -116,7 +116,7 @@ and gated by [automated thresholds](benchmarks/config/quality-gates.json)
 CI runs all checks on every PR.
 
 Verify:
-[streaming report.json](benchmarks/results/l4-stream-20261017T092022/report.json),
+[streaming report.json](benchmarks/results/l4-stream-20261018T173933/report.json),
 [batch report.json](benchmarks/results/l4-batch-20261017T085112/report.json),
 [benchmark scripts](benchmarks/scripts/).
 
