@@ -28,7 +28,7 @@
       "scenario": "streaming-realtime",
       "hardware_gpu": "NVIDIA L4",
       "dataset": "librispeech-test-clean",
-      "report": "benchmarks/results/l4-stream-20261017T092022/report.json",
+      "report": "benchmarks/results/l4-stream-20261018T173933/report.json",
       "metrics": {
         "wer_pct": {"max_absolute_delta_pct": 1.0},
         "rtfx": {"max_regression_pct": 10}
