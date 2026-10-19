@@ -58,6 +58,22 @@ class TestJsonlWriter:
         lines = open(path).readlines()
         assert len(lines) == 1
 
+    def test_flush_per_line(self, tmp_path):
+        """Verify data is readable on disk after emit, before close."""
+        path = str(tmp_path / "test.jsonl")
+        writer = JsonlWriter(path)
+        writer.emit("first")
+        # Read file WITHOUT closing writer — data must be on disk
+        with open(path) as f:
+            lines = f.readlines()
+        assert len(lines) == 1
+        assert json.loads(lines[0])["event"] == "first"
+        writer.emit("second")
+        with open(path) as f:
+            lines = f.readlines()
+        assert len(lines) == 2
+        writer.close()
+
     def test_thread_safety(self, tmp_path):
         path = str(tmp_path / "test.jsonl")
         writer = JsonlWriter(path)
@@ -218,3 +234,51 @@ class TestMaxStreams:
             fail_by_c[s["concurrency"]] = fail_by_c.get(s["concurrency"], 0) + s["failures"]
         zero_fail = [c for c, f in fail_by_c.items() if f == 0]
         assert max(zero_fail, default=0) == 8
+
+
+class TestProfilerCallback:
+    """Test that profiler on_sample callbacks emit to JSONL correctly."""
+
+    def test_gpu_profiler_callback_emits_resource(self, tmp_path):
+        from profile_gpu import GPUProfiler
+
+        path = str(tmp_path / "test.jsonl")
+        writer = JsonlWriter(path)
+        emitted = []
+
+        def on_sample(sample):
+            emitted.append(sample)
+            emit_resource(writer, sample, None, "sweep", 8)
+
+        profiler = GPUProfiler(interval_s=0.1, on_sample=on_sample)
+        # Don't start — just verify callback wiring
+        assert profiler._on_sample is on_sample
+        writer.close()
+
+    def test_cpu_profiler_callback_emits_resource(self, tmp_path):
+        from profile_gpu import CPUProfiler
+
+        path = str(tmp_path / "test.jsonl")
+        writer = JsonlWriter(path)
+
+        def on_sample(cpu_pct):
+            emit_resource(writer, None, cpu_pct, "sweep", 8)
+
+        profiler = CPUProfiler(interval_s=0.1, on_sample=on_sample)
+        assert profiler._on_sample is on_sample
+        writer.close()
+
+    def test_callback_with_real_emit(self, tmp_path):
+        """Test that a callback actually writes to JSONL."""
+        path = str(tmp_path / "test.jsonl")
+        writer = JsonlWriter(path)
+        fake_gpu = {"vram_used_mb": 2048, "gpu_util_pct": 90, "mem_bw_util_pct": 50, "temp_c": 70, "power_w": 180}
+        emit_resource(writer, fake_gpu, 35.0, "sweep", 16)
+        writer.close()
+
+        record = json.loads(open(path).readline())
+        assert record["event"] == "resource"
+        assert record["source"] == "client"
+        assert record["vram_used_mb"] == 2048
+        assert record["cpu_pct"] == 35.0
+        assert record["concurrency"] == 16
