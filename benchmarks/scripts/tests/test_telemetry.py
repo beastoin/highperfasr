@@ -545,8 +545,11 @@ class TestPerSampleTelemetry:
 class TestCrossTrialMaxStreams:
     """Verify cross-trial failure accumulation correctly reduces max_streams."""
 
-    def test_trial2_failures_reduce_max_streams(self, monkeypatch, tmp_path):
-        """Trial 1: c=32 zero failures. Trial 2: c=32 has failures. max_streams < 32."""
+    def _run_trials(self, monkeypatch, tmp_path, trial_failure_map):
+        """Run bench_stream.main() with --trials 2 and per-trial/concurrency failures.
+
+        trial_failure_map: dict of {(trial, concurrency): failures}
+        """
         bench_stream = _load_script("bench_stream")
 
         def fake_load_dataset_manifest(dataset_name, max_samples=0, cache_dir=None):
@@ -561,9 +564,7 @@ class TestCrossTrialMaxStreams:
 
         def fake_summarize_sweep(_results, _wall, concurrency):
             trial = trial_counter["current"]
-            failures = 0
-            if trial >= 2 and concurrency == 32:
-                failures = 2
+            failures = trial_failure_map.get((trial, concurrency), 0)
             return {"concurrency": concurrency, "rtfx": 10.0,
                     "sess_per_min": 60.0, "failures": failures}
 
@@ -584,11 +585,6 @@ class TestCrossTrialMaxStreams:
         monkeypatch.setattr(bench_stream, "log_preflight_summary", lambda *a, **kw: None)
         monkeypatch.setattr(bench_stream.JsonlWriter, "emit", tracking_emit)
 
-        # Import stats module that bench_stream uses for multi-trial
-        stats_path = os.path.join(SCRIPTS_DIR, "..", "scripts", "stats.py")
-        if not os.path.exists(stats_path):
-            stats_path = os.path.join(SCRIPTS_DIR, "stats.py")
-
         report_path = str(tmp_path / "report.json")
         monkeypatch.setattr(sys, "argv", [
             "bench_stream.py", "--server", "ws://localhost:8001",
@@ -597,9 +593,83 @@ class TestCrossTrialMaxStreams:
             "--skip-wer", "--trials", "2", "--output", report_path,
         ])
         asyncio.run(bench_stream.main())
+        return json.loads(open(report_path).read())
+
+    def test_trial2_failures_reduce_max_streams(self, monkeypatch, tmp_path):
+        """Trial 1: c=32 zero failures. Trial 2: c=32 has failures. max_streams = 8."""
+        report = self._run_trials(monkeypatch, tmp_path, {
+            (0, 8): 0, (0, 32): 0,   # trial 1 (tracked as 0): all clean
+            (2, 8): 0, (2, 32): 2,    # trial 2: c=32 fails
+        })
+        assert report["max_streams"] == 8
+
+    def test_trial1_failures_retained_even_if_trial2_succeeds(self, monkeypatch, tmp_path):
+        """Trial 1: c=32 fails. Trial 2: c=32 succeeds. Accumulation keeps total > 0."""
+        report = self._run_trials(monkeypatch, tmp_path, {
+            (0, 8): 0, (0, 32): 3,    # trial 1: c=32 fails
+            (2, 8): 0, (2, 32): 0,    # trial 2: c=32 clean — but total is 3, not 0
+        })
+        assert report["max_streams"] == 8
+
+
+class TestProfilerLifecycleInMain:
+    """Verify profiler start/stop lifecycle produces populated profiles in production reports."""
+
+    def test_sweep_populates_client_gpu_profile(self, monkeypatch, tmp_path):
+        """bench_stream.main() sweep phase collects GPU samples into client_gpu_profile."""
+        bench_stream = _load_script("bench_stream")
+        import profile_gpu
+
+        fake_gpu = {
+            "vram_used_mb": 4096, "vram_total_mb": 24576, "vram_free_mb": 20480,
+            "gpu_util_pct": 85, "mem_bw_util_pct": 60, "temp_c": 72, "power_w": 200.0,
+        }
+        monkeypatch.setattr(profile_gpu, "parse_nvidia_smi", lambda: dict(fake_gpu))
+
+        def fake_load_dataset_manifest(dataset_name, max_samples=0, cache_dir=None):
+            return [{"utt_id": "s1", "wav_path": str(tmp_path / "s.wav"),
+                     "reference": "ref", "duration_s": 5.0}], {"s1": "ref"}
+
+        async def fake_run_sweep(*_args, **kwargs):
+            await asyncio.sleep(0.15)
+            return [{"utt_id": "s1", "status": "ok", "elapsed": 0.5,
+                     "audio_dur": 5.0, "text": "ref"}], 0.15
+
+        monkeypatch.setattr(bench_stream, "load_dataset_manifest", fake_load_dataset_manifest)
+        monkeypatch.setattr(bench_stream, "run_sweep", fake_run_sweep)
+        monkeypatch.setattr(bench_stream, "collect_system_info", lambda **kw: {})
+        monkeypatch.setattr(bench_stream, "collect_gpu_memory_used_mb", lambda: 0)
+        monkeypatch.setattr(bench_stream, "detect_server", lambda *a, **kw: {"streaming": True})
+        monkeypatch.setattr(bench_stream, "resolve_stream_url", lambda u, i: u)
+        monkeypatch.setattr(bench_stream, "log_preflight_summary", lambda *a, **kw: None)
+
+        report_path = str(tmp_path / "report.json")
+        monkeypatch.setattr(sys, "argv", [
+            "bench_stream.py", "--server", "ws://localhost:8001",
+            "--concurrency", "4", "--sustained-rounds", "1",
+            "--sustained-concurrency", "1", "--warmup", "1",
+            "--skip-wer", "--output", report_path,
+        ])
+        asyncio.run(bench_stream.main())
 
         report = json.loads(open(report_path).read())
-        assert report["max_streams"] == 8
+        sweep_entry = report["concurrency_sweep"][0]
+        gpu_profile = sweep_entry["client_gpu_profile"]
+        assert "error" not in gpu_profile
+        assert gpu_profile["samples"] >= 1
+        assert gpu_profile["vram_mb"]["max"] == 4096
+        assert gpu_profile["gpu_util_pct"]["mean"] == 85.0
+
+        sus = report["sustained_load"]
+        sus_gpu = sus["client_gpu_profile"]
+        assert "error" not in sus_gpu
+        assert sus_gpu["samples"] >= 1
+
+        jsonl_path = report_path.replace(".json", ".jsonl")
+        resource_events = [json.loads(line) for line in open(jsonl_path)
+                           if '"resource"' in line]
+        assert len(resource_events) >= 2
+        assert all(e["source"] == "client" for e in resource_events)
 
 
 class TestBatchPeakSelection:
