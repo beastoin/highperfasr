@@ -227,8 +227,8 @@ async def run_sweep(ws_url, manifest, concurrency, chunk_ms, repeat=1, target_co
         if on_result:
             try:
                 on_result(r, i)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("on_result callback failed for sample %d: %s", i, exc)
         return r
 
     tasks = [_run_one(f) for f in files]

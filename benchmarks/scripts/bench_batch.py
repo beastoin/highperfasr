@@ -445,8 +445,8 @@ async def run_sweep(url, manifest, concurrency, repeat=1, target_count=None, on_
         if on_result:
             try:
                 on_result(r, i)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("on_result callback failed for sample %d: %s", i, exc)
         return r
 
     async with aiohttp.ClientSession() as session:
