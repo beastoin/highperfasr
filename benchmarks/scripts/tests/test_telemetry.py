@@ -1,14 +1,25 @@
-"""Tests for benchmark_telemetry module — JSONL writer, emit helpers, checkpoints."""
+"""Tests for benchmark_telemetry module — JSONL writer, emit helpers, checkpoints, production paths."""
 
+import asyncio
+import importlib.util
 import json
 import os
 import sys
 import threading
+import time
 
 import pytest
 
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, SCRIPTS_DIR)
+
+
+def _load_script(name):
+    path = os.path.join(SCRIPTS_DIR, f"{name}.py")
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 from benchmark_telemetry import (
     JsonlWriter,
@@ -282,3 +293,197 @@ class TestProfilerCallback:
         assert record["vram_used_mb"] == 2048
         assert record["cpu_pct"] == 35.0
         assert record["concurrency"] == 16
+
+
+class TestBenchStreamMainMaxStreams:
+    """Production-path: exercise bench_stream.main() and verify max_streams in report."""
+
+    def _run_main(self, monkeypatch, tmp_path, sweep_failures):
+        """Run bench_stream.main() with monkeypatched run_sweep returning specified failures.
+
+        sweep_failures: dict mapping concurrency -> failures count
+        """
+        bench_stream = _load_script("bench_stream")
+
+        def fake_load_dataset_manifest(dataset_name, max_samples=0, cache_dir=None):
+            return [{"utt_id": "s1", "wav_path": str(tmp_path / "s.wav"),
+                     "reference": "ref", "duration_s": 5.0}], {"s1": "ref"}
+
+        call_count = {"sweep": 0}
+
+        async def fake_run_sweep(*_args, **kwargs):
+            call_count["sweep"] += 1
+            c = kwargs.get("concurrency", 1)
+            return [{"utt_id": "s1", "status": "ok", "elapsed": 0.5,
+                     "audio_dur": 5.0, "text": "ref"}], 1.0
+
+        def fake_summarize_sweep(_results, _wall, concurrency):
+            return {
+                "concurrency": concurrency,
+                "rtfx": 10.0,
+                "sess_per_min": 60.0,
+                "failures": sweep_failures.get(concurrency, 0),
+            }
+
+        monkeypatch.setattr(bench_stream, "load_dataset_manifest", fake_load_dataset_manifest)
+        monkeypatch.setattr(bench_stream, "run_sweep", fake_run_sweep)
+        monkeypatch.setattr(bench_stream, "summarize_sweep", fake_summarize_sweep)
+        monkeypatch.setattr(bench_stream, "collect_system_info", lambda **kw: {})
+        monkeypatch.setattr(bench_stream, "collect_gpu_memory_used_mb", lambda: 0)
+        monkeypatch.setattr(bench_stream, "detect_server", lambda *a, **kw: {"streaming": True})
+        monkeypatch.setattr(bench_stream, "resolve_stream_url", lambda u, i: u)
+        monkeypatch.setattr(bench_stream, "log_preflight_summary", lambda *a, **kw: None)
+
+        report_path = str(tmp_path / "report.json")
+        monkeypatch.setattr(
+            sys, "argv",
+            ["bench_stream.py", "--server", "ws://localhost:8001",
+             "--concurrency", ",".join(str(c) for c in sweep_failures),
+             "--sustained-rounds", "1", "--sustained-concurrency", "1",
+             "--warmup", "1", "--skip-wer", "--output", report_path],
+        )
+
+        asyncio.run(bench_stream.main())
+
+        report = json.loads(open(report_path).read())
+        jsonl_path = report_path.replace(".json", ".jsonl")
+        return report, jsonl_path
+
+    def test_max_streams_zero_failures(self, monkeypatch, tmp_path):
+        """All levels zero failures → max_streams = highest concurrency."""
+        report, _ = self._run_main(monkeypatch, tmp_path, {1: 0, 8: 0, 32: 0})
+        assert report["max_streams"] == 32
+        assert report["summary"]["max_streams"] == 32
+
+    def test_max_streams_partial_failures(self, monkeypatch, tmp_path):
+        """c=32 has failures → max_streams = 8."""
+        report, _ = self._run_main(monkeypatch, tmp_path, {1: 0, 8: 0, 32: 2})
+        assert report["max_streams"] == 8
+
+    def test_max_streams_all_failures(self, monkeypatch, tmp_path):
+        """All levels fail → max_streams = 0."""
+        report, _ = self._run_main(monkeypatch, tmp_path, {1: 1, 8: 3})
+        assert report["max_streams"] == 0
+        assert report["summary"]["max_streams"] == 0
+
+    def test_jsonl_has_run_start_and_end(self, monkeypatch, tmp_path):
+        """Production main() writes JSONL with run_start and run_end events."""
+        _, jsonl_path = self._run_main(monkeypatch, tmp_path, {1: 0})
+        events = [json.loads(line)["event"] for line in open(jsonl_path)]
+        assert events[0] == "run_start"
+        assert events[-1] == "run_end"
+
+    def test_jsonl_has_report_checkpoints(self, monkeypatch, tmp_path):
+        """Production main() emits report_checkpoint events at key phases."""
+        _, jsonl_path = self._run_main(monkeypatch, tmp_path, {1: 0, 4: 0})
+        checkpoints = [json.loads(line) for line in open(jsonl_path)
+                       if '"report_checkpoint"' in line]
+        phases = [cp["phase"] for cp in checkpoints]
+        assert "before_sweep" in phases
+        assert "after_sweep" in phases
+        assert "final" in phases
+
+
+class TestProfilerSamplingLoop:
+    """Production-path: exercise actual profiler sampling loops with mocked system inputs."""
+
+    def test_gpu_profiler_samples_with_mocked_nvidia_smi(self, monkeypatch, tmp_path):
+        """GPUProfiler._sample_loop fires on_sample callback with mocked nvidia-smi data."""
+        import profile_gpu
+
+        fake_gpu = {
+            "vram_used_mb": 4096, "vram_total_mb": 24576, "vram_free_mb": 20480,
+            "gpu_util_pct": 85, "mem_bw_util_pct": 60, "temp_c": 72, "power_w": 200.0,
+        }
+        monkeypatch.setattr(profile_gpu, "parse_nvidia_smi", lambda: dict(fake_gpu))
+
+        path = str(tmp_path / "gpu.jsonl")
+        writer = JsonlWriter(path)
+        collected = []
+
+        def on_sample(sample):
+            collected.append(sample)
+            emit_resource(writer, sample, None, "sweep", 16)
+
+        profiler = profile_gpu.GPUProfiler(interval_s=0.05, on_sample=on_sample)
+        profiler.start()
+        time.sleep(0.25)
+        samples = profiler.stop()
+        writer.close()
+
+        assert len(collected) >= 2
+        assert collected[0]["vram_used_mb"] == 4096
+        assert collected[0]["gpu_util_pct"] == 85
+        assert "timestamp" in collected[0]
+
+        lines = open(path).readlines()
+        assert len(lines) >= 2
+        for line in lines:
+            record = json.loads(line)
+            assert record["event"] == "resource"
+            assert record["source"] == "client"
+            assert record["vram_used_mb"] == 4096
+            assert record["concurrency"] == 16
+
+    def test_cpu_profiler_samples_with_mocked_proc_stat(self, monkeypatch, tmp_path):
+        """CPUProfiler._sample_loop fires on_sample with mocked /proc/stat reads."""
+        import profile_gpu
+
+        call_count = {"n": 0}
+
+        def fake_read_cpu_times():
+            call_count["n"] += 1
+            idle = 1000 + call_count["n"] * 10
+            total = 5000 + call_count["n"] * 100
+            return idle, total
+
+        monkeypatch.setattr(profile_gpu, "_read_cpu_times", fake_read_cpu_times)
+
+        path = str(tmp_path / "cpu.jsonl")
+        writer = JsonlWriter(path)
+        collected = []
+
+        def on_sample(cpu_pct):
+            collected.append(cpu_pct)
+            emit_resource(writer, None, cpu_pct, "sustained", 32)
+
+        profiler = profile_gpu.CPUProfiler(interval_s=0.05, on_sample=on_sample)
+        profiler.start()
+        time.sleep(0.25)
+        samples = profiler.stop()
+        writer.close()
+
+        assert len(collected) >= 2
+        assert all(isinstance(v, float) for v in collected)
+        assert all(0.0 <= v <= 100.0 for v in collected)
+
+        lines = open(path).readlines()
+        assert len(lines) >= 2
+        for line in lines:
+            record = json.loads(line)
+            assert record["event"] == "resource"
+            assert record["source"] == "client"
+            assert "cpu_pct" in record
+            assert record["concurrency"] == 32
+
+    def test_gpu_profiler_summarize_from_real_loop(self, monkeypatch):
+        """GPUProfiler.summarize produces valid stats from sampling loop output."""
+        import profile_gpu
+
+        fake_gpu = {
+            "vram_used_mb": 8000, "vram_total_mb": 24576, "vram_free_mb": 16576,
+            "gpu_util_pct": 70, "mem_bw_util_pct": 45, "temp_c": 65, "power_w": 180.0,
+        }
+        monkeypatch.setattr(profile_gpu, "parse_nvidia_smi", lambda: dict(fake_gpu))
+
+        profiler = profile_gpu.GPUProfiler(interval_s=0.05)
+        profiler.start()
+        time.sleep(0.2)
+        samples = profiler.stop()
+
+        assert len(samples) >= 2
+        summary = profile_gpu.GPUProfiler.summarize(samples)
+        assert summary["vram_mb"]["max"] == 8000
+        assert summary["gpu_util_pct"]["mean"] == 70.0
+        bottleneck = profile_gpu.GPUProfiler.classify_bottleneck(summary)
+        assert bottleneck["bottleneck"] in ("vram", "compute", "memory_bandwidth", "cpu", "balanced")
