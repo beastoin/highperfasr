@@ -423,18 +423,37 @@ async def transcribe_file(session, url, wav_path, semaphore):
             }
 
 
-async def run_sweep(url, manifest, concurrency, repeat=1, target_count=None):
-    """Run one concurrency level, return results list."""
+async def run_sweep(url, manifest, concurrency, repeat=1, target_count=None, on_result=None):
+    """Run one concurrency level, return results list.
+
+    Args:
+        on_result: optional callback(result_dict, index) called as each request completes.
+    """
     if target_count is None:
         target_count = len(manifest) * repeat
     files = [Path(e["wav_path"]) for e in select_round_robin_entries(manifest, concurrency, target_count)]
     sem = asyncio.Semaphore(concurrency)
     t0 = time.monotonic()
+    collected = []
+    idx_counter = [0]
+
+    async def _run_one(f):
+        r = await transcribe_file(session, url, f, sem)
+        i = idx_counter[0]
+        idx_counter[0] += 1
+        collected.append(r)
+        if on_result:
+            try:
+                on_result(r, i)
+            except Exception:
+                pass
+        return r
+
     async with aiohttp.ClientSession() as session:
-        tasks = [transcribe_file(session, url, f, sem) for f in files]
-        results = await asyncio.gather(*tasks)
+        tasks = [_run_one(f) for f in files]
+        await asyncio.gather(*tasks)
     wall = time.monotonic() - t0
-    return list(results), wall
+    return collected, wall
 
 
 def summarize_sweep(results, wall_time, concurrency):
@@ -659,16 +678,18 @@ async def main():
         jsonl_writer.emit("level_start", phase="sweep", concurrency=c)
         gpu_profiler = GPUProfiler(interval_s=1.0,
                                    on_sample=lambda s, _c=c: emit_resource(jsonl_writer, s, None, "sweep", _c))
-        cpu_profiler = CPUProfiler(interval_s=1.0)
+        cpu_profiler = CPUProfiler(interval_s=1.0,
+                                   on_sample=lambda v, _c=c: emit_resource(jsonl_writer, None, v, "sweep", _c))
         gpu_profiler.start()
         cpu_profiler.start()
         try:
-            results, wall = await run_sweep(url, manifest, concurrency=c, target_count=max(len(manifest), c))
+            results, wall = await run_sweep(
+                url, manifest, concurrency=c, target_count=max(len(manifest), c),
+                on_result=lambda r, i, _c=c: emit_sample(jsonl_writer, r, "sweep", _c, i),
+            )
         finally:
             gpu_samples = gpu_profiler.stop()
             cpu_samples = cpu_profiler.stop()
-        for i, r in enumerate(results):
-            emit_sample(jsonl_writer, r, "sweep", c, i)
         summary = summarize_sweep(results, wall, c)
         gpu_summary = GPUProfiler.summarize(gpu_samples)
         cpu_summary = CPUProfiler.summarize(cpu_samples)
@@ -719,16 +740,18 @@ async def main():
     jsonl_writer.emit("level_start", phase="sustained", concurrency=sustained_c, rounds=rounds)
     sus_gpu = GPUProfiler(interval_s=1.0,
                           on_sample=lambda s: emit_resource(jsonl_writer, s, None, "sustained", sustained_c))
-    sus_cpu = CPUProfiler(interval_s=1.0)
+    sus_cpu = CPUProfiler(interval_s=1.0,
+                          on_sample=lambda v: emit_resource(jsonl_writer, None, v, "sustained", sustained_c))
     sus_gpu.start()
     sus_cpu.start()
     try:
-        sustained_results, sustained_wall = await run_sweep(url, manifest, concurrency=sustained_c, repeat=rounds)
+        sustained_results, sustained_wall = await run_sweep(
+            url, manifest, concurrency=sustained_c, repeat=rounds,
+            on_result=lambda r, i: emit_sample(jsonl_writer, r, "sustained", sustained_c, i),
+        )
     finally:
         sus_gpu_samples = sus_gpu.stop()
         sus_cpu_samples = sus_cpu.stop()
-    for i, r in enumerate(sustained_results):
-        emit_sample(jsonl_writer, r, "sustained", sustained_c, i)
     sustained_summary = summarize_sweep(sustained_results, sustained_wall, sustained_c)
     sustained_summary["rounds"] = rounds
     sustained_summary["total_files"] = len(manifest) * rounds
@@ -842,7 +865,7 @@ async def main():
     if args.trials > 1:
         from benchmarks.scripts.stats import summarize_trials
 
-        all_peak_rps = [peak["rps"]]
+        all_peak_rps = [peak_rps_entry["rps"]]
         all_peak_rtfx = [peak["rtfx"]]
         all_sustained_rps = [sustained_summary["rps"]]
         all_sustained_rtfx = [sustained_summary["rtfx"]]
@@ -850,21 +873,57 @@ async def main():
 
         for trial in range(2, args.trials + 1):
             log.info(f"=== Trial {trial}/{args.trials} ===")
+            jsonl_writer.emit("trial_start", trial=trial)
             t_sweep = []
             for c in levels:
-                results, wall = await run_sweep(url, manifest, concurrency=c, target_count=max(len(manifest), c))
+                jsonl_writer.emit("level_start", phase="sweep", concurrency=c, trial=trial)
+                t_gpu = GPUProfiler(interval_s=1.0,
+                                    on_sample=lambda s, _c=c: emit_resource(jsonl_writer, s, None, "sweep", _c))
+                t_cpu = CPUProfiler(interval_s=1.0,
+                                    on_sample=lambda v, _c=c: emit_resource(jsonl_writer, None, v, "sweep", _c))
+                t_gpu.start()
+                t_cpu.start()
+                try:
+                    results, wall = await run_sweep(
+                        url, manifest, concurrency=c, target_count=max(len(manifest), c),
+                        on_result=lambda r, i, _c=c: emit_sample(jsonl_writer, r, "sweep", _c, i),
+                    )
+                finally:
+                    t_gpu.stop()
+                    t_cpu.stop()
                 t_sweep.append(summarize_sweep(results, wall, c))
-            t_peak = max(t_sweep, key=lambda x: x["rtfx"])
-            all_peak_rps.append(t_peak["rps"])
-            all_peak_rtfx.append(t_peak["rtfx"])
+                jsonl_writer.emit("level_end", phase="sweep", concurrency=c, trial=trial,
+                                  rtfx=t_sweep[-1]["rtfx"], rps=t_sweep[-1]["rps"],
+                                  failures=t_sweep[-1]["failures"])
+            t_peak_rtfx = max(t_sweep, key=lambda x: x["rtfx"])
+            t_peak_rps = max(t_sweep, key=lambda x: x["rps"])
+            all_peak_rps.append(t_peak_rps["rps"])
+            all_peak_rtfx.append(t_peak_rtfx["rtfx"])
 
-            t_sus_results, t_sus_wall = await run_sweep(url, manifest, concurrency=sustained_c, repeat=rounds)
+            jsonl_writer.emit("level_start", phase="sustained", concurrency=sustained_c, trial=trial)
+            ts_gpu = GPUProfiler(interval_s=1.0,
+                                 on_sample=lambda s: emit_resource(jsonl_writer, s, None, "sustained", sustained_c))
+            ts_cpu = CPUProfiler(interval_s=1.0,
+                                 on_sample=lambda v: emit_resource(jsonl_writer, None, v, "sustained", sustained_c))
+            ts_gpu.start()
+            ts_cpu.start()
+            try:
+                t_sus_results, t_sus_wall = await run_sweep(
+                    url, manifest, concurrency=sustained_c, repeat=rounds,
+                    on_result=lambda r, i: emit_sample(jsonl_writer, r, "sustained", sustained_c, i),
+                )
+            finally:
+                ts_gpu.stop()
+                ts_cpu.stop()
             t_sus = summarize_sweep(t_sus_results, t_sus_wall, sustained_c)
             all_sustained_rps.append(t_sus["rps"])
             all_sustained_rtfx.append(t_sus["rtfx"])
             t_failures = sum(s["failures"] for s in t_sweep) + t_sus["failures"]
             trial_total_failures += t_failures
-            log.info(f"  Trial {trial}: peak={t_peak['rps']} RPS, sustained={t_sus['rps']} RPS, failures={t_failures}")
+            jsonl_writer.emit("level_end", phase="sustained", concurrency=sustained_c, trial=trial,
+                              rtfx=t_sus["rtfx"], rps=t_sus["rps"], failures=t_sus["failures"])
+            jsonl_writer.emit("trial_end", trial=trial, failures=t_failures)
+            log.info(f"  Trial {trial}: peak={t_peak_rps['rps']} RPS, sustained={t_sus['rps']} RPS, failures={t_failures}")
 
         report["summary"]["total_failures"] = trial_total_failures
 

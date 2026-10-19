@@ -6,6 +6,7 @@ Writes one JSON object per line, flushed immediately for crash safety.
 Events: run_start, level_start, sample, resource, level_end, run_end.
 """
 
+import atexit
 import json
 import os
 import threading
@@ -19,8 +20,10 @@ class JsonlWriter:
         self._path = path
         self._lock = threading.Lock()
         self._fd = open(path, "a", encoding="utf-8")
+        self._closed = False
         self._run_id = f"{os.getpid()}-{int(time.time())}"
         self._t0 = time.monotonic()
+        atexit.register(self.close)
 
     @property
     def path(self) -> str:
@@ -36,12 +39,15 @@ class JsonlWriter:
         }
         line = json.dumps(record, default=str) + "\n"
         with self._lock:
-            self._fd.write(line)
-            self._fd.flush()
+            if not self._closed:
+                self._fd.write(line)
+                self._fd.flush()
 
     def close(self):
         with self._lock:
-            self._fd.close()
+            if not self._closed:
+                self._closed = True
+                self._fd.close()
 
     def __enter__(self):
         return self
