@@ -429,7 +429,10 @@ async def main():
     if not args.skip_wer:
         total_audio = sum(e.get("duration_s", 5.0) for e in manifest)
         log_duration_estimate(len(manifest), total_audio, mode="streaming")
-        wer_results, _ = await run_sweep(ws_url, manifest, concurrency=1, chunk_ms=args.chunk_ms, target_count=len(manifest))
+        wer_results, _ = await run_sweep(
+            ws_url, manifest, concurrency=1, chunk_ms=args.chunk_ms, target_count=len(manifest),
+            on_result=lambda r, i: emit_sample(jsonl_writer, r, "wer", 1, i),
+        )
         wer_summary = summarize_wer_results(wer_results, refs)
 
         if wer_summary:
