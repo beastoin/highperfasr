@@ -487,3 +487,165 @@ class TestProfilerSamplingLoop:
         assert summary["gpu_util_pct"]["mean"] == 70.0
         bottleneck = profile_gpu.GPUProfiler.classify_bottleneck(summary)
         assert bottleneck["bottleneck"] in ("vram", "compute", "memory_bandwidth", "cpu", "balanced")
+
+
+class TestPerSampleTelemetry:
+    """Verify on_result callbacks actually emit sample events in production main() paths."""
+
+    def test_sweep_emits_sample_events(self, monkeypatch, tmp_path):
+        """bench_stream.main() sweep phase emits per-sample JSONL events via on_result."""
+        bench_stream = _load_script("bench_stream")
+
+        def fake_load_dataset_manifest(dataset_name, max_samples=0, cache_dir=None):
+            return [{"utt_id": f"s{i}", "wav_path": str(tmp_path / f"s{i}.wav"),
+                     "reference": f"ref{i}", "duration_s": 5.0} for i in range(3)], \
+                   {f"s{i}": f"ref{i}" for i in range(3)}
+
+        async def fake_run_sweep(*_args, **kwargs):
+            on_result = kwargs.get("on_result")
+            results = []
+            for i in range(3):
+                r = {"utt_id": f"s{i}", "status": "ok", "elapsed": 0.5,
+                     "audio_dur": 5.0, "text": f"ref{i}"}
+                results.append(r)
+                if on_result:
+                    on_result(r, i)
+            return results, 1.5
+
+        def fake_summarize_sweep(_results, _wall, concurrency):
+            return {"concurrency": concurrency, "rtfx": 10.0, "sess_per_min": 60.0, "failures": 0}
+
+        monkeypatch.setattr(bench_stream, "load_dataset_manifest", fake_load_dataset_manifest)
+        monkeypatch.setattr(bench_stream, "run_sweep", fake_run_sweep)
+        monkeypatch.setattr(bench_stream, "summarize_sweep", fake_summarize_sweep)
+        monkeypatch.setattr(bench_stream, "collect_system_info", lambda **kw: {})
+        monkeypatch.setattr(bench_stream, "collect_gpu_memory_used_mb", lambda: 0)
+        monkeypatch.setattr(bench_stream, "detect_server", lambda *a, **kw: {"streaming": True})
+        monkeypatch.setattr(bench_stream, "resolve_stream_url", lambda u, i: u)
+        monkeypatch.setattr(bench_stream, "log_preflight_summary", lambda *a, **kw: None)
+
+        report_path = str(tmp_path / "report.json")
+        monkeypatch.setattr(sys, "argv", [
+            "bench_stream.py", "--server", "ws://localhost:8001",
+            "--concurrency", "4", "--sustained-rounds", "1",
+            "--sustained-concurrency", "1", "--warmup", "1",
+            "--skip-wer", "--output", report_path,
+        ])
+        asyncio.run(bench_stream.main())
+
+        jsonl_path = report_path.replace(".json", ".jsonl")
+        samples = [json.loads(line) for line in open(jsonl_path)
+                   if '"sample"' in line]
+        sweep_samples = [s for s in samples if s["phase"] == "sweep"]
+        assert len(sweep_samples) >= 3
+        assert all(s["utt_id"].startswith("s") for s in sweep_samples)
+        assert all(s["status"] == "ok" for s in sweep_samples)
+
+
+class TestCrossTrialMaxStreams:
+    """Verify cross-trial failure accumulation correctly reduces max_streams."""
+
+    def test_trial2_failures_reduce_max_streams(self, monkeypatch, tmp_path):
+        """Trial 1: c=32 zero failures. Trial 2: c=32 has failures. max_streams < 32."""
+        bench_stream = _load_script("bench_stream")
+
+        def fake_load_dataset_manifest(dataset_name, max_samples=0, cache_dir=None):
+            return [{"utt_id": "s1", "wav_path": str(tmp_path / "s.wav"),
+                     "reference": "ref", "duration_s": 5.0}], {"s1": "ref"}
+
+        trial_counter = {"current": 0}
+
+        async def fake_run_sweep(*_args, **kwargs):
+            return [{"utt_id": "s1", "status": "ok", "elapsed": 0.5,
+                     "audio_dur": 5.0, "text": "ref"}], 1.0
+
+        def fake_summarize_sweep(_results, _wall, concurrency):
+            trial = trial_counter["current"]
+            failures = 0
+            if trial >= 2 and concurrency == 32:
+                failures = 2
+            return {"concurrency": concurrency, "rtfx": 10.0,
+                    "sess_per_min": 60.0, "failures": failures}
+
+        original_emit = bench_stream.JsonlWriter.emit
+
+        def tracking_emit(self, event, **fields):
+            if event == "trial_start":
+                trial_counter["current"] = fields.get("trial", 1)
+            original_emit(self, event, **fields)
+
+        monkeypatch.setattr(bench_stream, "load_dataset_manifest", fake_load_dataset_manifest)
+        monkeypatch.setattr(bench_stream, "run_sweep", fake_run_sweep)
+        monkeypatch.setattr(bench_stream, "summarize_sweep", fake_summarize_sweep)
+        monkeypatch.setattr(bench_stream, "collect_system_info", lambda **kw: {})
+        monkeypatch.setattr(bench_stream, "collect_gpu_memory_used_mb", lambda: 0)
+        monkeypatch.setattr(bench_stream, "detect_server", lambda *a, **kw: {"streaming": True})
+        monkeypatch.setattr(bench_stream, "resolve_stream_url", lambda u, i: u)
+        monkeypatch.setattr(bench_stream, "log_preflight_summary", lambda *a, **kw: None)
+        monkeypatch.setattr(bench_stream.JsonlWriter, "emit", tracking_emit)
+
+        # Import stats module that bench_stream uses for multi-trial
+        stats_path = os.path.join(SCRIPTS_DIR, "..", "scripts", "stats.py")
+        if not os.path.exists(stats_path):
+            stats_path = os.path.join(SCRIPTS_DIR, "stats.py")
+
+        report_path = str(tmp_path / "report.json")
+        monkeypatch.setattr(sys, "argv", [
+            "bench_stream.py", "--server", "ws://localhost:8001",
+            "--concurrency", "8,32", "--sustained-rounds", "1",
+            "--sustained-concurrency", "1", "--warmup", "1",
+            "--skip-wer", "--trials", "2", "--output", report_path,
+        ])
+        asyncio.run(bench_stream.main())
+
+        report = json.loads(open(report_path).read())
+        assert report["max_streams"] == 8
+
+
+class TestBatchPeakSelection:
+    """Verify bench_batch.py selects peak RTFx and peak RPS independently."""
+
+    def test_peak_rtfx_differs_from_peak_rps(self, monkeypatch, tmp_path):
+        """When RTFx and RPS peaks are at different concurrency levels, both are reported."""
+        bench_batch = _load_script("bench_batch")
+
+        def fake_load_dataset_manifest(dataset_name, max_samples=0, cache_dir=None):
+            return [{"utt_id": "s1", "wav_path": str(tmp_path / "s.wav"),
+                     "reference": "ref", "duration_s": 5.0}], {"s1": "ref"}
+
+        async def fake_run_sweep(*_args, **kwargs):
+            return [{"utt_id": "s1", "status": "ok", "elapsed": 0.5,
+                     "audio_dur": 5.0, "text": "ref"}], 1.0
+
+        def fake_summarize_sweep(_results, _wall, concurrency):
+            if concurrency == 8:
+                return {"concurrency": 8, "rtfx": 20.0, "rps": 3.0,
+                        "sess_per_min": 60.0, "failures": 0, "total": 1, "ok": 1,
+                        "wall_s": 1.0, "rtf": 0.05, "total_audio_s": 5.0}
+            else:
+                return {"concurrency": 32, "rtfx": 15.0, "rps": 12.0,
+                        "sess_per_min": 120.0, "failures": 0, "total": 4, "ok": 4,
+                        "wall_s": 1.0, "rtf": 0.07, "total_audio_s": 5.0}
+
+        monkeypatch.setattr(bench_batch, "load_dataset_manifest", fake_load_dataset_manifest)
+        monkeypatch.setattr(bench_batch, "run_sweep", fake_run_sweep)
+        monkeypatch.setattr(bench_batch, "summarize_sweep", fake_summarize_sweep)
+        monkeypatch.setattr(bench_batch, "collect_system_info", lambda **kw: {})
+        monkeypatch.setattr(bench_batch, "collect_gpu_memory_used_mb", lambda: 0)
+        monkeypatch.setattr(bench_batch, "detect_server", lambda *a, **kw: {"batch": True})
+        monkeypatch.setattr(bench_batch, "resolve_batch_url", lambda u, i: u)
+        monkeypatch.setattr(bench_batch, "log_preflight_summary", lambda *a, **kw: None)
+
+        report_path = str(tmp_path / "report.json")
+        monkeypatch.setattr(sys, "argv", [
+            "bench_batch.py", "--server", "http://localhost:8000",
+            "--concurrency", "8,32", "--sustained-rounds", "1",
+            "--sustained-concurrency", "1", "--warmup", "1",
+            "--skip-wer", "--output", report_path,
+        ])
+        asyncio.run(bench_batch.main())
+
+        report = json.loads(open(report_path).read())
+        assert report["summary"]["peak_rtfx"] == 20.0
+        assert report["summary"]["peak_concurrency"] == 8
+        assert report["summary"]["peak_rps"] == 12.0
