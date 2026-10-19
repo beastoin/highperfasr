@@ -670,6 +670,7 @@ async def main():
         log.info("WER evaluation skipped (--skip-wer)")
 
     # Step 4: Concurrency sweep (warm model)
+    emit_report_checkpoint(jsonl_writer, report, "before_sweep")
     log.info("Concurrency sweep (warm model)...")
     sweep_results = []
     consecutive_matches = 0
@@ -704,6 +705,8 @@ async def main():
                           client_vram_peak_mb=gpu_summary.get("vram_mb", {}).get("max"),
                           client_cpu_avg=cpu_summary.get("mean"))
         sweep_results.append(summary)
+        report["concurrency_sweep"] = sweep_results
+        emit_report_checkpoint(jsonl_writer, report, f"after_level_c{c}")
         gpu_info = ""
         if "error" not in gpu_summary:
             gpu_info = f", GPU={gpu_summary['gpu_util_pct']['mean']}%, VRAM={gpu_summary['vram_mb']['max']}MB"

@@ -461,6 +461,7 @@ async def main():
                 log.info(f"  vs baseline: {base_wer}% -> {cur_wer}% (delta {cur_wer - base_wer:+.2f}%)")
 
     # Concurrency sweep
+    emit_report_checkpoint(jsonl_writer, report, "before_sweep")
     log.info("Concurrency sweep...")
     sweep_results = []
     consecutive_matches = 0
@@ -502,6 +503,8 @@ async def main():
                           client_gpu_util_avg=gpu_summary.get("gpu_util_pct", {}).get("mean"),
                           client_vram_peak_mb=gpu_summary.get("vram_mb", {}).get("max"))
         sweep_results.append(summary)
+        report["concurrency_sweep"] = sweep_results
+        emit_report_checkpoint(jsonl_writer, report, f"after_level_c{c}")
         log.info(
             f"    RTFx={summary['rtfx']}, sess/min={summary['sess_per_min']}, "
             f"failures={summary['failures']}, {ttfb_str}, {rt_str}{gpu_info}"
@@ -643,6 +646,9 @@ async def main():
         all_sustained_rtfx = [sustained_summary["rtfx"]]
         all_sustained_sess = [sustained_summary["sess_per_min"]]
         trial_total_failures = sum(s["failures"] for s in sweep_results) + sustained_summary["failures"]
+        all_trial_fail_by_c = {}
+        for s in sweep_results:
+            all_trial_fail_by_c[s["concurrency"]] = s["failures"]
 
         for trial in range(2, args.trials + 1):
             log.info(f"=== Trial {trial}/{args.trials} ===")
@@ -688,6 +694,8 @@ async def main():
             t_sus = summarize_sweep(t_sus_results, t_sus_wall, sc)
             all_sustained_rtfx.append(t_sus["rtfx"])
             all_sustained_sess.append(t_sus["sess_per_min"])
+            for s in t_sweep:
+                all_trial_fail_by_c[s["concurrency"]] = all_trial_fail_by_c.get(s["concurrency"], 0) + s["failures"]
             t_failures = sum(s["failures"] for s in t_sweep) + t_sus["failures"]
             trial_total_failures += t_failures
             jsonl_writer.emit("level_end", phase="sustained", concurrency=sc, trial=trial,
@@ -702,14 +710,7 @@ async def main():
             "sustained_sess_per_min": summarize_trials(all_sustained_sess),
         }
         log.info(f"Trials summary: peak RTFx={report['trials']['peak_rtfx']}")
-        # Recompute max_streams: require zero failures across ALL trials at each level
-        trial_fail_by_c = {}
-        for s in sweep_results:
-            trial_fail_by_c[s["concurrency"]] = s["failures"]
-        for s in t_sweep:
-            c = s["concurrency"]
-            trial_fail_by_c[c] = trial_fail_by_c.get(c, 0) + s["failures"]
-        zero_fail_levels = [c for c, f in trial_fail_by_c.items() if f == 0]
+        zero_fail_levels = [c for c, f in all_trial_fail_by_c.items() if f == 0]
         report["max_streams"] = max(zero_fail_levels, default=0)
 
     # Quality gate evaluation (skipped in quick mode — gates require full sustained load)
