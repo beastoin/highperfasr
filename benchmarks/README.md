@@ -31,6 +31,29 @@ for publishable results (all samples).
 (separate services). In both-mode (single server), both share `:8000`. The
 orchestrator auto-probes `:8001` when it detects batch-only on `:8000`.
 
+## JSONL Recovery and Resource Scope
+
+Batch and streaming runs write a `.jsonl` sidecar beside `--output`. Recover the
+latest report checkpoint, including WER, metadata, profiles, trials, and gates:
+
+```bash
+python3 scripts/benchmark_telemetry.py /tmp/report.jsonl --output /tmp/recovered.json
+```
+
+Use `--run-id` to select an older run in an appended log. After interruption,
+recovery includes completed phases; raw results from the unfinished phase remain
+in the JSONL. A completed run reconstructs the exact report JSON.
+
+Resource profiles measure the **benchmark client**, including when `--server`
+points to a remote GPU or a port-forward. Events and summaries identify this
+scope, local VRAM is stored under `client_resources`, and these measurements do
+not classify the server's bottleneck or satisfy server VRAM quality gates.
+Server VRAM gates fail closed until server-side evidence is supplied.
+
+Streaming capacity is `summary.max_concurrent_streams_zero_fail`: the highest
+tested concurrency with successful requests and zero failures in every trial,
+or zero when no level qualifies. Sustained-load results are reported separately.
+
 ## Scripts
 
 | Script | Purpose |
