@@ -66,8 +66,7 @@ def emit_sample(writer: "JsonlWriter | None", result: dict, phase: str, concurre
     """Log one benchmark sample result."""
     if writer is None:
         return
-    writer.emit(
-        "sample",
+    fields = dict(
         phase=phase,
         concurrency=concurrency,
         index=index,
@@ -79,6 +78,9 @@ def emit_sample(writer: "JsonlWriter | None", result: dict, phase: str, concurre
         text_len=len(result.get("text", "")),
         error=result.get("error"),
     )
+    if phase == "wer":
+        fields["text"] = result.get("text", "")
+    writer.emit("sample", **fields)
 
 
 def emit_resource(writer: "JsonlWriter | None", gpu_sample: dict | None, cpu_pct: float | None,
