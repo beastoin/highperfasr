@@ -101,11 +101,7 @@ def emit_resource(writer: "JsonlWriter | None", gpu_sample: dict | None, cpu_pct
 
 
 def emit_report_checkpoint(writer: "JsonlWriter | None", report: dict, phase: str):
-    """Snapshot partial report state at key milestones for crash recovery."""
+    """Snapshot full report state at key milestones for crash recovery."""
     if writer is None:
         return
-    checkpoint = {}
-    for key in ("wer", "concurrency_sweep", "sustained_load", "quality_gates", "summary"):
-        if key in report:
-            checkpoint[key] = report[key]
-    writer.emit("report_checkpoint", phase=phase, report=checkpoint)
+    writer.emit("report_checkpoint", phase=phase, report=report)

@@ -952,6 +952,7 @@ async def main():
     elif args.quick:
         log.info("Quick mode: skipping quality gates (use full corpus for gate enforcement)")
 
+    emit_report_checkpoint(jsonl_writer, report, "final")
     jsonl_writer.emit("run_end", total_failures=report["summary"]["total_failures"])
     jsonl_writer.close()
     log.info(f"JSONL log saved to {jsonl_path}")

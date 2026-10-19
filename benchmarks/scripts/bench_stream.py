@@ -614,15 +614,14 @@ async def main():
         )
         print()
     print("### Concurrency Sweep")
-    print("| c | Streams OK | TTFB p50 | TTFB p99 | RT Compliance | Failures |")
-    print("|---|-----------|----------|----------|---------------|----------|")
+    print("| c | TTFB p50 | TTFB p99 | RT Compliance | Failures |")
+    print("|---|----------|----------|---------------|----------|")
     for s in sweep_results:
         ttfb_p50 = f"{s['ttfb_p50_s']}s" if s.get('ttfb_p50_s') is not None else "N/A"
         ttfb_p99 = f"{s['ttfb_p99_s']}s" if s.get('ttfb_p99_s') is not None else "N/A"
         rt = f"{s['rt_compliance_pct']}%" if s.get('rt_compliance_pct') is not None else "N/A"
-        streams_ok = s['concurrency'] - s['failures']
         print(
-            f"| {s['concurrency']} | {streams_ok} | {ttfb_p50} | {ttfb_p99} | {rt} | {s['failures']} |"
+            f"| {s['concurrency']} | {ttfb_p50} | {ttfb_p99} | {rt} | {s['failures']} |"
         )
     if report.get("smart_skipped"):
         print(f"\n*Smart early-stop: skipped c={report['smart_skipped']} (matched baseline)*")
@@ -703,6 +702,15 @@ async def main():
             "sustained_sess_per_min": summarize_trials(all_sustained_sess),
         }
         log.info(f"Trials summary: peak RTFx={report['trials']['peak_rtfx']}")
+        # Recompute max_streams: require zero failures across ALL trials at each level
+        trial_fail_by_c = {}
+        for s in sweep_results:
+            trial_fail_by_c[s["concurrency"]] = s["failures"]
+        for s in t_sweep:
+            c = s["concurrency"]
+            trial_fail_by_c[c] = trial_fail_by_c.get(c, 0) + s["failures"]
+        zero_fail_levels = [c for c, f in trial_fail_by_c.items() if f == 0]
+        report["max_streams"] = max(zero_fail_levels, default=0)
 
     # Quality gate evaluation (skipped in quick mode — gates require full sustained load)
     gates_path = Path(__file__).parent.parent / "config" / "quality-gates.json"
@@ -720,6 +728,8 @@ async def main():
 
     total_failures = sum(s["failures"] for s in sweep_results) + sustained_summary["failures"]
     total_failures = trial_total_failures if args.trials > 1 else total_failures
+    report["summary"] = {"total_failures": total_failures, "max_streams": report.get("max_streams", 0)}
+    emit_report_checkpoint(jsonl_writer, report, "final")
     jsonl_writer.emit("run_end", total_failures=total_failures)
     jsonl_writer.close()
     log.info(f"JSONL log saved to {jsonl_path}")
