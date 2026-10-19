@@ -12,18 +12,17 @@ Run batch and streaming transcription on a single GPU with a simple, framework-a
 - GKE L4 manifest for single-GPU deployment
 - Published benchmarks with reproducible results
 
-Measured on one GKE L4 GPU with model quality preserved:
+Measured on one GKE L4 GPU, full corpus (2620 LibriSpeech test-clean files):
 
-| Mode | WER | Peak Throughput | Max Concurrency |
-|------|-----|-----------------|-----------------|
-| Batch (dedicated) | 1.57% | 19.5 RPS / 178x RTFx | c=512, 0 failures |
-| Batch (both) | 1.92% | 13.49 RPS / 100x RTFx | c=32, 0 failures |
-| Stream (dedicated) | 3.21% | 297 sess/min / 38.69x RTFx | c=512, 0 failures |
-| Stream (both) | 3.21% | 87.4 sess/min / 11.48x RTFx | c=32, 0 failures |
-
-"Dedicated" runs one model per GPU. "Both" runs batch + stream on one GPU
-via `highperfasr serve --mode both` (single process) or `docker compose --profile full up -d`
-(two containers, needs two GPUs). Cost: about $0.70/hr on GKE L4.
+| Workload | Result |
+|----------|--------|
+| Batch quality | 1.92% WER (Whisper English normalization) |
+| Batch throughput | 129x realtime sustained at c=64, 17.5 RPS |
+| Streaming quality | 3.51% WER (Whisper English normalization) |
+| Streaming concurrency | 64 concurrent streams, 0 failures |
+| Streaming throughput | 13.2x realtime at c=64 |
+| Streaming latency | TTFB p50 1.3s, p99 2.3s at c=4 |
+| Cost | About $0.70/hr on GKE L4 |
 
 > "We use the highperfasr recipe for the Omi batch sync engine. It helped reduce cost from $7,830 to $614 — 12.7x savings — and there is still a lot of headroom in that $614 L4 GPU."
 >
@@ -71,43 +70,45 @@ HPFASR_STREAM_IMAGE=highperfasr-stream:dev docker compose up -d --build
 
 ### Streaming (Nemotron 3.5 ASR 0.6B)
 
-L4 October 18 — full LibriSpeech test-clean corpus (2620 files), dedicated mode:
+Concurrency sweep c=4..64 with sustained load, all 2,620 LibriSpeech test-clean
+files. WER 3.51%, max concurrent streams 64 (zero failures across all trials),
+peak RTFx 13.2x at c=64, TTFB p50 1.3s at c=4.
 
-| Concurrency | RTFx | sess/min | Failures |
-|-------------|------|----------|----------|
-| c=32 | 12.02 | 97.1 | 0 |
-| c=16 | 8.87 | 71.7 | 0 |
-| c=8 | 5.58 | 45.1 | 0 |
+| Concurrency | RTFx | TTFB p50 | TTFB p99 | RT Compliance | Failures |
+|-------------|------|----------|----------|---------------|----------|
+| 4 | 3.3x | 1.30s | 2.33s | 26.6% | 0 |
+| 8 | 5.6x | 1.64s | 2.68s | 1.1% | 0 |
+| 16 | 8.8x | 1.99s | 3.48s | 0.0% | 0 |
+| 32 | 11.9x | 2.93s | 5.32s | 0.0% | 0 |
+| 64 | 13.2x | 6.28s | 10.37s | 0.0% | 0 |
 
-WER 3.51% at c=1 (full corpus, Whisper English normalization).
+Sustained load at c=16: RTFx 8.8x over 4 rounds.
 
-Higher concurrency (c≥128) triggers an RNNT pipeline slot leak during sweep-style
-rapid connect/disconnect — a known CacheAwareRNNT limitation, not a server bug.
-Soak-style testing (persistent connections) reaches c=512 with 0 failures.
-
-Full report: [benchmarks/results/l4-stream-20261018T173933/](benchmarks/results/l4-stream-20261018T173933/)
+Full report: [benchmarks/results/l4-stream-20261019T000000/](benchmarks/results/l4-stream-20261019T000000/)
 
 ### Batch (Parakeet TDT 0.6B)
 
-![Batch RTFx Scaling](benchmarks/results/l4-batch-20261017T085112/rtfx-scaling.png)
+REST concurrency sweep c=1..32 with sustained load at c=64, all 2,620 LibriSpeech
+test-clean files. WER 1.92%, peak RTFx 129x sustained, 17.5 RPS, 0 failures at
+every level.
 
-![Batch Throughput](benchmarks/results/l4-batch-20261017T085112/throughput-scaling.png)
+| Concurrency | RTFx | RPS | p50 | p99 | Failures |
+|-------------|------|-----|-----|-----|----------|
+| 1 | 22.3x | 3.0 | 293ms | 1018ms | 0 |
+| 8 | 85.2x | 11.5 | 657ms | 1467ms | 0 |
+| 16 | 100.2x | 13.5 | 1153ms | 2232ms | 0 |
+| 32 | 97.8x | 13.2 | 2348ms | 4945ms | 0 |
 
-![Batch Latency](benchmarks/results/l4-batch-20261017T085112/latency-scaling.png)
+Sustained load at c=64: RTFx 129.4x, 17.5 RPS, 1049 sess/min over 4 rounds (10,480 files), WER 1.91%.
 
-![Batch Cost Efficiency](benchmarks/results/l4-batch-20261017T085112/cost-efficiency.png)
-
-REST concurrency sweep c=128, 256, 512, LibriSpeech test-clean (2620 files).
-WER 1.92%, peak 19.49 RPS (145x realtime), sustained 19.96 RPS (148x realtime), 0 failures at every level including c=512.
-
-Full report: [benchmarks/results/l4-batch-20261017T085112/](benchmarks/results/l4-batch-20261017T085112/)
+Full report: [benchmarks/results/l4-batch-20260725T055248/](benchmarks/results/l4-batch-20260725T055248/)
 
 ### Methodology
 
 Every benchmark follows a deterministic protocol: real speech corpus (LibriSpeech
 test-clean, 2620 files, SHA256-verified), standard WER normalization (Whisper
-EnglishTextNormalizer), concurrency sweeps, and fail-closed quality gates that
-reject results with missing metrics.
+EnglishTextNormalizer), concurrency sweeps with sustained load, and fail-closed
+quality gates that reject results with missing metrics.
 
 Reports are validated against a [JSON schema](benchmarks/report-schema.json),
 checked for regressions against [registered baselines](benchmarks/baselines/registry.json),
@@ -115,9 +116,13 @@ and gated by [automated thresholds](benchmarks/config/quality-gates.json)
 (batch WER < 2.5%, streaming WER < 4.0%, 0 failures).
 CI runs all checks on every PR.
 
+Streaming benchmarks include TTFB (Time to First Token), RT compliance (lag < 1s),
+and `max_streams` (highest concurrency with zero failures across all trials).
+All telemetry is logged to crash-safe JSONL with per-line flush for reproducibility.
+
 Verify:
-[streaming report.json](benchmarks/results/l4-stream-20261018T173933/report.json),
-[batch report.json](benchmarks/results/l4-batch-20261017T085112/report.json),
+[streaming report.json](benchmarks/results/l4-stream-20261019T000000/report.json),
+[batch report.json](benchmarks/results/l4-batch-20260725T055248/report.json),
 [benchmark scripts](benchmarks/scripts/).
 
 ## Deploy
