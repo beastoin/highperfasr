@@ -672,6 +672,70 @@ class TestProfilerLifecycleInMain:
         assert all(e["source"] == "client" for e in resource_events)
 
 
+class TestRunSweepOnResult:
+    """Exercise real run_sweep with mocked stream_file to verify on_result fires."""
+
+    def test_on_result_fires_for_each_completed_stream(self, monkeypatch, tmp_path):
+        """Real run_sweep calls on_result for each stream_file completion."""
+        bench_stream = _load_script("bench_stream")
+
+        async def fake_stream_file(ws_url, wav_path, chunk_ms, semaphore):
+            async with semaphore:
+                await asyncio.sleep(0.01)
+                return {"utt_id": os.path.basename(wav_path), "status": "ok",
+                        "elapsed": 0.1, "audio_dur": 5.0, "text": "hello"}
+
+        monkeypatch.setattr(bench_stream, "stream_file", fake_stream_file)
+
+        manifest = [{"utt_id": f"s{i}", "wav_path": f"/tmp/s{i}.wav",
+                      "reference": f"ref{i}", "duration_s": 5.0} for i in range(4)]
+        collected_results = []
+
+        def on_result(r, i):
+            collected_results.append((r["utt_id"], i))
+
+        results, wall = asyncio.run(
+            bench_stream.run_sweep("ws://fake:8001", manifest, concurrency=2,
+                                   chunk_ms=160, on_result=on_result)
+        )
+
+        assert len(results) == 4
+        assert len(collected_results) == 4
+        assert all(r[0].startswith("s") for r in collected_results)
+
+    def test_on_result_writes_jsonl_sample_events(self, monkeypatch, tmp_path):
+        """Real run_sweep + on_result wiring writes JSONL sample events."""
+        bench_stream = _load_script("bench_stream")
+
+        async def fake_stream_file(ws_url, wav_path, chunk_ms, semaphore):
+            async with semaphore:
+                await asyncio.sleep(0.01)
+                return {"utt_id": os.path.basename(wav_path), "status": "ok",
+                        "elapsed": 0.1, "audio_dur": 5.0, "text": "hello"}
+
+        monkeypatch.setattr(bench_stream, "stream_file", fake_stream_file)
+
+        path = str(tmp_path / "test.jsonl")
+        writer = JsonlWriter(path)
+        manifest = [{"utt_id": f"u{i}", "wav_path": f"/tmp/u{i}.wav",
+                      "reference": f"ref{i}", "duration_s": 5.0} for i in range(3)]
+
+        results, wall = asyncio.run(
+            bench_stream.run_sweep("ws://fake:8001", manifest, concurrency=2,
+                                   chunk_ms=160,
+                                   on_result=lambda r, i: emit_sample(writer, r, "sweep", 2, i))
+        )
+        writer.close()
+
+        lines = open(path).readlines()
+        assert len(lines) == 3
+        for line in lines:
+            record = json.loads(line)
+            assert record["event"] == "sample"
+            assert record["phase"] == "sweep"
+            assert record["status"] == "ok"
+
+
 class TestBatchPeakSelection:
     """Verify bench_batch.py selects peak RTFx and peak RPS independently."""
 
