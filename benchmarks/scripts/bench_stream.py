@@ -28,7 +28,7 @@ sys.path.insert(0, str(SCRIPTS_DIR.parent.parent))
 
 from preflight import detect_server, resolve_stream_url, log_duration_estimate, log_preflight_summary, ensure_unbuffered
 
-from benchmark_telemetry import JsonlWriter, jsonl_path_from_output, emit_sample, emit_resource
+from benchmark_telemetry import JsonlWriter, jsonl_path_from_output, emit_sample, emit_resource, emit_report_checkpoint
 from profile_gpu import GPUProfiler, CPUProfiler
 
 ensure_unbuffered()
@@ -484,10 +484,10 @@ async def main():
         summary = summarize_sweep(results, wall, c)
         gpu_summary = GPUProfiler.summarize(gpu_samples)
         cpu_summary = CPUProfiler.summarize(cpu_samples)
-        summary["gpu_profile"] = gpu_summary
-        summary["cpu_profile"] = cpu_summary
+        summary["client_gpu_profile"] = gpu_summary
+        summary["client_cpu_profile"] = cpu_summary
         if "error" not in gpu_summary:
-            summary["bottleneck"] = GPUProfiler.classify_bottleneck(gpu_summary)
+            summary["client_bottleneck"] = GPUProfiler.classify_bottleneck(gpu_summary)
         ttfb_str = f"TTFB p50={summary.get('ttfb_p50_s', 'N/A')}s p99={summary.get('ttfb_p99_s', 'N/A')}s"
         rt_str = f"RT={summary.get('rt_compliance_pct', 'N/A')}%"
         gpu_info = ""
@@ -499,8 +499,8 @@ async def main():
                           ttfb_p50_s=summary.get("ttfb_p50_s"),
                           ttfb_p99_s=summary.get("ttfb_p99_s"),
                           rt_compliance_pct=summary.get("rt_compliance_pct"),
-                          gpu_util_avg=gpu_summary.get("gpu_util_pct", {}).get("mean"),
-                          vram_peak_mb=gpu_summary.get("vram_mb", {}).get("max"))
+                          client_gpu_util_avg=gpu_summary.get("gpu_util_pct", {}).get("mean"),
+                          client_vram_peak_mb=gpu_summary.get("vram_mb", {}).get("max"))
         sweep_results.append(summary)
         log.info(
             f"    RTFx={summary['rtfx']}, sess/min={summary['sess_per_min']}, "
@@ -526,6 +526,9 @@ async def main():
 
     sweep_results.sort(key=lambda s: s["concurrency"])
     report["concurrency_sweep"] = sweep_results
+    zero_fail_levels = [s for s in sweep_results if s["failures"] == 0]
+    report["max_streams"] = max((s["concurrency"] for s in zero_fail_levels), default=0)
+    emit_report_checkpoint(jsonl_writer, report, "after_sweep")
 
     # Sustained load
     sc = args.sustained_concurrency
@@ -548,10 +551,10 @@ async def main():
         sus_cpu_samples = sus_cpu.stop()
     sustained_summary = summarize_sweep(sustained_results, sustained_wall, sc)
     sustained_summary["rounds"] = rounds
-    sustained_summary["gpu_profile"] = GPUProfiler.summarize(sus_gpu_samples)
-    sustained_summary["cpu_profile"] = CPUProfiler.summarize(sus_cpu_samples)
-    if "error" not in sustained_summary["gpu_profile"]:
-        sustained_summary["bottleneck"] = GPUProfiler.classify_bottleneck(sustained_summary["gpu_profile"])
+    sustained_summary["client_gpu_profile"] = GPUProfiler.summarize(sus_gpu_samples)
+    sustained_summary["client_cpu_profile"] = CPUProfiler.summarize(sus_cpu_samples)
+    if "error" not in sustained_summary["client_gpu_profile"]:
+        sustained_summary["client_bottleneck"] = GPUProfiler.classify_bottleneck(sustained_summary["client_gpu_profile"])
     report["sustained_load"] = sustained_summary
     jsonl_writer.emit("level_end", phase="sustained", concurrency=sc,
                       rtfx=sustained_summary["rtfx"], sess_per_min=sustained_summary["sess_per_min"],
@@ -587,6 +590,8 @@ async def main():
             "vram_peak_mb": max(v for v in (vram_start_mb, vram_end_mb) if v is not None),
         }
 
+    emit_report_checkpoint(jsonl_writer, report, "after_sustained")
+
     if args.smart and baseline_report and "sustained_load" in baseline_report:
         bl_s = baseline_report["sustained_load"]
         log.info(
@@ -609,14 +614,15 @@ async def main():
         )
         print()
     print("### Concurrency Sweep")
-    print("| c | Max Streams | TTFB p50 | TTFB p99 | RT Compliance | Failures |")
-    print("|---|-------------|----------|----------|---------------|----------|")
+    print("| c | Streams OK | TTFB p50 | TTFB p99 | RT Compliance | Failures |")
+    print("|---|-----------|----------|----------|---------------|----------|")
     for s in sweep_results:
         ttfb_p50 = f"{s['ttfb_p50_s']}s" if s.get('ttfb_p50_s') is not None else "N/A"
         ttfb_p99 = f"{s['ttfb_p99_s']}s" if s.get('ttfb_p99_s') is not None else "N/A"
         rt = f"{s['rt_compliance_pct']}%" if s.get('rt_compliance_pct') is not None else "N/A"
+        streams_ok = s['concurrency'] - s['failures']
         print(
-            f"| {s['concurrency']} | {s['concurrency']} | {ttfb_p50} | {ttfb_p99} | {rt} | {s['failures']} |"
+            f"| {s['concurrency']} | {streams_ok} | {ttfb_p50} | {ttfb_p99} | {rt} | {s['failures']} |"
         )
     if report.get("smart_skipped"):
         print(f"\n*Smart early-stop: skipped c={report['smart_skipped']} (matched baseline)*")

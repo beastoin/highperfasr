@@ -30,7 +30,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(SCRIPTS_DIR.parent.parent))
 
 from preflight import detect_server, resolve_batch_url, log_duration_estimate, log_preflight_summary, ensure_unbuffered
-from benchmark_telemetry import JsonlWriter, jsonl_path_from_output, emit_sample, emit_resource
+from benchmark_telemetry import JsonlWriter, jsonl_path_from_output, emit_sample, emit_resource, emit_report_checkpoint
 from profile_gpu import GPUProfiler, CPUProfiler
 
 ensure_unbuffered()
@@ -693,16 +693,16 @@ async def main():
         summary = summarize_sweep(results, wall, c)
         gpu_summary = GPUProfiler.summarize(gpu_samples)
         cpu_summary = CPUProfiler.summarize(cpu_samples)
-        summary["gpu_profile"] = gpu_summary
-        summary["cpu_profile"] = cpu_summary
+        summary["client_gpu_profile"] = gpu_summary
+        summary["client_cpu_profile"] = cpu_summary
         if "error" not in gpu_summary:
-            summary["bottleneck"] = GPUProfiler.classify_bottleneck(gpu_summary)
+            summary["client_bottleneck"] = GPUProfiler.classify_bottleneck(gpu_summary)
         jsonl_writer.emit("level_end", phase="sweep", concurrency=c,
                           rtfx=summary["rtfx"], rps=summary["rps"],
                           failures=summary["failures"],
-                          gpu_util_avg=gpu_summary.get("gpu_util_pct", {}).get("mean"),
-                          vram_peak_mb=gpu_summary.get("vram_mb", {}).get("max"),
-                          cpu_avg=cpu_summary.get("mean"))
+                          client_gpu_util_avg=gpu_summary.get("gpu_util_pct", {}).get("mean"),
+                          client_vram_peak_mb=gpu_summary.get("vram_mb", {}).get("max"),
+                          client_cpu_avg=cpu_summary.get("mean"))
         sweep_results.append(summary)
         gpu_info = ""
         if "error" not in gpu_summary:
@@ -732,6 +732,7 @@ async def main():
 
     sweep_results.sort(key=lambda s: s["concurrency"])
     report["concurrency_sweep"] = sweep_results
+    emit_report_checkpoint(jsonl_writer, report, "after_sweep")
 
     # Step 5: Sustained load
     sustained_c = args.sustained_concurrency
@@ -755,10 +756,10 @@ async def main():
     sustained_summary = summarize_sweep(sustained_results, sustained_wall, sustained_c)
     sustained_summary["rounds"] = rounds
     sustained_summary["total_files"] = len(manifest) * rounds
-    sustained_summary["gpu_profile"] = GPUProfiler.summarize(sus_gpu_samples)
-    sustained_summary["cpu_profile"] = CPUProfiler.summarize(sus_cpu_samples)
-    if "error" not in sustained_summary["gpu_profile"]:
-        sustained_summary["bottleneck"] = GPUProfiler.classify_bottleneck(sustained_summary["gpu_profile"])
+    sustained_summary["client_gpu_profile"] = GPUProfiler.summarize(sus_gpu_samples)
+    sustained_summary["client_cpu_profile"] = CPUProfiler.summarize(sus_cpu_samples)
+    if "error" not in sustained_summary["client_gpu_profile"]:
+        sustained_summary["client_bottleneck"] = GPUProfiler.classify_bottleneck(sustained_summary["client_gpu_profile"])
     report["sustained_load"] = sustained_summary
     if not args.skip_wer:
         load_wer_summary = summarize_wer_results(sustained_results, refs)
@@ -781,9 +782,10 @@ async def main():
             ),
             "vram_peak_mb": max(v for v in (vram_start_mb, vram_end_mb) if v is not None),
         }
+    emit_report_checkpoint(jsonl_writer, report, "after_sustained")
     sus_gpu_info = ""
-    if "error" not in sustained_summary.get("gpu_profile", {"error": True}):
-        sg = sustained_summary["gpu_profile"]
+    if "error" not in sustained_summary.get("client_gpu_profile", {"error": True}):
+        sg = sustained_summary["client_gpu_profile"]
         sus_gpu_info = f", GPU={sg['gpu_util_pct']['mean']}%, VRAM={sg['vram_mb']['max']}MB"
     log.info(
         f"  Sustained: RTFx={sustained_summary['rtfx']}x, "

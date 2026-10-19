@@ -83,10 +83,10 @@ def emit_sample(writer: "JsonlWriter | None", result: dict, phase: str, concurre
 
 def emit_resource(writer: "JsonlWriter | None", gpu_sample: dict | None, cpu_pct: float | None,
                   phase: str, concurrency: int):
-    """Log one resource snapshot."""
+    """Log one resource snapshot (client-side — measures the machine running the benchmark)."""
     if writer is None:
         return
-    fields = {"phase": phase, "concurrency": concurrency}
+    fields = {"phase": phase, "concurrency": concurrency, "source": "client"}
     if gpu_sample:
         fields.update({
             "vram_used_mb": gpu_sample.get("vram_used_mb"),
@@ -98,3 +98,14 @@ def emit_resource(writer: "JsonlWriter | None", gpu_sample: dict | None, cpu_pct
     if cpu_pct is not None:
         fields["cpu_pct"] = cpu_pct
     writer.emit("resource", **fields)
+
+
+def emit_report_checkpoint(writer: "JsonlWriter | None", report: dict, phase: str):
+    """Snapshot partial report state at key milestones for crash recovery."""
+    if writer is None:
+        return
+    checkpoint = {}
+    for key in ("wer", "concurrency_sweep", "sustained_load", "quality_gates", "summary"):
+        if key in report:
+            checkpoint[key] = report[key]
+    writer.emit("report_checkpoint", phase=phase, report=checkpoint)
