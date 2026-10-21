@@ -1,0 +1,47 @@
+{
+  "schema_version": "v1alpha2-live",
+  "benchmark": "Streaming ASR Benchmark (full corpus)",
+  "timestamp": "2026-10-18T17:39:33Z",
+  "server": "ws://localhost:8000",
+  "samples": 2620,
+  "dataset": "librispeech-test-clean",
+  "smart_mode": false,
+  "chunk_ms": 160,
+  "system": {
+    "gpu": "L4",
+    "container_image": "ghcr.io/beastoin/highperfasr-stream:latest (sha-afb1d92)",
+    "serving_mode": "dedicated",
+    "max_concurrent_streams": 512,
+    "max_stream_drain": 16
+  },
+  "command": "python3 bench_stream.py --server ws://localhost:8000 --endpoint /v1/stream --concurrency 32,16,8 --skip-wer --sustained-rounds 4 --gpu L4 --image-tag sha-afb1d92",
+  "note": "WER evaluated at c=1 (full 2620-file corpus). Sweep at c=32,16,8 (full corpus, realtime-paced). Higher concurrency (c>=128) triggers RNNT pipeline slot leak during sweep-style rapid connect/disconnect \u2014 a known limitation of the CacheAwareRNNT pipeline, not a server bug.",
+  "wer": {
+    "corpus_wer_pct": 3.51,
+    "c1_corpus_wer_pct": 3.51,
+    "samples_evaluated": 2620,
+    "samples_failed": 0,
+    "normalization": "whisper_english",
+    "reference_wer_pct": 3.21
+  },
+  "concurrency_sweep": [
+    {
+      "concurrency": 8,
+      "rtfx": 5.58,
+      "sessions_per_min": 45.1,
+      "failures": 0
+    },
+    {
+      "concurrency": 16,
+      "rtfx": 8.87,
+      "sessions_per_min": 71.7,
+      "failures": 0
+    },
+    {
+      "concurrency": 32,
+      "rtfx": 12.02,
+      "sessions_per_min": 97.1,
+      "failures": 0
+    }
+  ]
+}

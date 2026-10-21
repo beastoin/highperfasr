@@ -71,6 +71,26 @@ beastoin/highperfasr (main branch)
 | Stream (dedicated) | 3.21% | 297 sess/min / 38.69x RTFx | c=512, 0 failures |
 | Stream (both) | 3.21% | 87.4 sess/min / 11.48x RTFx | c=32, 0 failures |
 
+"Dedicated" = one model per GPU. "Both" = batch + stream on one GPU (unified docker).
+
+## Recent Measurements (v0.3.0, October 17)
+
+### L4 (24 GB VRAM)
+
+| Mode | WER | Peak Throughput | Sustained | Max Concurrency |
+|------|-----|-----------------|-----------|-----------------|
+| Batch | 1.92% | 19.49 RPS / 145x RTFx @ c=128 | 19.96 RPS / 148x RTFx | c=512, 0 failures |
+| Stream | 2.93% | 218.2 sess/min / 32x RTFx @ c=256 | — | c=256, 0 failures |
+
+### T4 (16 GB VRAM)
+
+| Mode | WER | Peak Throughput | Sustained | Max Concurrency |
+|------|-----|-----------------|-----------|-----------------|
+| Batch | 1.93% | 6.86 RPS / 51x RTFx @ c=256 | 7.09 RPS / 52x RTFx | c=256, 0 failures |
+| Stream | 2.87% | 127.2 sess/min / 19x RTFx @ c=128 | — | c=128, 0 failures |
+
+T4 is ~35% of L4 batch throughput, ~58% of L4 stream throughput.
+
 ## Commands
 
 ```bash

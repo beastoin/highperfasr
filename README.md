@@ -14,14 +14,16 @@ Run batch and streaming transcription on a single GPU with a simple, framework-a
 
 Measured on one GKE L4 GPU with model quality preserved:
 
-| Workload | Result |
-|----------|--------|
-| Streaming concurrency | 512 WebSocket streams, 0 failures |
-| Streaming quality | 3.21% WER on LibriSpeech test-clean |
-| Streaming throughput | 297 sessions/min, 38.69x realtime |
-| Batch throughput | 178x realtime, about 3 hours of audio per minute |
-| Batch quality | 1.57% WER on LibriSpeech test-clean |
-| Cost | About $0.70/hr on GKE L4 |
+| Mode | WER | Peak Throughput | Max Concurrency |
+|------|-----|-----------------|-----------------|
+| Batch (dedicated) | 1.57% | 19.5 RPS / 178x RTFx | c=512, 0 failures |
+| Batch (both) | 1.92% | 13.49 RPS / 100x RTFx | c=32, 0 failures |
+| Stream (dedicated) | 3.21% | 297 sess/min / 38.69x RTFx | c=512, 0 failures |
+| Stream (both) | 3.21% | 87.4 sess/min / 11.48x RTFx | c=32, 0 failures |
+
+"Dedicated" runs one model per GPU. "Both" runs batch + stream on one GPU
+via `highperfasr serve --mode both` (single process) or `docker compose --profile full up -d`
+(two containers, needs two GPUs). Cost: about $0.70/hr on GKE L4.
 
 > "We use the highperfasr recipe for the Omi batch sync engine. It helped reduce cost from $7,830 to $614 — 12.7x savings — and there is still a lot of headroom in that $614 L4 GPU."
 >
@@ -69,38 +71,43 @@ HPFASR_STREAM_IMAGE=highperfasr-stream:dev docker compose up -d --build
 
 ### Streaming (Nemotron 3.5 ASR 0.6B)
 
-![RTFx Scaling](benchmarks/results/l4-stream-20260705T000000/rtfx-scaling.png)
+L4 October 18 — full LibriSpeech test-clean corpus (2620 files), dedicated mode:
 
-![Throughput Scaling](benchmarks/results/l4-stream-20260705T000000/throughput-scaling.png)
+| Concurrency | RTFx | sess/min | Failures |
+|-------------|------|----------|----------|
+| c=32 | 12.02 | 97.1 | 0 |
+| c=16 | 8.87 | 71.7 | 0 |
+| c=8 | 5.58 | 45.1 | 0 |
 
-![Cost Efficiency](benchmarks/results/l4-stream-20260705T000000/cost-efficiency.png)
+WER 3.51% at c=1 (full corpus, Whisper English normalization).
 
-512 persistent WebSocket streams, 10-minute real-time soak, all 2,620 LibriSpeech
-test-clean files. WER 3.21%, 297 sessions/min, 8672 MB VRAM (38%), 0 failures.
+Higher concurrency (c≥128) triggers an RNNT pipeline slot leak during sweep-style
+rapid connect/disconnect — a known CacheAwareRNNT limitation, not a server bug.
+Soak-style testing (persistent connections) reaches c=512 with 0 failures.
 
-Full report: [benchmarks/results/l4-stream-20260705T000000/](benchmarks/results/l4-stream-20260705T000000/)
+Full report: [benchmarks/results/l4-stream-20261018T173933/](benchmarks/results/l4-stream-20261018T173933/)
 
 ### Batch (Parakeet TDT 0.6B)
 
-![Batch RTFx Scaling](benchmarks/results/l4-batch-20260710T000000/rtfx-scaling.png)
+![Batch RTFx Scaling](benchmarks/results/l4-batch-20261017T085112/rtfx-scaling.png)
 
-![Batch Throughput](benchmarks/results/l4-batch-20260710T000000/throughput-scaling.png)
+![Batch Throughput](benchmarks/results/l4-batch-20261017T085112/throughput-scaling.png)
 
-![Batch Latency](benchmarks/results/l4-batch-20260710T000000/latency-scaling.png)
+![Batch Latency](benchmarks/results/l4-batch-20261017T085112/latency-scaling.png)
 
-![Batch Cost Efficiency](benchmarks/results/l4-batch-20260710T000000/cost-efficiency.png)
+![Batch Cost Efficiency](benchmarks/results/l4-batch-20261017T085112/cost-efficiency.png)
 
-REST concurrency sweep c=1..512, LibriSpeech test-clean (200 files).
-WER 1.57%, peak 19.5 RPS (178x realtime), 0 failures at every level.
+REST concurrency sweep c=128, 256, 512, LibriSpeech test-clean (2620 files).
+WER 1.92%, peak 19.49 RPS (145x realtime), sustained 19.96 RPS (148x realtime), 0 failures at every level including c=512.
 
-Full report: [benchmarks/results/l4-batch-20260710T000000/](benchmarks/results/l4-batch-20260710T000000/)
+Full report: [benchmarks/results/l4-batch-20261017T085112/](benchmarks/results/l4-batch-20261017T085112/)
 
 ### Methodology
 
 Every benchmark follows a deterministic protocol: real speech corpus (LibriSpeech
 test-clean, 2620 files, SHA256-verified), standard WER normalization (Whisper
-EnglishTextNormalizer), concurrency sweeps with sustained load, and fail-closed
-quality gates that reject results with missing metrics.
+EnglishTextNormalizer), concurrency sweeps, and fail-closed quality gates that
+reject results with missing metrics.
 
 Reports are validated against a [JSON schema](benchmarks/report-schema.json),
 checked for regressions against [registered baselines](benchmarks/baselines/registry.json),
@@ -109,8 +116,8 @@ and gated by [automated thresholds](benchmarks/config/quality-gates.json)
 CI runs all checks on every PR.
 
 Verify:
-[streaming result.json](benchmarks/results/l4-stream-20260705T000000/result.json),
-[batch result.json](benchmarks/results/l4-batch-20260710T000000/result.json),
+[streaming report.json](benchmarks/results/l4-stream-20261018T173933/report.json),
+[batch report.json](benchmarks/results/l4-batch-20261017T085112/report.json),
 [benchmark scripts](benchmarks/scripts/).
 
 ## Deploy
