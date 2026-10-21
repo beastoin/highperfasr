@@ -68,22 +68,26 @@ def parse_nvidia_smi() -> dict | None:
 class GPUProfiler:
     """Background thread that samples nvidia-smi at regular intervals."""
 
-    def __init__(self, interval_s: float = 1.0):
+    def __init__(self, interval_s: float = 1.0, on_sample=None):
         self._interval = interval_s
         self._samples: list[dict] = []
         self._running = False
+        self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._on_sample = on_sample
 
     def start(self):
         self._samples = []
         self._running = True
+        self._stop_event.clear()
         self._thread = threading.Thread(target=self._sample_loop, daemon=True)
         self._thread.start()
 
     def stop(self) -> list[dict]:
         self._running = False
+        self._stop_event.set()
         if self._thread:
-            self._thread.join(timeout=5)
+            self._thread.join(timeout=max(5, self._interval * 2))
         return self._samples
 
     def _sample_loop(self):
@@ -92,7 +96,12 @@ class GPUProfiler:
             if sample:
                 sample["timestamp"] = time.monotonic()
                 self._samples.append(sample)
-            time.sleep(self._interval)
+                if self._on_sample:
+                    try:
+                        self._on_sample(sample)
+                    except Exception:
+                        pass
+            self._stop_event.wait(timeout=self._interval)
 
     @staticmethod
     def summarize(samples: list[dict]) -> dict:
@@ -227,20 +236,24 @@ def get_cpu_utilization() -> float | None:
 class CPUProfiler:
     """Background thread that samples host CPU utilization during load."""
 
-    def __init__(self, interval_s: float = 1.0):
+    def __init__(self, interval_s: float = 1.0, on_sample=None):
         self._interval = interval_s
         self._samples: list[float] = []
         self._running = False
+        self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._on_sample = on_sample
 
     def start(self):
         self._samples = []
         self._running = True
+        self._stop_event.clear()
         self._thread = threading.Thread(target=self._sample_loop, daemon=True)
         self._thread.start()
 
     def stop(self) -> list[float]:
         self._running = False
+        self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=max(5, self._interval * 2))
         return self._samples
@@ -248,10 +261,16 @@ class CPUProfiler:
     def _sample_loop(self):
         previous = _read_cpu_times()
         while self._running:
-            time.sleep(self._interval)
+            self._stop_event.wait(timeout=self._interval)
             current = _read_cpu_times()
             if previous is not None and current is not None:
-                self._samples.append(_cpu_util_between(previous, current))
+                val = _cpu_util_between(previous, current)
+                self._samples.append(val)
+                if self._on_sample:
+                    try:
+                        self._on_sample(val)
+                    except Exception:
+                        pass
             previous = current
 
     @staticmethod

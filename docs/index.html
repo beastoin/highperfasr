@@ -145,17 +145,17 @@ tr:last-child td{border-bottom:none}
 <div class="section-title">Headline Metrics</div>
 <div class="hero">
   <div class="stat-card">
-    <div class="stat-val c-accent">1.57%</div>
-    <div class="stat-label">Best WER</div>
-    <div class="stat-sub">Batch L4 &middot; Whisper norm</div>
+    <div class="stat-val c-accent">1.92%</div>
+    <div class="stat-label">Batch WER</div>
+    <div class="stat-sub">L4 &middot; 2620 files &middot; Whisper norm</div>
   </div>
   <div class="stat-card">
-    <div class="stat-val c-accent">235x</div>
-    <div class="stat-label">Peak RTFx</div>
-    <div class="stat-sub">L4 batch by-duration</div>
+    <div class="stat-val c-accent">129x</div>
+    <div class="stat-label">Batch RTFx</div>
+    <div class="stat-sub">L4 sustained c=64</div>
   </div>
   <div class="stat-card">
-    <div class="stat-val c-blue">512</div>
+    <div class="stat-val c-blue">64</div>
     <div class="stat-label">Max Streams</div>
     <div class="stat-sub">L4 streaming &middot; 0 failures</div>
   </div>
@@ -171,19 +171,19 @@ tr:last-child td{border-bottom:none}
 <div class="gpu-grid">
   <div class="gpu-card">
     <h3><span class="gpu-badge badge-l4">L4</span> NVIDIA L4 24GB</h3>
-    <div class="gpu-section-label">Batch &middot; parakeet-tdt-0.6b-v3</div>
+    <div class="gpu-section-label">Batch &middot; parakeet-tdt-0.6b-v3 &middot; 2620 files</div>
     <div class="gpu-metric-grid">
-      <div class="gpu-metric"><div class="gpu-metric-label">WER</div><div class="gpu-metric-val c-accent">1.57%</div></div>
-      <div class="gpu-metric"><div class="gpu-metric-label">Peak RPS</div><div class="gpu-metric-val">19.5</div><div class="gpu-metric-note">c=256</div></div>
-      <div class="gpu-metric"><div class="gpu-metric-label">RTFx</div><div class="gpu-metric-val">178x</div><div class="gpu-metric-note">c=256</div></div>
-      <div class="gpu-metric"><div class="gpu-metric-label">Failures</div><div class="gpu-metric-val c-accent">0</div><div class="gpu-metric-note">c=1..512</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">WER</div><div class="gpu-metric-val c-accent">1.92%</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">Sustained RPS</div><div class="gpu-metric-val">17.5</div><div class="gpu-metric-note">c=64</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">RTFx</div><div class="gpu-metric-val">129x</div><div class="gpu-metric-note">sustained c=64</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">Failures</div><div class="gpu-metric-val c-accent">0</div><div class="gpu-metric-note">c=1..64</div></div>
     </div>
-    <div class="gpu-section-label">Streaming &middot; nemotron-3.5-asr-streaming-0.6b</div>
+    <div class="gpu-section-label">Streaming &middot; nemotron-3.5-asr-streaming-0.6b &middot; 2620 files</div>
     <div class="gpu-metric-grid">
-      <div class="gpu-metric"><div class="gpu-metric-label">WER</div><div class="gpu-metric-val c-blue">3.21%</div></div>
-      <div class="gpu-metric"><div class="gpu-metric-label">Max Concurrent</div><div class="gpu-metric-val c-blue">512</div></div>
-      <div class="gpu-metric"><div class="gpu-metric-label">Sessions/min</div><div class="gpu-metric-val">297</div><div class="gpu-metric-note">c=512</div></div>
-      <div class="gpu-metric"><div class="gpu-metric-label">RTFx</div><div class="gpu-metric-val">38.69x</div><div class="gpu-metric-note">c=512</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">WER</div><div class="gpu-metric-val c-blue">3.51%</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">Max Streams</div><div class="gpu-metric-val c-blue">64</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">TTFB p50</div><div class="gpu-metric-val">1.30s</div><div class="gpu-metric-note">c=4</div></div>
+      <div class="gpu-metric"><div class="gpu-metric-label">RTFx</div><div class="gpu-metric-val">13.2x</div><div class="gpu-metric-note">c=64</div></div>
     </div>
     <div class="gpu-section-label">Duration Scaling (batch)</div>
     <div class="dur-grid">
@@ -211,8 +211,8 @@ tr:last-child td{border-bottom:none}
     </div>
     <div class="gpu-section-label" style="margin-top:16px">Comparison</div>
     <div style="font-size:12px;color:var(--text2);font-family:var(--mono);line-height:1.8">
-      L4 batch is <strong style="color:var(--text)">2.7x</strong> faster RPS vs T4<br>
-      L4 streaming handles <strong style="color:var(--text)">2x</strong> more concurrent streams<br>
+      L4 batch is <strong style="color:var(--text)">2.4x</strong> faster RPS vs T4<br>
+      L4 batch RTFx <strong style="color:var(--text)">129x</strong> vs T4 <strong style="color:var(--text)">65x</strong><br>
       WER within <strong style="color:var(--text)">0.3%</strong> across both GPUs
     </div>
   </div>
@@ -226,24 +226,24 @@ tr:last-child td{border-bottom:none}
   <div class="run-card" id="run-l4-batch">
     <div class="run-header" onclick="toggleRun(this)">
       <span class="run-toggle">&#x25B6;</span>
-      <span class="run-title">L4 Batch Concurrency Sweep</span>
+      <span class="run-title">L4 Batch — Full Corpus (2620 files)</span>
       <div class="run-chips">
-        <span class="chip chip-g">WER 1.57%</span>
-        <span class="chip chip-g">19.5 RPS</span>
-        <span class="chip chip-g">178x RTFx</span>
+        <span class="chip chip-g">WER 1.92%</span>
+        <span class="chip chip-g">17.5 RPS</span>
+        <span class="chip chip-g">129x RTFx</span>
         <span class="chip chip-g">0 fail</span>
-        <a href="runs/l4-batch-20260710T000000.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
+        <a href="runs/l4-batch-20260725T055248.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
       </div>
     </div>
     <div class="run-body">
       <div class="run-metrics">
-        <div class="run-m"><div class="run-m-val c-accent">1.57%</div><div class="run-m-label">WER</div></div>
-        <div class="run-m"><div class="run-m-val">19.5</div><div class="run-m-label">Peak RPS</div></div>
-        <div class="run-m"><div class="run-m-val">178x</div><div class="run-m-label">RTFx</div></div>
+        <div class="run-m"><div class="run-m-val c-accent">1.92%</div><div class="run-m-label">WER</div></div>
+        <div class="run-m"><div class="run-m-val">17.5</div><div class="run-m-label">Sustained RPS</div></div>
+        <div class="run-m"><div class="run-m-val">129x</div><div class="run-m-label">RTFx</div></div>
         <div class="run-m"><div class="run-m-val c-accent">0</div><div class="run-m-label">Failures</div></div>
-        <div class="run-m"><div class="run-m-val">256</div><div class="run-m-label">Max C</div></div>
+        <div class="run-m"><div class="run-m-val">64</div><div class="run-m-label">Sustained C</div></div>
       </div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">nvidia/parakeet-tdt-0.6b-v3 &middot; 200 LibriSpeech test-clean files &middot; NVIDIA L4 24GB</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">nvidia/parakeet-tdt-0.6b-v3 &middot; 2620 LibriSpeech test-clean &middot; NVIDIA L4 24GB &middot; v0.3.0</div>
       <div class="chart-wrap" id="chart-l4-batch"><canvas></canvas><div class="chart-tooltip"></div></div>
       <div class="table-wrap">
         <table>
@@ -258,28 +258,27 @@ tr:last-child td{border-bottom:none}
   <div class="run-card" id="run-l4-stream">
     <div class="run-header" onclick="toggleRun(this)">
       <span class="run-toggle">&#x25B6;</span>
-      <span class="run-title">L4 Streaming 512-Stream Soak</span>
+      <span class="run-title">L4 Streaming — Full Corpus (2620 files)</span>
       <div class="run-chips">
-        <span class="chip chip-b">WER 3.21%</span>
-        <span class="chip chip-b">297 sess/min</span>
-        <span class="chip chip-b">38.69x RTFx</span>
+        <span class="chip chip-b">WER 3.51%</span>
+        <span class="chip chip-b">13.2x RTFx</span>
+        <span class="chip chip-b">64 streams</span>
         <span class="chip chip-g">0 fail</span>
-        <a href="runs/l4-stream-20260705T000000.html" class="chip chip-b" onclick="event.stopPropagation()" style="text-decoration:none">Full Page &rarr;</a>
       </div>
     </div>
     <div class="run-body">
       <div class="run-metrics">
-        <div class="run-m"><div class="run-m-val c-blue">3.21%</div><div class="run-m-label">WER</div></div>
-        <div class="run-m"><div class="run-m-val">297</div><div class="run-m-label">Sess/min</div></div>
-        <div class="run-m"><div class="run-m-val">38.69x</div><div class="run-m-label">RTFx</div></div>
+        <div class="run-m"><div class="run-m-val c-blue">3.51%</div><div class="run-m-label">WER</div></div>
+        <div class="run-m"><div class="run-m-val">13.2x</div><div class="run-m-label">Peak RTFx</div></div>
         <div class="run-m"><div class="run-m-val c-accent">0</div><div class="run-m-label">Failures</div></div>
-        <div class="run-m"><div class="run-m-val c-blue">512</div><div class="run-m-label">Max Streams</div></div>
+        <div class="run-m"><div class="run-m-val c-blue">64</div><div class="run-m-label">Max Streams</div></div>
+        <div class="run-m"><div class="run-m-val">1.30s</div><div class="run-m-label">TTFB p50 (c=4)</div></div>
       </div>
-      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">nvidia/nemotron-3.5-asr-streaming-0.6b &middot; 2620 LibriSpeech test-clean &middot; 10 min soak &middot; NVIDIA L4 24GB</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">nvidia/nemotron-3.5-asr-streaming-0.6b &middot; 2620 LibriSpeech test-clean &middot; NVIDIA L4 24GB &middot; JSONL telemetry</div>
       <div class="chart-wrap" id="chart-l4-stream"><canvas></canvas><div class="chart-tooltip"></div></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th class="text-c">C</th><th class="text-r">RTFx</th><th class="text-r">Sess/min</th><th class="text-c">Fail</th></tr></thead>
+          <thead><tr><th class="text-c">C</th><th class="text-r">RTFx</th><th class="text-r">TTFB p50</th><th class="text-r">TTFB p99</th><th class="text-r">RT %</th><th class="text-c">Fail</th></tr></thead>
           <tbody id="tbl-l4-stream"></tbody>
         </table>
       </div>
@@ -459,6 +458,31 @@ tr:last-child td{border-bottom:none}
     </div>
   </div>
 
+  <!-- L4 STREAM Full Corpus 2026-10-19 -->
+  <div class="run-card">
+    <div class="run-header" onclick="toggleRun(this)">
+      <span class="run-toggle">&#x25B6;</span>
+      <div class="run-title">L4 Stream — Full Corpus + Telemetry</div>
+      <div class="run-chips">
+        <span class="chip chip-b">WER 3.51%</span>
+        <span class="chip chip-b">13.2x RTFx</span>
+        <span class="chip chip-b">64 max streams</span>
+        <span class="chip chip-g">JSONL</span>
+        <span class="chip chip-b">Latest</span>
+      </div>
+    </div>
+    <div class="run-body">
+      <div class="run-metrics">
+        <div class="run-m"><div class="run-m-val c-blue">3.51%</div><div class="run-m-label">WER</div></div>
+        <div class="run-m"><div class="run-m-val">13.2x</div><div class="run-m-label">Peak RTFx</div></div>
+        <div class="run-m"><div class="run-m-val c-blue">64</div><div class="run-m-label">Max Streams</div></div>
+        <div class="run-m"><div class="run-m-val c-accent">0</div><div class="run-m-label">Failures (c&le;64)</div></div>
+        <div class="run-m"><div class="run-m-val">1.30s</div><div class="run-m-label">TTFB p50 (c=4)</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;font-family:var(--mono)">2620 LibriSpeech test-clean &middot; NVIDIA L4 &middot; Sweep c=4..64 (0 fail) &middot; Sustained c=16 RTFx 8.8x &middot; Crash-safe JSONL telemetry (79,702 events)</div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ALL RUNS INDEX -->
@@ -524,17 +548,20 @@ function toggleRun(header) {
 
 const DATA = {
   l4Batch: {
-    c: [1,8,32,64,128,256,512],
-    rps: [1.4,7.7,13.5,14.1,14.4,19.5,19.2],
-    rtfx: [13,70,118,124,131,178,175],
-    p50: [711,959,2207,4418,8646,10229,10615],
-    p99: [1462,2172,2608,5282,11864,13986,20784],
-    fail: [0,0,0,0,0,0,0]
+    c: [1,8,16,32],
+    rps: [3.0,11.5,13.5,13.2],
+    rtfx: [22,85,100,98],
+    p50: [293,657,1153,2348],
+    p99: [1018,1467,2232,4945],
+    fail: [0,0,0,0],
+    sustained: {c:64,rps:17.5,rtfx:129,wer:1.91}
   },
   l4Stream: {
-    c: [32,64,128,256,512],
-    rtfx: [10.32,13.05,18.76,27.55,38.69],
-    sess: [79.2,100.2,144.0,211.4,297.0],
+    c: [4,8,16,32,64],
+    rtfx: [3.33,5.56,8.76,11.88,13.15],
+    ttfb_p50: [1.30,1.64,1.99,2.93,6.28],
+    ttfb_p99: [2.33,2.68,3.48,5.32,10.37],
+    rt_pct: [26.6,1.1,0.0,0.0,0.0],
     fail: [0,0,0,0,0]
   },
   l4Dur: {
@@ -555,11 +582,12 @@ const DATA = {
     tr.innerHTML = `<td class="text-c">${c}</td><td class="text-r">${d.rps[i]}</td><td class="text-r">${d.rtfx[i]}x</td><td class="text-r">${d.p50[i]}ms</td><td class="text-r">${d.p99[i]}ms</td><td class="text-c" style="color:var(--accent)">0</td>`;
     tb.appendChild(tr);
   });
+  if(d.sustained){const tr=document.createElement('tr');tr.style.fontWeight='700';tr.innerHTML=`<td class="text-c">${d.sustained.c} <span style="font-size:9px;color:var(--text3)">(sustained)</span></td><td class="text-r">${d.sustained.rps}</td><td class="text-r">${d.sustained.rtfx}x</td><td class="text-r">—</td><td class="text-r">—</td><td class="text-c" style="color:var(--accent)">0</td>`;tb.appendChild(tr);}
   const ds = DATA.l4Stream;
   const ts = document.getElementById('tbl-l4-stream');
   ds.c.forEach((c,i) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td class="text-c">${c}</td><td class="text-r">${ds.rtfx[i]}x</td><td class="text-r">${ds.sess[i]}</td><td class="text-c" style="color:var(--accent)">0</td>`;
+    tr.innerHTML = `<td class="text-c">${c}</td><td class="text-r">${ds.rtfx[i]}x</td><td class="text-r">${ds.ttfb_p50[i]}s</td><td class="text-r">${ds.ttfb_p99[i]}s</td><td class="text-r">${ds.rt_pct[i]}%</td><td class="text-c" style="color:var(--accent)">0</td>`;
     ts.appendChild(tr);
   });
 })();
@@ -570,7 +598,7 @@ function getColor(name) {
 
 function drawChartFor(id) {
   if (id === 'chart-l4-batch') drawBarLineChart('chart-l4-batch', DATA.l4Batch.c, DATA.l4Batch.rps, DATA.l4Batch.rtfx, 'RPS', 'RTFx', '--accent', '--accent');
-  else if (id === 'chart-l4-stream') drawBarLineChart('chart-l4-stream', DATA.l4Stream.c, DATA.l4Stream.sess, DATA.l4Stream.rtfx, 'Sess/min', 'RTFx', '--blue', '--blue');
+  else if (id === 'chart-l4-stream') drawBarLineChart('chart-l4-stream', DATA.l4Stream.c, DATA.l4Stream.ttfb_p50, DATA.l4Stream.rtfx, 'TTFB p50 (s)', 'RTFx', '--blue', '--blue');
   else if (id === 'chart-l4-dur') drawDurationChart('chart-l4-dur');
 }
 

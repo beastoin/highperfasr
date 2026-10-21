@@ -1,0 +1,568 @@
+{
+  "schema_version": "v1alpha2-live",
+  "benchmark": "Streaming ASR Benchmark",
+  "timestamp": "2026-10-19T05:57:11Z",
+  "server": "ws://127.0.0.1:8000",
+  "chunk_ms": 160,
+  "samples": 2620,
+  "dataset": "librispeech-test-clean",
+  "avg_file_duration_s": 7.42,
+  "total_audio_s": 19452.5,
+  "smart_mode": false,
+  "system": {
+    "python_version": "3.11.11",
+    "platform": "Linux-6.12.94+-x86_64-with-glibc2.35",
+    "pytorch_version": "2.6.0+cu126",
+    "cuda_version": "12.6",
+    "gpu": "NVIDIA L4",
+    "gpu_memory_mb": 23034,
+    "driver_version": "580.173.02",
+    "gpu_utilization_pct": 0
+  },
+  "command": "scripts/bench_stream.py --server ws://127.0.0.1:8000 --endpoint /v1/stream --max-samples 0 --concurrency 4,8,16,32,64,128,256 --sustained-rounds 4 --sustained-concurrency 16 --warmup 4 --dataset-dir /tmp/hpfasr-datasets --output /tmp/bench_stream_full.json",
+  "wer": {
+    "corpus_wer_pct": 3.51,
+    "c1_corpus_wer_pct": 3.51,
+    "samples_evaluated": 2620,
+    "samples_failed": 0,
+    "normalization": "whisper_english",
+    "reference_wer_pct": 3.21,
+    "max_load_corpus_wer_pct": 3.47,
+    "max_load_samples_evaluated": 10448
+  },
+  "concurrency_sweep": [
+    {
+      "concurrency": 4,
+      "total": 2620,
+      "ok": 2620,
+      "failures": 0,
+      "wall_s": 5834.06,
+      "rps": 0.45,
+      "rtfx": 3.33,
+      "rtf": 0.3,
+      "total_audio_s": 19452.5,
+      "sess_per_min": 26.9,
+      "p50_s": 7.084,
+      "p99_s": 28.52,
+      "min_s": 1.942,
+      "max_s": 41.441,
+      "mean_s": 8.886,
+      "stddev_s": 5.695,
+      "lag_p50_s": 1.332,
+      "lag_p95_s": 2.8,
+      "lag_p99_s": 3.741,
+      "rt_compliance_pct": 26.6,
+      "ttfb_p50_s": 1.2969,
+      "ttfb_p95_s": 2.0689,
+      "ttfb_p99_s": 2.3302,
+      "client_gpu_profile": {
+        "samples": 5674,
+        "vram_mb": {
+          "min": 8188,
+          "max": 8188,
+          "mean": 8188.0,
+          "total": 23034,
+          "highwater_pct": 35.5
+        },
+        "gpu_util_pct": {
+          "min": 0,
+          "max": 30,
+          "mean": 19.1
+        },
+        "mem_bw_util_pct": {
+          "min": 0,
+          "max": 26,
+          "mean": 16.1
+        },
+        "power_w": {
+          "min": 37.3,
+          "max": 49.5,
+          "mean": 45.0
+        },
+        "temp_c": {
+          "min": 54,
+          "max": 61
+        }
+      },
+      "client_cpu_profile": {
+        "samples": 5832,
+        "min": 31.8,
+        "max": 51.2,
+        "mean": 41.9
+      },
+      "client_bottleneck": {
+        "bottleneck": "cpu",
+        "confidence": 0.7,
+        "reasoning": "GPU underutilized (compute 19.1%, VRAM 35.5%) \u2014 likely CPU or I/O bottleneck. Check host CPU and network."
+      }
+    },
+    {
+      "concurrency": 8,
+      "total": 2620,
+      "ok": 2620,
+      "failures": 0,
+      "wall_s": 3496.43,
+      "rps": 0.75,
+      "rtfx": 5.56,
+      "rtf": 0.18,
+      "total_audio_s": 19452.5,
+      "sess_per_min": 45.0,
+      "p50_s": 8.474,
+      "p99_s": 35.272,
+      "min_s": 2.093,
+      "max_s": 46.751,
+      "mean_s": 10.627,
+      "stddev_s": 6.86,
+      "lag_p50_s": 2.718,
+      "lag_p95_s": 6.682,
+      "lag_p99_s": 9.52,
+      "rt_compliance_pct": 1.1,
+      "ttfb_p50_s": 1.6395,
+      "ttfb_p95_s": 2.3524,
+      "ttfb_p99_s": 2.6754,
+      "client_gpu_profile": {
+        "samples": 3400,
+        "vram_mb": {
+          "min": 8188,
+          "max": 8188,
+          "mean": 8188.0,
+          "total": 23034,
+          "highwater_pct": 35.5
+        },
+        "gpu_util_pct": {
+          "min": 0,
+          "max": 31,
+          "mean": 19.9
+        },
+        "mem_bw_util_pct": {
+          "min": 0,
+          "max": 26,
+          "mean": 16.6
+        },
+        "power_w": {
+          "min": 39.4,
+          "max": 50.0,
+          "mean": 45.5
+        },
+        "temp_c": {
+          "min": 57,
+          "max": 61
+        }
+      },
+      "client_cpu_profile": {
+        "samples": 3496,
+        "min": 32.1,
+        "max": 50.4,
+        "mean": 42.6
+      },
+      "client_bottleneck": {
+        "bottleneck": "cpu",
+        "confidence": 0.7,
+        "reasoning": "GPU underutilized (compute 19.9%, VRAM 35.5%) \u2014 likely CPU or I/O bottleneck. Check host CPU and network."
+      }
+    },
+    {
+      "concurrency": 16,
+      "total": 2620,
+      "ok": 2620,
+      "failures": 0,
+      "wall_s": 2219.5,
+      "rps": 1.18,
+      "rtfx": 8.76,
+      "rtf": 0.114,
+      "total_audio_s": 19452.5,
+      "sess_per_min": 70.8,
+      "p50_s": 10.705,
+      "p99_s": 44.365,
+      "min_s": 2.657,
+      "max_s": 58.821,
+      "mean_s": 13.469,
+      "stddev_s": 8.74,
+      "lag_p50_s": 4.966,
+      "lag_p95_s": 13.558,
+      "lag_p99_s": 18.492,
+      "rt_compliance_pct": 0.0,
+      "ttfb_p50_s": 1.99,
+      "ttfb_p95_s": 3.0259,
+      "ttfb_p99_s": 3.4834,
+      "client_gpu_profile": {
+        "samples": 2158,
+        "vram_mb": {
+          "min": 8188,
+          "max": 8188,
+          "mean": 8188.0,
+          "total": 23034,
+          "highwater_pct": 35.5
+        },
+        "gpu_util_pct": {
+          "min": 0,
+          "max": 32,
+          "mean": 21.2
+        },
+        "mem_bw_util_pct": {
+          "min": 0,
+          "max": 26,
+          "mean": 17.6
+        },
+        "power_w": {
+          "min": 40.4,
+          "max": 51.1,
+          "mean": 46.7
+        },
+        "temp_c": {
+          "min": 57,
+          "max": 62
+        }
+      },
+      "client_cpu_profile": {
+        "samples": 2219,
+        "min": 33.3,
+        "max": 52.6,
+        "mean": 42.9
+      },
+      "client_bottleneck": {
+        "bottleneck": "cpu",
+        "confidence": 0.7,
+        "reasoning": "GPU underutilized (compute 21.2%, VRAM 35.5%) \u2014 likely CPU or I/O bottleneck. Check host CPU and network."
+      }
+    },
+    {
+      "concurrency": 32,
+      "total": 2620,
+      "ok": 2620,
+      "failures": 0,
+      "wall_s": 1637.55,
+      "rps": 1.6,
+      "rtfx": 11.88,
+      "rtf": 0.084,
+      "total_audio_s": 19452.5,
+      "sess_per_min": 96.0,
+      "p50_s": 16.032,
+      "p99_s": 59.854,
+      "min_s": 3.603,
+      "max_s": 79.724,
+      "mean_s": 19.735,
+      "stddev_s": 12.177,
+      "lag_p50_s": 10.251,
+      "lag_p95_s": 26.348,
+      "lag_p99_s": 35.065,
+      "rt_compliance_pct": 0.0,
+      "ttfb_p50_s": 2.9346,
+      "ttfb_p95_s": 4.4382,
+      "ttfb_p99_s": 5.3177,
+      "client_gpu_profile": {
+        "samples": 1592,
+        "vram_mb": {
+          "min": 7978,
+          "max": 8188,
+          "mean": 7984.1,
+          "total": 23034,
+          "highwater_pct": 35.5
+        },
+        "gpu_util_pct": {
+          "min": 0,
+          "max": 30,
+          "mean": 22.2
+        },
+        "mem_bw_util_pct": {
+          "min": 0,
+          "max": 25,
+          "mean": 18.3
+        },
+        "power_w": {
+          "min": 40.7,
+          "max": 51.7,
+          "mean": 47.4
+        },
+        "temp_c": {
+          "min": 58,
+          "max": 63
+        }
+      },
+      "client_cpu_profile": {
+        "samples": 1637,
+        "min": 40.2,
+        "max": 49.5,
+        "mean": 43.2
+      },
+      "client_bottleneck": {
+        "bottleneck": "cpu",
+        "confidence": 0.7,
+        "reasoning": "GPU underutilized (compute 22.2%, VRAM 35.5%) \u2014 likely CPU or I/O bottleneck. Check host CPU and network."
+      }
+    },
+    {
+      "concurrency": 64,
+      "total": 2620,
+      "ok": 2620,
+      "failures": 0,
+      "wall_s": 1479.17,
+      "rps": 1.77,
+      "rtfx": 13.15,
+      "rtf": 0.076,
+      "total_audio_s": 19452.5,
+      "sess_per_min": 106.3,
+      "p50_s": 34.139,
+      "p99_s": 64.69,
+      "min_s": 6.957,
+      "max_s": 64.991,
+      "mean_s": 34.454,
+      "stddev_s": 13.512,
+      "lag_p50_s": 26.251,
+      "lag_p95_s": 49.79,
+      "lag_p99_s": 52.791,
+      "rt_compliance_pct": 0.0,
+      "ttfb_p50_s": 6.2839,
+      "ttfb_p95_s": 8.9151,
+      "ttfb_p99_s": 10.3686,
+      "client_gpu_profile": {
+        "samples": 1438,
+        "vram_mb": {
+          "min": 7984,
+          "max": 7984,
+          "mean": 7984.0,
+          "total": 23034,
+          "highwater_pct": 34.7
+        },
+        "gpu_util_pct": {
+          "min": 0,
+          "max": 31,
+          "mean": 22.1
+        },
+        "mem_bw_util_pct": {
+          "min": 0,
+          "max": 26,
+          "mean": 18.2
+        },
+        "power_w": {
+          "min": 40.4,
+          "max": 52.1,
+          "mean": 47.3
+        },
+        "temp_c": {
+          "min": 59,
+          "max": 63
+        }
+      },
+      "client_cpu_profile": {
+        "samples": 1479,
+        "min": 40.3,
+        "max": 50.6,
+        "mean": 43.3
+      },
+      "client_bottleneck": {
+        "bottleneck": "cpu",
+        "confidence": 0.7,
+        "reasoning": "GPU underutilized (compute 22.1%, VRAM 34.7%) \u2014 likely CPU or I/O bottleneck. Check host CPU and network."
+      }
+    },
+    {
+      "concurrency": 128,
+      "total": 2620,
+      "ok": 2432,
+      "failures": 188,
+      "wall_s": 831.15,
+      "rps": 2.93,
+      "rtfx": 21.85,
+      "rtf": 0.046,
+      "total_audio_s": 18158.4,
+      "sess_per_min": 175.6,
+      "p50_s": 39.663,
+      "p99_s": 64.866,
+      "min_s": 8.222,
+      "max_s": 65.028,
+      "mean_s": 35.399,
+      "stddev_s": 17.056,
+      "lag_p50_s": 27.769,
+      "lag_p95_s": 57.504,
+      "lag_p99_s": 59.387,
+      "rt_compliance_pct": 0.0,
+      "ttfb_p50_s": 16.1886,
+      "ttfb_p95_s": 25.3478,
+      "ttfb_p99_s": 30.14,
+      "client_gpu_profile": {
+        "samples": 808,
+        "vram_mb": {
+          "min": 7984,
+          "max": 7986,
+          "mean": 7985.0,
+          "total": 23034,
+          "highwater_pct": 34.7
+        },
+        "gpu_util_pct": {
+          "min": 0,
+          "max": 31,
+          "mean": 22.0
+        },
+        "mem_bw_util_pct": {
+          "min": 0,
+          "max": 25,
+          "mean": 18.3
+        },
+        "power_w": {
+          "min": 39.4,
+          "max": 51.2,
+          "mean": 47.1
+        },
+        "temp_c": {
+          "min": 58,
+          "max": 62
+        }
+      },
+      "client_cpu_profile": {
+        "samples": 831,
+        "min": 40.4,
+        "max": 51.3,
+        "mean": 43.7
+      },
+      "client_bottleneck": {
+        "bottleneck": "cpu",
+        "confidence": 0.7,
+        "reasoning": "GPU underutilized (compute 22.0%, VRAM 34.7%) \u2014 likely CPU or I/O bottleneck. Check host CPU and network."
+      }
+    },
+    {
+      "concurrency": 256,
+      "total": 2620,
+      "ok": 588,
+      "failures": 2032,
+      "wall_s": 125.09,
+      "rps": 4.7,
+      "rtfx": 35.81,
+      "rtf": 0.028,
+      "total_audio_s": 4479.9,
+      "sess_per_min": 282.0,
+      "p50_s": 27.356,
+      "p99_s": 55.845,
+      "min_s": 10.685,
+      "max_s": 55.886,
+      "mean_s": 30.061,
+      "stddev_s": 15.373,
+      "lag_p50_s": 17.826,
+      "lag_p95_s": 49.458,
+      "lag_p99_s": 50.644,
+      "rt_compliance_pct": 0.0,
+      "ttfb_p50_s": 7.4189,
+      "ttfb_p95_s": 21.621,
+      "ttfb_p99_s": 26.4357,
+      "client_gpu_profile": {
+        "samples": 122,
+        "vram_mb": {
+          "min": 7986,
+          "max": 7986,
+          "mean": 7986.0,
+          "total": 23034,
+          "highwater_pct": 34.7
+        },
+        "gpu_util_pct": {
+          "min": 0,
+          "max": 30,
+          "mean": 21.4
+        },
+        "mem_bw_util_pct": {
+          "min": 0,
+          "max": 25,
+          "mean": 17.9
+        },
+        "power_w": {
+          "min": 40.8,
+          "max": 51.2,
+          "mean": 46.9
+        },
+        "temp_c": {
+          "min": 58,
+          "max": 62
+        }
+      },
+      "client_cpu_profile": {
+        "samples": 126,
+        "min": 40.9,
+        "max": 59.2,
+        "mean": 44.8
+      },
+      "client_bottleneck": {
+        "bottleneck": "cpu",
+        "confidence": 0.7,
+        "reasoning": "GPU underutilized (compute 21.4%, VRAM 34.7%) \u2014 likely CPU or I/O bottleneck. Check host CPU and network."
+      }
+    }
+  ],
+  "max_streams": 64,
+  "sustained_load": {
+    "concurrency": 16,
+    "total": 10480,
+    "ok": 10448,
+    "failures": 32,
+    "wall_s": 8835.84,
+    "rps": 1.18,
+    "rtfx": 8.78,
+    "rtf": 0.114,
+    "total_audio_s": 77565.4,
+    "sess_per_min": 70.9,
+    "p50_s": 10.732,
+    "p99_s": 44.413,
+    "min_s": 2.432,
+    "max_s": 61.539,
+    "mean_s": 13.476,
+    "stddev_s": 8.761,
+    "lag_p50_s": 4.951,
+    "lag_p95_s": 13.457,
+    "lag_p99_s": 18.871,
+    "rt_compliance_pct": 0.0,
+    "ttfb_p50_s": 1.99,
+    "ttfb_p95_s": 3.0148,
+    "ttfb_p99_s": 3.479,
+    "rounds": 4,
+    "client_gpu_profile": {
+      "samples": 8590,
+      "vram_mb": {
+        "min": 7986,
+        "max": 7986,
+        "mean": 7986.0,
+        "total": 23034,
+        "highwater_pct": 34.7
+      },
+      "gpu_util_pct": {
+        "min": 0,
+        "max": 32,
+        "mean": 21.2
+      },
+      "mem_bw_util_pct": {
+        "min": 0,
+        "max": 26,
+        "mean": 17.6
+      },
+      "power_w": {
+        "min": 39.8,
+        "max": 51.6,
+        "mean": 46.7
+      },
+      "temp_c": {
+        "min": 58,
+        "max": 63
+      }
+    },
+    "client_cpu_profile": {
+      "samples": 8833,
+      "min": 32.7,
+      "max": 51.2,
+      "mean": 42.9
+    },
+    "client_bottleneck": {
+      "bottleneck": "cpu",
+      "confidence": 0.7,
+      "reasoning": "GPU underutilized (compute 21.2%, VRAM 34.7%) \u2014 likely CPU or I/O bottleneck. Check host CPU and network."
+    },
+    "wer_pct": 3.47
+  },
+  "streaming": {
+    "rt_compliance_pct": 0.0,
+    "lag_p95_ms": 13457.0
+  },
+  "resources": {
+    "vram_start_mb": 8188,
+    "vram_end_mb": 7986,
+    "vram_growth_mb": -202,
+    "vram_peak_mb": 8188
+  }
+}

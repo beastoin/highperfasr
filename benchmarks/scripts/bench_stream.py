@@ -28,6 +28,9 @@ sys.path.insert(0, str(SCRIPTS_DIR.parent.parent))
 
 from preflight import detect_server, resolve_stream_url, log_duration_estimate, log_preflight_summary, ensure_unbuffered
 
+from benchmark_telemetry import JsonlWriter, jsonl_path_from_output, emit_sample, emit_resource, emit_report_checkpoint
+from profile_gpu import GPUProfiler, CPUProfiler
+
 ensure_unbuffered()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -202,17 +205,36 @@ async def stream_file(ws_url, wav_path, chunk_ms, semaphore):
             }
 
 
-async def run_sweep(ws_url, manifest, concurrency, chunk_ms, repeat=1, target_count=None):
-    """Run one concurrency level for streaming."""
+async def run_sweep(ws_url, manifest, concurrency, chunk_ms, repeat=1, target_count=None, on_result=None):
+    """Run one concurrency level for streaming.
+
+    Args:
+        on_result: optional callback(result_dict, index) called as each stream completes.
+    """
     if target_count is None:
         target_count = len(manifest) * repeat
     files = [Path(e["wav_path"]) for e in select_round_robin_entries(manifest, concurrency, target_count)]
     sem = asyncio.Semaphore(concurrency)
     t0 = time.monotonic()
-    tasks = [stream_file(ws_url, f, chunk_ms, sem) for f in files]
-    results = await asyncio.gather(*tasks)
+    collected = []
+    idx_counter = [0]
+
+    async def _run_one(f):
+        r = await stream_file(ws_url, f, chunk_ms, sem)
+        i = idx_counter[0]
+        idx_counter[0] += 1
+        collected.append(r)
+        if on_result:
+            try:
+                on_result(r, i)
+            except Exception as exc:
+                log.warning("on_result callback failed for sample %d: %s", i, exc)
+        return r
+
+    tasks = [_run_one(f) for f in files]
+    await asyncio.gather(*tasks)
     wall = time.monotonic() - t0
-    return list(results), wall
+    return collected, wall
 
 
 def summarize_sweep(results, wall_time, concurrency):
@@ -357,6 +379,25 @@ async def main():
     manifest, refs = load_dataset_manifest(dataset_name, max_samples=args.max_samples, cache_dir=args.dataset_dir)
     log.info(f"Using {len(manifest)} WAV files")
 
+    from bench_batch import get_wav_duration
+    total_audio_s = 0
+    for e in manifest:
+        if isinstance(e, dict):
+            dur = e.get("duration_s", 0)
+            if dur == 0 and e.get("wav_path"):
+                try:
+                    dur = get_wav_duration(e["wav_path"])
+                    e["duration_s"] = dur
+                except Exception:
+                    pass
+            total_audio_s += dur
+        elif hasattr(e, "stat"):
+            try:
+                total_audio_s += get_wav_duration(str(e))
+            except Exception:
+                pass
+    avg_file_duration_s = round(total_audio_s / len(manifest), 2) if manifest else 0
+
     report = {
         "schema_version": "v1alpha2-live",
         "benchmark": "Streaming ASR Benchmark",
@@ -365,11 +406,19 @@ async def main():
         "chunk_ms": args.chunk_ms,
         "samples": len(manifest),
         "dataset": dataset_name,
+        "avg_file_duration_s": avg_file_duration_s,
+        "total_audio_s": round(total_audio_s, 1),
         "smart_mode": args.smart,
         "system": collect_system_info(gpu_override=args.gpu, image_tag=args.image_tag),
         "command": " ".join(sys.argv),
     }
     vram_start_mb = collect_gpu_memory_used_mb()
+
+    jsonl_path = jsonl_path_from_output(args.output)
+    jsonl_writer = JsonlWriter(jsonl_path)
+    jsonl_writer.emit("run_start", mode="streaming", dataset=dataset_name,
+                      samples=len(manifest), avg_file_duration_s=avg_file_duration_s,
+                      chunk_ms=args.chunk_ms)
 
     # Warmup
     warmup_c = min(4, len(manifest), max(args.warmup, 1))
@@ -380,7 +429,10 @@ async def main():
     if not args.skip_wer:
         total_audio = sum(e.get("duration_s", 5.0) for e in manifest)
         log_duration_estimate(len(manifest), total_audio, mode="streaming")
-        wer_results, _ = await run_sweep(ws_url, manifest, concurrency=1, chunk_ms=args.chunk_ms, target_count=len(manifest))
+        wer_results, _ = await run_sweep(
+            ws_url, manifest, concurrency=1, chunk_ms=args.chunk_ms, target_count=len(manifest),
+            on_result=lambda r, i: emit_sample(jsonl_writer, r, "wer", 1, i),
+        )
         wer_summary = summarize_wer_results(wer_results, refs)
 
         if wer_summary:
@@ -412,17 +464,54 @@ async def main():
                 log.info(f"  vs baseline: {base_wer}% -> {cur_wer}% (delta {cur_wer - base_wer:+.2f}%)")
 
     # Concurrency sweep
+    emit_report_checkpoint(jsonl_writer, report, "before_sweep")
     log.info("Concurrency sweep...")
     sweep_results = []
     consecutive_matches = 0
     for c in levels:
         log.info(f"  c={c}...")
-        results, wall = await run_sweep(
-            ws_url, manifest, concurrency=c, chunk_ms=args.chunk_ms, target_count=max(len(manifest), c)
-        )
+        jsonl_writer.emit("level_start", phase="sweep", concurrency=c)
+        gpu_profiler = GPUProfiler(interval_s=1.0,
+                                   on_sample=lambda s, _c=c: emit_resource(jsonl_writer, s, None, "sweep", _c))
+        cpu_profiler = CPUProfiler(interval_s=1.0,
+                                   on_sample=lambda v, _c=c: emit_resource(jsonl_writer, None, v, "sweep", _c))
+        gpu_profiler.start()
+        cpu_profiler.start()
+        try:
+            results, wall = await run_sweep(
+                ws_url, manifest, concurrency=c, chunk_ms=args.chunk_ms, target_count=max(len(manifest), c),
+                on_result=lambda r, i, _c=c: emit_sample(jsonl_writer, r, "sweep", _c, i),
+            )
+        finally:
+            gpu_samples = gpu_profiler.stop()
+            cpu_samples = cpu_profiler.stop()
         summary = summarize_sweep(results, wall, c)
+        gpu_summary = GPUProfiler.summarize(gpu_samples)
+        cpu_summary = CPUProfiler.summarize(cpu_samples)
+        summary["client_gpu_profile"] = gpu_summary
+        summary["client_cpu_profile"] = cpu_summary
+        if "error" not in gpu_summary:
+            summary["client_bottleneck"] = GPUProfiler.classify_bottleneck(gpu_summary)
+        ttfb_str = f"TTFB p50={summary.get('ttfb_p50_s', 'N/A')}s p99={summary.get('ttfb_p99_s', 'N/A')}s"
+        rt_str = f"RT={summary.get('rt_compliance_pct', 'N/A')}%"
+        gpu_info = ""
+        if "error" not in gpu_summary:
+            gpu_info = f", GPU={gpu_summary['gpu_util_pct']['mean']}%, VRAM={gpu_summary['vram_mb']['max']}MB"
+        jsonl_writer.emit("level_end", phase="sweep", concurrency=c,
+                          rtfx=summary["rtfx"], sess_per_min=summary["sess_per_min"],
+                          failures=summary["failures"],
+                          ttfb_p50_s=summary.get("ttfb_p50_s"),
+                          ttfb_p99_s=summary.get("ttfb_p99_s"),
+                          rt_compliance_pct=summary.get("rt_compliance_pct"),
+                          client_gpu_util_avg=gpu_summary.get("gpu_util_pct", {}).get("mean"),
+                          client_vram_peak_mb=gpu_summary.get("vram_mb", {}).get("max"))
         sweep_results.append(summary)
-        log.info(f"    RTFx={summary['rtfx']}, sess/min={summary['sess_per_min']}, failures={summary['failures']}")
+        report["concurrency_sweep"] = sweep_results
+        emit_report_checkpoint(jsonl_writer, report, f"after_level_c{c}")
+        log.info(
+            f"    RTFx={summary['rtfx']}, sess/min={summary['sess_per_min']}, "
+            f"failures={summary['failures']}, {ttfb_str}, {rt_str}{gpu_info}"
+        )
 
         if args.smart and baseline_sweep:
             bl = baseline_sweep.get(c)
@@ -443,17 +532,42 @@ async def main():
 
     sweep_results.sort(key=lambda s: s["concurrency"])
     report["concurrency_sweep"] = sweep_results
+    zero_fail_levels = [s for s in sweep_results if s["failures"] == 0]
+    report["max_streams"] = max((s["concurrency"] for s in zero_fail_levels), default=0)
+    emit_report_checkpoint(jsonl_writer, report, "after_sweep")
 
     # Sustained load
     sc = args.sustained_concurrency
     rounds = args.sustained_rounds
     log.info(f"Sustained load: c={sc}, {rounds} rounds...")
-    sustained_results, sustained_wall = await run_sweep(
-        ws_url, manifest, concurrency=sc, chunk_ms=args.chunk_ms, repeat=rounds
-    )
+    jsonl_writer.emit("level_start", phase="sustained", concurrency=sc, rounds=rounds)
+    sus_gpu = GPUProfiler(interval_s=1.0,
+                          on_sample=lambda s: emit_resource(jsonl_writer, s, None, "sustained", sc))
+    sus_cpu = CPUProfiler(interval_s=1.0,
+                          on_sample=lambda v: emit_resource(jsonl_writer, None, v, "sustained", sc))
+    sus_gpu.start()
+    sus_cpu.start()
+    try:
+        sustained_results, sustained_wall = await run_sweep(
+            ws_url, manifest, concurrency=sc, chunk_ms=args.chunk_ms, repeat=rounds,
+            on_result=lambda r, i: emit_sample(jsonl_writer, r, "sustained", sc, i),
+        )
+    finally:
+        sus_gpu_samples = sus_gpu.stop()
+        sus_cpu_samples = sus_cpu.stop()
     sustained_summary = summarize_sweep(sustained_results, sustained_wall, sc)
     sustained_summary["rounds"] = rounds
+    sustained_summary["client_gpu_profile"] = GPUProfiler.summarize(sus_gpu_samples)
+    sustained_summary["client_cpu_profile"] = CPUProfiler.summarize(sus_cpu_samples)
+    if "error" not in sustained_summary["client_gpu_profile"]:
+        sustained_summary["client_bottleneck"] = GPUProfiler.classify_bottleneck(sustained_summary["client_gpu_profile"])
     report["sustained_load"] = sustained_summary
+    jsonl_writer.emit("level_end", phase="sustained", concurrency=sc,
+                      rtfx=sustained_summary["rtfx"], sess_per_min=sustained_summary["sess_per_min"],
+                      failures=sustained_summary["failures"],
+                      ttfb_p50_s=sustained_summary.get("ttfb_p50_s"),
+                      ttfb_p99_s=sustained_summary.get("ttfb_p99_s"),
+                      rt_compliance_pct=sustained_summary.get("rt_compliance_pct"))
     if not args.skip_wer:
         load_wer_summary = summarize_wer_results(sustained_results, refs)
         if load_wer_summary:
@@ -482,6 +596,8 @@ async def main():
             "vram_peak_mb": max(v for v in (vram_start_mb, vram_end_mb) if v is not None),
         }
 
+    emit_report_checkpoint(jsonl_writer, report, "after_sustained")
+
     if args.smart and baseline_report and "sustained_load" in baseline_report:
         bl_s = baseline_report["sustained_load"]
         log.info(
@@ -504,12 +620,14 @@ async def main():
         )
         print()
     print("### Concurrency Sweep")
-    print("| c | RTFx | sess/min | p50 | p99 | Failures |")
-    print("|---|------|----------|-----|-----|----------|")
+    print("| c | TTFB p50 | TTFB p99 | RT Compliance | Failures |")
+    print("|---|----------|----------|---------------|----------|")
     for s in sweep_results:
+        ttfb_p50 = f"{s['ttfb_p50_s']}s" if s.get('ttfb_p50_s') is not None else "N/A"
+        ttfb_p99 = f"{s['ttfb_p99_s']}s" if s.get('ttfb_p99_s') is not None else "N/A"
+        rt = f"{s['rt_compliance_pct']}%" if s.get('rt_compliance_pct') is not None else "N/A"
         print(
-            f"| {s['concurrency']} | {s['rtfx']}x | {s['sess_per_min']} | "
-            f"{s.get('p50_s', '?')}s | {s.get('p99_s', '?')}s | {s['failures']} |"
+            f"| {s['concurrency']} | {ttfb_p50} | {ttfb_p99} | {rt} | {s['failures']} |"
         )
     if report.get("smart_skipped"):
         print(f"\n*Smart early-stop: skipped c={report['smart_skipped']} (matched baseline)*")
@@ -531,26 +649,61 @@ async def main():
         all_sustained_rtfx = [sustained_summary["rtfx"]]
         all_sustained_sess = [sustained_summary["sess_per_min"]]
         trial_total_failures = sum(s["failures"] for s in sweep_results) + sustained_summary["failures"]
+        all_trial_fail_by_c = {}
+        for s in sweep_results:
+            all_trial_fail_by_c[s["concurrency"]] = s["failures"]
 
         for trial in range(2, args.trials + 1):
             log.info(f"=== Trial {trial}/{args.trials} ===")
+            jsonl_writer.emit("trial_start", trial=trial)
             t_sweep = []
             for c in levels:
-                results, wall = await run_sweep(
-                    ws_url, manifest, concurrency=c, chunk_ms=args.chunk_ms, target_count=max(len(manifest), c)
-                )
+                jsonl_writer.emit("level_start", phase="sweep", concurrency=c, trial=trial)
+                t_gpu = GPUProfiler(interval_s=1.0,
+                                    on_sample=lambda s, _c=c: emit_resource(jsonl_writer, s, None, "sweep", _c))
+                t_cpu = CPUProfiler(interval_s=1.0,
+                                    on_sample=lambda v, _c=c: emit_resource(jsonl_writer, None, v, "sweep", _c))
+                t_gpu.start()
+                t_cpu.start()
+                try:
+                    results, wall = await run_sweep(
+                        ws_url, manifest, concurrency=c, chunk_ms=args.chunk_ms, target_count=max(len(manifest), c),
+                        on_result=lambda r, i, _c=c: emit_sample(jsonl_writer, r, "sweep", _c, i),
+                    )
+                finally:
+                    t_gpu.stop()
+                    t_cpu.stop()
                 t_sweep.append(summarize_sweep(results, wall, c))
+                jsonl_writer.emit("level_end", phase="sweep", concurrency=c, trial=trial,
+                                  rtfx=t_sweep[-1]["rtfx"], failures=t_sweep[-1]["failures"])
             t_peak = max(t_sweep, key=lambda x: x["rtfx"])
             all_peak_rtfx.append(t_peak["rtfx"])
 
-            t_sus_results, t_sus_wall = await run_sweep(
-                ws_url, manifest, concurrency=sc, chunk_ms=args.chunk_ms, repeat=rounds
-            )
+            jsonl_writer.emit("level_start", phase="sustained", concurrency=sc, trial=trial)
+            ts_gpu = GPUProfiler(interval_s=1.0,
+                                 on_sample=lambda s: emit_resource(jsonl_writer, s, None, "sustained", sc))
+            ts_cpu = CPUProfiler(interval_s=1.0,
+                                 on_sample=lambda v: emit_resource(jsonl_writer, None, v, "sustained", sc))
+            ts_gpu.start()
+            ts_cpu.start()
+            try:
+                t_sus_results, t_sus_wall = await run_sweep(
+                    ws_url, manifest, concurrency=sc, chunk_ms=args.chunk_ms, repeat=rounds,
+                    on_result=lambda r, i: emit_sample(jsonl_writer, r, "sustained", sc, i),
+                )
+            finally:
+                ts_gpu.stop()
+                ts_cpu.stop()
             t_sus = summarize_sweep(t_sus_results, t_sus_wall, sc)
             all_sustained_rtfx.append(t_sus["rtfx"])
             all_sustained_sess.append(t_sus["sess_per_min"])
+            for s in t_sweep:
+                all_trial_fail_by_c[s["concurrency"]] = all_trial_fail_by_c.get(s["concurrency"], 0) + s["failures"]
             t_failures = sum(s["failures"] for s in t_sweep) + t_sus["failures"]
             trial_total_failures += t_failures
+            jsonl_writer.emit("level_end", phase="sustained", concurrency=sc, trial=trial,
+                              rtfx=t_sus["rtfx"], failures=t_sus["failures"])
+            jsonl_writer.emit("trial_end", trial=trial, failures=t_failures)
             log.info(f"  Trial {trial}: peak RTFx={t_peak['rtfx']}, sustained={t_sus['rtfx']}, failures={t_failures}")
 
         report["trials"] = {
@@ -560,6 +713,8 @@ async def main():
             "sustained_sess_per_min": summarize_trials(all_sustained_sess),
         }
         log.info(f"Trials summary: peak RTFx={report['trials']['peak_rtfx']}")
+        zero_fail_levels = [c for c, f in all_trial_fail_by_c.items() if f == 0]
+        report["max_streams"] = max(zero_fail_levels, default=0)
 
     # Quality gate evaluation (skipped in quick mode — gates require full sustained load)
     gates_path = Path(__file__).parent.parent / "config" / "quality-gates.json"
@@ -575,6 +730,14 @@ async def main():
     elif args.quick:
         log.info("Quick mode: skipping quality gates (use full corpus for gate enforcement)")
 
+    total_failures = sum(s["failures"] for s in sweep_results) + sustained_summary["failures"]
+    total_failures = trial_total_failures if args.trials > 1 else total_failures
+    report["summary"] = {"total_failures": total_failures, "max_streams": report.get("max_streams", 0)}
+    emit_report_checkpoint(jsonl_writer, report, "final")
+    jsonl_writer.emit("run_end", total_failures=total_failures)
+    jsonl_writer.close()
+    log.info(f"JSONL log saved to {jsonl_path}")
+
     with open(args.output, "w") as f:
         json.dump(report, f, indent=2)
     log.info(f"Report saved to {args.output}")
@@ -582,9 +745,6 @@ async def main():
     if args.publish:
         from bench_batch import publish_results
         publish_results(report, args.output, args.publish, mode="stream")
-
-    total_failures = trial_total_failures if args.trials > 1 else (
-        sum(s["failures"] for s in sweep_results) + sustained_summary["failures"])
     wer_failures = report.get("wer", {}).get("samples_failed", 0)
     if total_failures > 0:
         log.error(f"FAIL: {total_failures} total failures across sweep + sustained")
