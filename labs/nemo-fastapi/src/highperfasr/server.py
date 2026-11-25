@@ -76,12 +76,13 @@ def _validate_startup_config() -> None:
         if not batch_cfg and not has_embedding_cfg:
             raise RuntimeError(f"mode={serving_mode} requires batch_model or embedding_model config")
 
-        attention_mode = batch_cfg.get("attention_mode", "full")
-        if attention_mode not in _VALID_ATTENTION_MODES:
-            raise RuntimeError(
-                "Invalid batch_model.attention_mode '%s' — must be one of: %s"
-                % (attention_mode, ", ".join(_VALID_ATTENTION_MODES))
-            )
+        if batch_cfg:
+            attention_mode = batch_cfg.get("attention_mode", "full")
+            if attention_mode not in _VALID_ATTENTION_MODES:
+                raise RuntimeError(
+                    "Invalid batch_model.attention_mode '%s' — must be one of: %s"
+                    % (attention_mode, ", ".join(_VALID_ATTENTION_MODES))
+                )
 
     if _stream_enabled():
         stream_cfg = config.get("stream_model")
