@@ -206,6 +206,9 @@ class GPUWorker:
 
         log.info("GPU worker thread stopped")
 
+    _EMBED_BATCH_MAX = 32
+    _EMBED_BATCH_WAIT_S = 0.005
+
     def _run_batch_only_mode(self) -> None:
         log.info("Running in batch-only mode")
         while self._running:
@@ -215,6 +218,9 @@ class GPUWorker:
                 continue
             if item.work_type == WorkType.SHUTDOWN:
                 break
+            if item.work_type == WorkType.EMBED:
+                self._batch_embed_dispatch(item)
+                continue
             try:
                 result = self._dispatch(item)
                 item.loop.call_soon_threadsafe(self._safe_set_result, item.future, result)
@@ -223,6 +229,79 @@ class GPUWorker:
             finally:
                 self._maybe_gc()
         self._drain_queues([self._batch_queue, self._stream_queue])
+
+    def _batch_embed_dispatch(self, first_item: WorkItem) -> None:
+        """Accumulate EMBED items and process in a single batched forward pass."""
+        items = [first_item]
+        deadline = time.monotonic() + self._EMBED_BATCH_WAIT_S
+        while len(items) < self._EMBED_BATCH_MAX:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                item = self._batch_queue.get(timeout=remaining)
+            except queue.Empty:
+                break
+            if item.work_type == WorkType.SHUTDOWN:
+                self._batch_queue.put(item)
+                break
+            if item.work_type != WorkType.EMBED:
+                try:
+                    result = self._dispatch(item)
+                    item.loop.call_soon_threadsafe(self._safe_set_result, item.future, result)
+                except Exception as exc:
+                    item.loop.call_soon_threadsafe(self._safe_set_exception, item.future, exc)
+                continue
+            items.append(item)
+
+        modality = items[0].payload.get("modality", "text")
+        same_modality = all(it.payload.get("modality", "text") == modality for it in items)
+
+        if same_modality and modality in ("text", "code") and len(items) > 1:
+            self._batched_text_embed(items)
+        else:
+            for it in items:
+                try:
+                    result = self._embed(it.payload)
+                    it.loop.call_soon_threadsafe(self._safe_set_result, it.future, result)
+                except Exception as exc:
+                    it.loop.call_soon_threadsafe(self._safe_set_exception, it.future, exc)
+        self._maybe_gc()
+
+    def _batched_text_embed(self, items: list[WorkItem]) -> None:
+        """Process multiple text embedding requests in one forward pass."""
+        if self._embedding_model is None:
+            for it in items:
+                it.loop.call_soon_threadsafe(
+                    self._safe_set_exception, it.future, RuntimeError("Embedding model not loaded")
+                )
+            return
+        eb = self._embedding_backend or self._backend
+
+        all_texts = []
+        boundaries = []
+        for it in items:
+            texts = it.payload.get("texts", [])
+            boundaries.append((len(all_texts), len(all_texts) + len(texts)))
+            all_texts.extend(texts)
+
+        normalize = items[0].payload.get("normalize", True)
+        dimensions = items[0].payload.get("dimensions", 0)
+
+        try:
+            all_vectors = eb.embed_text(
+                self._embedding_model, all_texts,
+                normalize=normalize, dimensions=dimensions,
+            )
+            dim = len(all_vectors[0]) if all_vectors else 0
+            modality = items[0].payload.get("modality", "text")
+            for it, (start, end) in zip(items, boundaries):
+                vectors = all_vectors[start:end]
+                result = {"embeddings": vectors, "modality": modality, "dimensions": dim}
+                it.loop.call_soon_threadsafe(self._safe_set_result, it.future, result)
+        except Exception as exc:
+            for it in items:
+                it.loop.call_soon_threadsafe(self._safe_set_exception, it.future, exc)
 
     def _run_stream_only_mode(self) -> None:
         log.info(f"Running in stream-only mode (max_stream_drain={self._max_stream_drain})")

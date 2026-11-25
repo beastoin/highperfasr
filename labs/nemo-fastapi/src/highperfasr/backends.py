@@ -386,6 +386,11 @@ class EG2Backend:
             name, torch_dtype=dtype, trust_remote_code=True
         ).to(device).eval()
         self._embedding_dim = config.get("dimensions", 768)
+
+        if config.get("compile", False):
+            log.info("Compiling EG2 model with torch.compile (reduce-overhead)")
+            model = torch.compile(model, mode="reduce-overhead")
+
         log.info(f"EG2 model loaded: {name}, output_dim={self._embedding_dim}")
         return model
 
