@@ -199,6 +199,16 @@ def collect_gpu_memory_used_mb():
     return max(values) if values else None
 
 
+def _validate_embedding(body):
+    """Validate embedding response has a non-empty numeric vector."""
+    emb = body.get("embedding")
+    if not emb or not isinstance(emb, list) or len(emb) == 0:
+        return None, "missing or empty embedding"
+    if not all(isinstance(v, (int, float)) for v in emb[:10]):
+        return None, "non-numeric values in embedding"
+    return emb, None
+
+
 async def embed_audio(session, url, wav_path, semaphore):
     """Send one audio file to the embedding endpoint."""
     async with semaphore:
@@ -212,19 +222,29 @@ async def embed_audio(session, url, wav_path, semaphore):
                 content_type="audio/wav",
             )
             async with session.post(url, data=data, timeout=aiohttp.ClientTimeout(total=60)) as resp:
-                elapsed = time.monotonic() - t0
                 if resp.status == 200:
                     body = await resp.json()
+                    elapsed = time.monotonic() - t0
+                    emb, err = _validate_embedding(body)
+                    if err:
+                        return {
+                            "status": "error",
+                            "utt_id": Path(wav_path).stem,
+                            "modality": "audio",
+                            "error": err,
+                            "elapsed_s": round(elapsed, 4),
+                        }
                     return {
                         "status": "ok",
                         "utt_id": Path(wav_path).stem,
                         "modality": "audio",
-                        "dimensions": body.get("dimensions", 0),
+                        "dimensions": body.get("dimensions", len(emb)),
                         "elapsed_s": round(elapsed, 4),
-                        "embedding": body.get("embedding"),
+                        "embedding": emb,
                     }
                 else:
                     text = await resp.text()
+                    elapsed = time.monotonic() - t0
                     return {
                         "status": "error",
                         "utt_id": Path(wav_path).stem,
@@ -252,19 +272,29 @@ async def embed_text(session, url, text_input, semaphore, idx=0):
             async with session.post(
                 url, json=payload, timeout=aiohttp.ClientTimeout(total=30)
             ) as resp:
-                elapsed = time.monotonic() - t0
                 if resp.status == 200:
                     body = await resp.json()
+                    elapsed = time.monotonic() - t0
+                    emb, err = _validate_embedding(body)
+                    if err:
+                        return {
+                            "status": "error",
+                            "idx": idx,
+                            "modality": "text",
+                            "error": err,
+                            "elapsed_s": round(elapsed, 4),
+                        }
                     return {
                         "status": "ok",
                         "idx": idx,
                         "modality": "text",
-                        "dimensions": body.get("dimensions", 0),
+                        "dimensions": body.get("dimensions", len(emb)),
                         "elapsed_s": round(elapsed, 4),
-                        "embedding": body.get("embedding"),
+                        "embedding": emb,
                     }
                 else:
                     text = await resp.text()
+                    elapsed = time.monotonic() - t0
                     return {
                         "status": "error",
                         "idx": idx,
@@ -350,12 +380,13 @@ async def run_concurrency_level(session, url, modality, concurrency, wav_files, 
     for round_idx in range(rounds):
         tasks = []
         if modality in ("audio", "mixed"):
-            for i in range(min(concurrency, len(wav_files))):
-                wav = wav_files[i % len(wav_files)]
-                tasks.append(embed_audio(session, url, wav, semaphore))
+            for i in range(concurrency):
+                wav = wav_files[i % len(wav_files)] if wav_files else None
+                if wav:
+                    tasks.append(embed_audio(session, url, wav, semaphore))
 
         if modality in ("text", "mixed"):
-            for i in range(min(concurrency, len(texts))):
+            for i in range(concurrency):
                 text = texts[i % len(texts)]
                 tasks.append(embed_text(session, url, text, semaphore, idx=i))
 
@@ -412,7 +443,8 @@ async def main():
     server_info = detect_server(args.server)
     log_preflight_summary(server_info, scenario="embedding")
 
-    embed_url = f"{args.server.rstrip('/')}{args.endpoint}"
+    endpoint = args.endpoint if args.endpoint.startswith("/") else f"/{args.endpoint}"
+    embed_url = f"{args.server.rstrip('/')}{endpoint}"
     log.info(f"Embedding endpoint: {embed_url}")
 
     # --- Prepare data ---
@@ -445,7 +477,9 @@ async def main():
         "vram": {"before_mb": vram_before},
     }
 
-    async with aiohttp.ClientSession() as session:
+    max_c = max(concurrency_levels) if concurrency_levels else 256
+    connector = aiohttp.TCPConnector(limit=max(max_c + 16, 128))
+    async with aiohttp.ClientSession(connector=connector) as session:
         # --- Warmup ---
         log.info(f"Warming up with {args.warmup} requests...")
         warmup_sem = asyncio.Semaphore(4)
@@ -520,8 +554,8 @@ async def main():
             }
             report["concurrency_sweep"].append(level_data)
 
-            if args.smart and fail_count > 0:
-                log.warning(f"Smart mode: failures at c={c}, stopping sweep")
+            if args.smart and fail_count > 0 and ok_count == 0:
+                log.warning(f"Smart mode: total failure at c={c}, stopping sweep")
                 break
 
         # --- Sustained load ---
@@ -587,19 +621,22 @@ async def main():
                     audio_embeddings.append(r["embedding"])
                     audio_utt_ids.append(r["utt_id"])
 
-            ref_texts = [sample_refs[uid] for uid in sample_refs]
+            ref_utt_ids = list(sample_refs.keys())
+            ref_texts = [sample_refs[uid] for uid in ref_utt_ids]
             log.info(f"Embedding {len(ref_texts)} reference texts...")
             text_tasks = [
                 embed_text(session, embed_url, t, retrieval_sem, idx=i)
                 for i, t in enumerate(ref_texts)
             ]
             text_results = await asyncio.gather(*text_tasks)
-            for r in text_results:
+            successful_text_refs = {}
+            for i, r in enumerate(text_results):
                 if r["status"] == "ok" and r.get("embedding"):
                     text_embeddings.append(r["embedding"])
+                    successful_text_refs[ref_utt_ids[i]] = sample_refs[ref_utt_ids[i]]
 
             retrieval = compute_retrieval_metrics(
-                audio_embeddings, text_embeddings, audio_utt_ids, sample_refs, k=args.retrieval_k,
+                audio_embeddings, text_embeddings, audio_utt_ids, successful_text_refs, k=args.retrieval_k,
             )
             if retrieval:
                 report["retrieval"] = retrieval
@@ -647,7 +684,18 @@ def check_quality_gates(report):
     max_vram_growth_mb = gates.get("max_vram_growth_mb", 100)
     min_recall = gates.get("min_recall_at_k", 0.8)
 
-    for level in report.get("concurrency_sweep", []):
+    sweep = report.get("concurrency_sweep", [])
+    if not sweep:
+        results["status"] = "fail"
+        results["checks"].append({
+            "gate": "sweep_evidence",
+            "value": 0,
+            "threshold": 1,
+            "passed": False,
+        })
+        return results
+
+    for level in sweep:
         if level.get("failure_rate", 0) > max_failure_rate:
             results["status"] = "fail"
             results["checks"].append({
@@ -658,7 +706,16 @@ def check_quality_gates(report):
                 "passed": False,
             })
 
-    sweep = report.get("concurrency_sweep", [])
+    sustained = report.get("sustained_load", {})
+    if sustained and sustained.get("failures", 0) > 0:
+        results["status"] = "fail"
+        results["checks"].append({
+            "gate": "sustained_failures",
+            "value": sustained["failures"],
+            "threshold": 0,
+            "passed": False,
+        })
+
     if sweep:
         peak = max(sweep, key=lambda s: s.get("embeds_per_sec", 0))
         if peak.get("embeds_per_sec", 0) < min_throughput:

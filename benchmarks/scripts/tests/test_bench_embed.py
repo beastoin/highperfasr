@@ -8,6 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from bench_embed import (
+    _validate_embedding,
     check_quality_gates,
     compute_latency_stats,
     compute_retrieval_metrics,
@@ -258,6 +259,66 @@ def test_quality_gates_retrieval_fail():
     }
     gates = check_quality_gates(report)
     assert gates["status"] == "fail"
+
+
+def test_quality_gates_empty_sweep_fails():
+    report = {
+        "modality": "audio",
+        "concurrency_sweep": [],
+        "vram": {"growth_mb": 50},
+    }
+    gates = check_quality_gates(report)
+    assert gates["status"] == "fail"
+    sweep_checks = [c for c in gates["checks"] if c["gate"] == "sweep_evidence"]
+    assert len(sweep_checks) == 1
+    assert not sweep_checks[0]["passed"]
+
+
+def test_quality_gates_sustained_failures():
+    report = {
+        "modality": "audio",
+        "concurrency_sweep": [
+            {
+                "concurrency": 1,
+                "embeds_per_sec": 200,
+                "failure_rate": 0.0,
+                "failures": 0,
+                "p99_s": 0.05,
+            },
+        ],
+        "sustained_load": {"failures": 3, "successes": 97},
+        "vram": {"growth_mb": 50},
+    }
+    gates = check_quality_gates(report)
+    assert gates["status"] == "fail"
+    sustained_checks = [c for c in gates["checks"] if c["gate"] == "sustained_failures"]
+    assert len(sustained_checks) == 1
+    assert not sustained_checks[0]["passed"]
+
+
+def test_validate_embedding_valid():
+    body = {"embedding": [0.1, 0.2, 0.3], "dimensions": 3}
+    emb, err = _validate_embedding(body)
+    assert emb == [0.1, 0.2, 0.3]
+    assert err is None
+
+
+def test_validate_embedding_missing():
+    emb, err = _validate_embedding({})
+    assert emb is None
+    assert "missing" in err
+
+
+def test_validate_embedding_empty():
+    emb, err = _validate_embedding({"embedding": []})
+    assert emb is None
+    assert "empty" in err
+
+
+def test_validate_embedding_non_numeric():
+    emb, err = _validate_embedding({"embedding": ["a", "b", "c"]})
+    assert emb is None
+    assert "non-numeric" in err
 
 
 def test_quality_gates_missing_config():
