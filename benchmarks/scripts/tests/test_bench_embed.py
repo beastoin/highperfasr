@@ -13,6 +13,7 @@ from bench_embed import (
     compute_latency_stats,
     compute_retrieval_metrics,
     DEFAULT_TEXT_QUERIES,
+    MIN_RETRIEVAL_PAIRS,
 )
 
 
@@ -353,6 +354,55 @@ def test_quality_gates_retrieval_error():
     retrieval_checks = [c for c in gates["checks"] if c["gate"] == "retrieval_evidence"]
     assert len(retrieval_checks) == 1
     assert not retrieval_checks[0]["passed"]
+
+
+def test_quality_gates_insufficient_retrieval_coverage():
+    report = {
+        "modality": "audio",
+        "concurrency_sweep": [
+            {
+                "concurrency": 1,
+                "embeds_per_sec": 200,
+                "failure_rate": 0.0,
+                "failures": 0,
+                "p99_s": 0.05,
+            },
+        ],
+        "vram": {"growth_mb": 50},
+        "retrieval": {
+            "recall_at_k": 1.0,
+            "k": 10,
+            "evaluated_pairs": 3,
+            "insufficient_coverage": True,
+        },
+    }
+    gates = check_quality_gates(report)
+    assert gates["status"] == "fail"
+    coverage_checks = [c for c in gates["checks"] if c["gate"] == "retrieval_coverage"]
+    assert len(coverage_checks) == 1
+    assert not coverage_checks[0]["passed"]
+
+
+def test_retrieval_metrics_dimension_mismatch():
+    audio_embs = [[1.0, 0.0, 0.0]]
+    text_embs = [[1.0, 0.0]]
+    utt_ids = ["utt1"]
+    refs = {"utt1": "text one"}
+    result = compute_retrieval_metrics(audio_embs, text_embs, utt_ids, refs, k=1)
+    assert result is not None
+    assert "error" in result
+    assert "dimension mismatch" in result["error"]
+
+
+def test_retrieval_metrics_reports_insufficient_coverage():
+    audio_embs = [[1.0, 0.0, 0.0]]
+    text_embs = [[1.0, 0.0, 0.0]]
+    utt_ids = ["utt1"]
+    refs = {"utt1": "text one"}
+    result = compute_retrieval_metrics(audio_embs, text_embs, utt_ids, refs, k=1)
+    assert result is not None
+    assert result["insufficient_coverage"] is True
+    assert result["evaluated_pairs"] == 1
 
 
 def test_quality_gates_missing_config():

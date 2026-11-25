@@ -333,6 +333,9 @@ def compute_latency_stats(results):
     }
 
 
+MIN_RETRIEVAL_PAIRS = 10
+
+
 def compute_retrieval_metrics(audio_embeddings, text_embeddings, audio_utt_ids, refs, k=10):
     """Compute cross-modal Recall@K: for each audio, check if matching text is in top-K."""
     import numpy as np
@@ -340,8 +343,27 @@ def compute_retrieval_metrics(audio_embeddings, text_embeddings, audio_utt_ids, 
     if not audio_embeddings or not text_embeddings:
         return None
 
-    audio_matrix = np.array(audio_embeddings)
-    text_matrix = np.array(text_embeddings)
+    audio_dim = len(audio_embeddings[0])
+    text_dim = len(text_embeddings[0])
+    if audio_dim != text_dim:
+        return {"error": f"dimension mismatch: audio={audio_dim}, text={text_dim}"}
+
+    audio_filtered = []
+    audio_ids_filtered = []
+    for emb, uid in zip(audio_embeddings, audio_utt_ids):
+        if len(emb) == audio_dim:
+            audio_filtered.append(emb)
+            audio_ids_filtered.append(uid)
+
+    text_filtered = [e for e in text_embeddings if len(e) == text_dim]
+    if not audio_filtered or not text_filtered:
+        return None
+
+    try:
+        audio_matrix = np.array(audio_filtered)
+        text_matrix = np.array(text_filtered)
+    except ValueError:
+        return {"error": "inconsistent embedding dimensions"}
 
     audio_norms = np.linalg.norm(audio_matrix, axis=1, keepdims=True)
     text_norms = np.linalg.norm(text_matrix, axis=1, keepdims=True)
@@ -355,10 +377,12 @@ def compute_retrieval_metrics(audio_embeddings, text_embeddings, audio_utt_ids, 
 
     hits = 0
     evaluated = 0
-    for i, utt_id in enumerate(audio_utt_ids):
+    for i, utt_id in enumerate(audio_ids_filtered):
         if utt_id not in text_label_set:
             continue
         target_idx = text_labels.index(utt_id)
+        if target_idx >= len(text_filtered):
+            continue
         top_k_indices = np.argsort(similarity[i])[::-1][:k]
         if target_idx in top_k_indices:
             hits += 1
@@ -371,8 +395,9 @@ def compute_retrieval_metrics(audio_embeddings, text_embeddings, audio_utt_ids, 
         "recall_at_k": round(hits / evaluated, 4),
         "k": k,
         "evaluated_pairs": evaluated,
-        "total_audio": len(audio_embeddings),
-        "total_text": len(text_embeddings),
+        "total_audio": len(audio_filtered),
+        "total_text": len(text_filtered),
+        "insufficient_coverage": evaluated < MIN_RETRIEVAL_PAIRS,
     }
 
 
@@ -602,6 +627,13 @@ async def main():
             report["vram"]["growth_mb"] = vram_after - vram_after_warmup
 
         # --- Retrieval quality ---
+        if args.retrieval and args.modality == "text":
+            report["retrieval_error"] = {"reason": "retrieval requires audio modality (use --modality audio or mixed)"}
+            log.warning("Retrieval skipped — requires audio modality")
+        elif args.retrieval and args.modality in ("audio", "mixed") and not refs:
+            report["retrieval_error"] = {"reason": "no reference transcripts available for retrieval"}
+            log.warning("Retrieval skipped — no reference transcripts")
+
         if args.retrieval and args.modality in ("audio", "mixed") and refs:
             log.info("\n## Cross-Modal Retrieval Quality (Recall@K)")
             retrieval_sem = asyncio.Semaphore(8)
@@ -778,7 +810,23 @@ def check_quality_gates(report):
         })
 
     retrieval = report.get("retrieval", {})
-    if retrieval and retrieval.get("recall_at_k") is not None:
+    if retrieval and retrieval.get("error"):
+        results["status"] = "fail"
+        results["checks"].append({
+            "gate": "retrieval_evidence",
+            "value": retrieval["error"],
+            "threshold": "valid retrieval results",
+            "passed": False,
+        })
+    elif retrieval and retrieval.get("recall_at_k") is not None:
+        if retrieval.get("insufficient_coverage"):
+            results["status"] = "fail"
+            results["checks"].append({
+                "gate": "retrieval_coverage",
+                "value": retrieval["evaluated_pairs"],
+                "threshold": MIN_RETRIEVAL_PAIRS,
+                "passed": False,
+            })
         passed = retrieval["recall_at_k"] >= min_recall
         if not passed:
             results["status"] = "fail"
