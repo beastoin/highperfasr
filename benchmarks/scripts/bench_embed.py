@@ -395,6 +395,8 @@ def compute_retrieval_metrics(audio_embeddings, text_embeddings, audio_utt_ids, 
     if evaluated == 0:
         return None
 
+    trivial_k = k >= len(text_filtered)
+
     return {
         "recall_at_k": round(hits / evaluated, 4),
         "k": k,
@@ -402,6 +404,7 @@ def compute_retrieval_metrics(audio_embeddings, text_embeddings, audio_utt_ids, 
         "total_audio": len(audio_filtered),
         "total_text": len(text_filtered),
         "insufficient_coverage": evaluated < MIN_RETRIEVAL_PAIRS,
+        "trivial_k": trivial_k,
     }
 
 
@@ -792,6 +795,13 @@ def check_quality_gates(report):
             })
 
     c1_results = [s for s in sweep if s["concurrency"] == 1]
+    if not c1_results:
+        results["checks"].append({
+            "gate": "max_p99_ms",
+            "value": "skipped (no c=1 in sweep)",
+            "threshold": max_p99_ms,
+            "passed": True,
+        })
     if c1_results:
         p99 = c1_results[0].get("p99_s", 0) * 1000
         passed = p99 <= max_p99_ms
@@ -834,6 +844,14 @@ def check_quality_gates(report):
                 "threshold": MIN_RETRIEVAL_PAIRS,
                 "passed": False,
             })
+        if retrieval.get("trivial_k"):
+            results["checks"].append({
+                "gate": "retrieval_trivial_k",
+                "value": f"k={retrieval['k']} >= candidates={retrieval['total_text']}",
+                "threshold": "k < total_text",
+                "passed": False,
+            })
+            results["status"] = "fail"
         passed = retrieval["recall_at_k"] >= min_recall
         if not passed:
             results["status"] = "fail"
