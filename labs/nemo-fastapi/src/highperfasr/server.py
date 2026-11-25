@@ -22,6 +22,7 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from highperfasr.backends import resolve_backend
 from highperfasr.batch_engine import BatchEngine, QueueFullError
 from highperfasr.compat import apply_compat
 from highperfasr.config import load_config
@@ -109,7 +110,9 @@ async def lifespan(app: FastAPI):
         stream_section = config.get("stream", {})
         stream_cfg["max_concurrent_streams"] = stream_section.get("max_concurrent_streams", 256)
 
-    gpu_worker = GPUWorker()
+    backend_type = config.get("backend", "nemo")
+    backend = resolve_backend(backend_type)
+    gpu_worker = GPUWorker(backend=backend)
     gpu_worker.start(batch_cfg=batch_cfg, stream_cfg=stream_cfg)
     log.info("Waiting for GPU models to load...")
     gpu_worker.wait_ready(timeout=600)
