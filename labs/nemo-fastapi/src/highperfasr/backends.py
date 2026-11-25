@@ -421,7 +421,7 @@ class EG2Backend:
 
         device = next(model.parameters()).device
         inputs = self._processor(
-            audios=audios,
+            audio=audios,
             sampling_rate=16000,
             return_tensors="pt",
             padding=True,
