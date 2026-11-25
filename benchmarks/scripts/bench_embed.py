@@ -477,7 +477,7 @@ async def main():
 
     # --- Preflight ---
     server_info = detect_server(args.server)
-    log_preflight_summary(server_info, scenario="embedding")
+    log_preflight_summary(server_info, mode_requested="embedding")
 
     endpoint = args.endpoint if args.endpoint.startswith("/") else f"/{args.endpoint}"
     embed_url = f"{args.server.rstrip('/')}{endpoint}"
