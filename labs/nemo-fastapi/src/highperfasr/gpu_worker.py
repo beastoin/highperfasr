@@ -32,6 +32,7 @@ class WorkType(Enum):
     STREAM_CHUNK = "stream_chunk"
     STREAM_OPEN = "stream_open"
     STREAM_CLOSE = "stream_close"
+    EMBED = "embed"
     SHUTDOWN = "shutdown"
 
 
@@ -47,8 +48,9 @@ class WorkItem:
 class GPUWorker:
     """Runs inference on a dedicated thread. Async callers submit WorkItems."""
 
-    def __init__(self, backend: ModelBackend | None = None):
+    def __init__(self, backend: ModelBackend | None = None, embedding_backend: ModelBackend | None = None):
         self._backend: ModelBackend = backend or NeMoBackend()
+        self._embedding_backend: ModelBackend | None = embedding_backend
         self._batch_queue: queue.Queue[WorkItem] = queue.Queue(maxsize=_MAX_GPU_QUEUE)
         self._stream_queue: queue.Queue[WorkItem] = queue.Queue(maxsize=_MAX_GPU_QUEUE)
         self._thread: Optional[threading.Thread] = None
@@ -60,6 +62,7 @@ class GPUWorker:
         self._next_pool_idx = 0
         self._prefetch_thread: Optional[threading.Thread] = None
         self._prefetch_queue: Optional[queue.Queue] = None
+        self._embedding_model = None
         self._stream_pipeline = None
         self._stream_sessions: dict[str, dict] = {}
         self._free_stream_ids: list[int] = []
@@ -101,9 +104,10 @@ class GPUWorker:
             pass
         return int(self._vram_baseline_mb * 1024 * 1024)
 
-    def start(self, batch_cfg: Optional[dict] = None, stream_cfg: Optional[dict] = None) -> None:
+    def start(self, batch_cfg: Optional[dict] = None, stream_cfg: Optional[dict] = None, embedding_cfg: Optional[dict] = None) -> None:
         self._batch_cfg = batch_cfg or {}
         self._stream_cfg = stream_cfg or {}
+        self._embedding_cfg = embedding_cfg or {}
         self._running = True
         self._gc_interval = self._batch_cfg.get("gc_interval", 50)
         self._gc_counter = 0
@@ -154,10 +158,10 @@ class GPUWorker:
                 idx = self._next_pool_idx % self._pool_size
                 self._next_pool_idx += 1
                 q = self._pool_queues[idx]
-            elif work_type != WorkType.BATCH_TRANSCRIBE:
-                q = self._stream_queue
-            else:
+            elif work_type in (WorkType.BATCH_TRANSCRIBE, WorkType.EMBED):
                 q = self._batch_queue
+            else:
+                q = self._stream_queue
             try:
                 q.put_nowait(WorkItem(work_type, payload, fut, loop))
             except queue.Full:
@@ -171,6 +175,10 @@ class GPUWorker:
     @property
     def has_stream(self) -> bool:
         return self._stream_pipeline is not None
+
+    @property
+    def has_embeddings(self) -> bool:
+        return self._embedding_model is not None
 
     def _run_loop(self) -> None:
         log.info("GPU worker thread started")
@@ -634,6 +642,8 @@ class GPUWorker:
             return self._stream_chunk(item.payload)
         elif item.work_type == WorkType.STREAM_CLOSE:
             return self._stream_close(item.payload)
+        elif item.work_type == WorkType.EMBED:
+            return self._embed(item.payload)
         raise ValueError(f"Unknown work type: {item.work_type}")
 
     def _load_one_model(self, device: str, idx: int = 0) -> Any:
@@ -664,6 +674,7 @@ class GPUWorker:
             log.info("No batch model configured, batch transcription will be unavailable")
 
         self._build_stream_pipeline()
+        self._load_embedding_model()
 
         device = self._batch_cfg.get("device", "cuda:0") if self._batch_cfg.get("name") else "cuda:0"
         dev_idx = int(device.split(":")[-1]) if ":" in device else 0
@@ -675,8 +686,8 @@ class GPUWorker:
             f"{self._vram_total_mb:.0f}MiB total ({free_bytes / (1024 * 1024):.0f}MiB free)"
         )
 
-        if self._batch_model is None and self._stream_pipeline is None:
-            raise RuntimeError("No models loaded — configure batch_model and/or stream_model")
+        if self._batch_model is None and self._stream_pipeline is None and self._embedding_model is None:
+            raise RuntimeError("No models loaded — configure batch_model, stream_model, and/or embedding_model")
 
         log.info("Models loaded and ready")
 
@@ -690,6 +701,41 @@ class GPUWorker:
         if self._batch_model is None:
             raise RuntimeError("Batch model not loaded — server started in streaming-only mode")
         return self._backend.transcribe_batch(self._batch_model, payload)
+
+    def _load_embedding_model(self) -> None:
+        if not self._embedding_cfg.get("name"):
+            log.info("No embedding model configured")
+            return
+        eb = self._embedding_backend or self._backend
+        if not eb.supports_embeddings:
+            log.warning(f"Backend {type(eb).__name__} does not support embeddings — skipping")
+            return
+        device = self._embedding_cfg.get("device", "cuda:0")
+        self._embedding_model = eb.load_embedding_model(self._embedding_cfg, device)
+        torch.cuda.empty_cache()
+
+    def _embed(self, payload: dict) -> dict:
+        if self._embedding_model is None:
+            raise RuntimeError("Embedding model not loaded")
+        eb = self._embedding_backend or self._backend
+        modality = payload.get("modality", "text")
+        normalize = payload.get("normalize", True)
+        dimensions = payload.get("dimensions", 0)
+
+        if modality == "audio":
+            vectors = eb.embed_audio(
+                self._embedding_model, payload["audio_paths"],
+                normalize=normalize, dimensions=dimensions,
+            )
+        elif modality in ("text", "code"):
+            vectors = eb.embed_text(
+                self._embedding_model, payload["texts"],
+                normalize=normalize, dimensions=dimensions,
+            )
+        else:
+            raise ValueError(f"Unsupported modality: {modality}")
+
+        return {"embeddings": vectors, "modality": modality, "dimensions": len(vectors[0]) if vectors else 0}
 
     _MAX_BUFFER_SAMPLES = 5120 * 10
 

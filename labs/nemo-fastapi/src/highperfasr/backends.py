@@ -40,6 +40,18 @@ class ModelBackend(Protocol):
     def supports_embeddings(self) -> bool:
         ...
 
+    def load_embedding_model(self, config: dict, device: str) -> Any:
+        """Load and return an embedding model. Called on the GPU thread."""
+        ...
+
+    def embed_audio(self, model: Any, audio_paths: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
+        """Compute audio embeddings. Returns list of float vectors."""
+        ...
+
+    def embed_text(self, model: Any, texts: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
+        """Compute text embeddings. Returns list of float vectors."""
+        ...
+
 
 class NeMoBackend:
     """Wraps existing NeMo ASR model loading and inference."""
@@ -59,6 +71,15 @@ class NeMoBackend:
     @property
     def supports_embeddings(self) -> bool:
         return False
+
+    def load_embedding_model(self, config: dict, device: str) -> Any:
+        raise NotImplementedError("NeMoBackend does not support embeddings")
+
+    def embed_audio(self, model: Any, audio_paths: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
+        raise NotImplementedError("NeMoBackend does not support embeddings")
+
+    def embed_text(self, model: Any, texts: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
+        raise NotImplementedError("NeMoBackend does not support embeddings")
 
     @property
     def attn_mode(self) -> str:
@@ -322,8 +343,110 @@ class NeMoBackend:
         return pipeline, chunk_samples, source_lang
 
 
+class EG2Backend:
+    """EmbeddingGemma 2 backend for multimodal embeddings."""
+
+    _VALID_DIMENSIONS = (768, 512, 256, 128)
+
+    def __init__(self) -> None:
+        self._model = None
+        self._processor = None
+        self._embedding_dim = 768
+
+    @property
+    def supports_streaming(self) -> bool:
+        return False
+
+    @property
+    def supports_embeddings(self) -> bool:
+        return True
+
+    def load_batch_model(self, config: dict, device: str, pool_index: int = 0) -> Any:
+        raise NotImplementedError("EG2Backend does not support ASR transcription")
+
+    def transcribe_batch(self, model: Any, payload: dict) -> list:
+        raise NotImplementedError("EG2Backend does not support ASR transcription")
+
+    def build_stream_pipeline(self, config: dict) -> tuple[Any, int, str] | None:
+        return None
+
+    def load_embedding_model(self, config: dict, device: str) -> Any:
+        from transformers import AutoModel, AutoProcessor
+
+        name = config.get("name", "google/embeddinggemma-2")
+        dtype_str = config.get("dtype", "bfloat16")
+        if dtype_str == "float16":
+            log.warning("EG2 produces NaN with float16 — forcing bfloat16")
+            dtype_str = "bfloat16"
+        dtype = getattr(torch, dtype_str, torch.bfloat16)
+
+        log.info(f"Loading EG2 model: {name} (dtype={dtype_str}, device={device})")
+        self._processor = AutoProcessor.from_pretrained(name, trust_remote_code=True)
+        model = AutoModel.from_pretrained(
+            name, torch_dtype=dtype, trust_remote_code=True
+        ).to(device).eval()
+        self._embedding_dim = config.get("dimensions", 768)
+        log.info(f"EG2 model loaded: {name}, output_dim={self._embedding_dim}")
+        return model
+
+    def _truncate(self, embeddings: torch.Tensor, dimensions: int) -> torch.Tensor:
+        if dimensions and dimensions < embeddings.shape[-1] and dimensions in self._VALID_DIMENSIONS:
+            return embeddings[..., :dimensions]
+        return embeddings
+
+    def _normalize(self, embeddings: torch.Tensor) -> torch.Tensor:
+        return torch.nn.functional.normalize(embeddings, p=2, dim=-1)
+
+    def embed_audio(self, model: Any, audio_paths: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
+        import soundfile as sf
+
+        audios = []
+        for path in audio_paths:
+            data, sr = sf.read(path, dtype="float32")
+            if sr != 16000:
+                import librosa
+                data = librosa.resample(data, orig_sr=sr, target_sr=16000)
+            audios.append(data)
+
+        device = next(model.parameters()).device
+        inputs = self._processor(
+            audios=audios,
+            sampling_rate=16000,
+            return_tensors="pt",
+            padding=True,
+        ).to(device)
+
+        with torch.inference_mode():
+            outputs = model(**inputs)
+        embeddings = outputs.last_hidden_state.mean(dim=1)
+        embeddings = self._truncate(embeddings, dimensions)
+        if normalize:
+            embeddings = self._normalize(embeddings)
+        return embeddings.cpu().float().tolist()
+
+    def embed_text(self, model: Any, texts: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
+        device = next(model.parameters()).device
+        inputs = self._processor(
+            text=texts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=8192,
+        ).to(device)
+
+        with torch.inference_mode():
+            outputs = model(**inputs)
+        embeddings = outputs.last_hidden_state.mean(dim=1)
+        embeddings = self._truncate(embeddings, dimensions)
+        if normalize:
+            embeddings = self._normalize(embeddings)
+        return embeddings.cpu().float().tolist()
+
+
 def resolve_backend(backend_type: str = "nemo") -> ModelBackend:
     """Resolve a backend by name. Extensible for future backends."""
     if backend_type == "nemo":
         return NeMoBackend()
-    raise ValueError(f"Unknown backend type: {backend_type!r}. Available: nemo")
+    if backend_type == "eg2":
+        return EG2Backend()
+    raise ValueError(f"Unknown backend type: {backend_type!r}. Available: nemo, eg2")

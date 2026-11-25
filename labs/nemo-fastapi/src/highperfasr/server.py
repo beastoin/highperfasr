@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
@@ -26,7 +26,7 @@ from highperfasr.backends import resolve_backend
 from highperfasr.batch_engine import BatchEngine, QueueFullError
 from highperfasr.compat import apply_compat
 from highperfasr.config import load_config
-from highperfasr.gpu_worker import GPUWorker
+from highperfasr.gpu_worker import GPUWorker, WorkType
 from highperfasr.stream_engine import ChunkTooLargeError, StreamEngine, StreamExpiredError, TooManyStreamsError
 
 logging.basicConfig(
@@ -110,10 +110,18 @@ async def lifespan(app: FastAPI):
         stream_section = config.get("stream", {})
         stream_cfg["max_concurrent_streams"] = stream_section.get("max_concurrent_streams", 256)
 
+    embedding_cfg = config.get("embedding_model", {})
+
     backend_type = config.get("backend", "nemo")
+    if embedding_cfg.get("name") and backend_type == "nemo":
+        from highperfasr.backends import EG2Backend
+        embedding_backend = EG2Backend()
+    else:
+        embedding_backend = None
+
     backend = resolve_backend(backend_type)
-    gpu_worker = GPUWorker(backend=backend)
-    gpu_worker.start(batch_cfg=batch_cfg, stream_cfg=stream_cfg)
+    gpu_worker = GPUWorker(backend=backend, embedding_backend=embedding_backend)
+    gpu_worker.start(batch_cfg=batch_cfg, stream_cfg=stream_cfg, embedding_cfg=embedding_cfg)
     log.info("Waiting for GPU models to load...")
     gpu_worker.wait_ready(timeout=600)
 
@@ -190,6 +198,7 @@ async def health():
         "mode": serving_mode,
         "batch_model": (config.get("batch_model") or {}).get("name") if _batch_enabled() else None,
         "stream_model": (config.get("stream_model") or {}).get("name") if _stream_enabled() else None,
+        "embedding_model": (config.get("embedding_model") or {}).get("name") if (gpu_worker and gpu_worker.has_embeddings) else None,
         "uptime_seconds": round(time.monotonic() - start_time, 1),
     }
 
@@ -432,6 +441,89 @@ async def transcribe_batch(
                     os.unlink(p)
                 except OSError:
                     pass
+
+
+# --- Embeddings ---
+
+
+def _require_embeddings():
+    if gpu_worker is None or not gpu_worker.has_embeddings:
+        raise HTTPException(
+            status_code=404,
+            detail="Embeddings not available — configure embedding_model in server config",
+        )
+
+
+@app.post("/v1/embeddings")
+async def embed(
+    request: Request,
+    file: UploadFile | None = File(None),
+    normalize: bool = Form(True),
+    dimensions: int = Form(0),
+):
+    _require_embeddings()
+
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        body = await request.json()
+        text_input = body.get("input")
+        if not text_input:
+            raise HTTPException(status_code=400, detail="JSON body must include 'input' field")
+        modality = body.get("modality", "text")
+        req_normalize = body.get("normalize", True)
+        req_dimensions = body.get("dimensions", 0)
+
+        loop = asyncio.get_running_loop()
+        payload = {
+            "modality": modality,
+            "texts": [text_input] if isinstance(text_input, str) else text_input,
+            "normalize": req_normalize,
+            "dimensions": req_dimensions,
+        }
+        result = await gpu_worker.submit(WorkType.EMBED, payload, loop)
+        embeddings = result["embeddings"]
+        return JSONResponse(content={
+            "embedding": embeddings[0] if len(embeddings) == 1 else embeddings,
+            "model": config.get("embedding_model", {}).get("name", "unknown"),
+            "modality": result["modality"],
+            "dimensions": result["dimensions"],
+        })
+
+    if file is not None:
+        max_bytes = _max_upload_bytes()
+        suffix = Path(file.filename).suffix if file.filename else ".wav"
+
+        loop = asyncio.get_running_loop()
+        try:
+            tmp_path = await loop.run_in_executor(
+                None, functools.partial(_save_upload_sync, file.file, suffix, max_bytes)
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=413, detail=str(exc))
+
+        try:
+            payload = {
+                "modality": "audio",
+                "audio_paths": [tmp_path],
+                "normalize": normalize,
+                "dimensions": dimensions,
+            }
+            result = await gpu_worker.submit(WorkType.EMBED, payload, loop)
+            embeddings = result["embeddings"]
+            return JSONResponse(content={
+                "embedding": embeddings[0],
+                "model": config.get("embedding_model", {}).get("name", "unknown"),
+                "modality": "audio",
+                "dimensions": result["dimensions"],
+            })
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    raise HTTPException(status_code=400, detail="Provide JSON body with 'input' or multipart form with 'file'")
 
 
 # --- Streaming Transcription ---

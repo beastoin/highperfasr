@@ -1,0 +1,43 @@
+# HighPerfASR — EG2 Embedding Server (slim image, ~8 GB vs 25 GB NeMo)
+#
+# Build:  docker build -f Dockerfile.eg2 -t highperfasr-eg2 .
+# Run:    docker run --gpus all -p 8000:8000 highperfasr-eg2
+
+FROM pytorch/pytorch:2.6.0-cuda12.6-cudnn9-runtime
+
+WORKDIR /app
+
+RUN apt-get update -qq \
+    && apt-get install -y --no-install-recommends libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    "transformers>=4.45" \
+    "sentencepiece>=0.2" \
+    "protobuf>=4.25" \
+    "soundfile>=0.12" \
+    "librosa>=0.10" \
+    "fastapi>=0.115" \
+    "uvicorn[standard]>=0.30" \
+    "python-multipart>=0.0.9" \
+    "pyyaml>=6.0" \
+    "numpy>=1.24" \
+    && pip cache purge
+
+COPY labs/nemo-fastapi/pyproject.toml ./pyproject.toml
+COPY labs/nemo-fastapi/src/ ./src/
+COPY labs/nemo-fastapi/configs/ ./configs/
+COPY LICENSE ./
+RUN pip install --no-cache-dir --no-deps -e . \
+    && pip cache purge
+
+ENV NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    HF_HOME=/app/.cache/huggingface
+
+EXPOSE 8000
+ENTRYPOINT ["highperfasr"]
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+CMD ["serve", "--config", "/app/configs/serving-embedding.yaml"]

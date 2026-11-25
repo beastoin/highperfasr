@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from highperfasr.backends import ModelBackend, NeMoBackend, resolve_backend
+from highperfasr.backends import EG2Backend, ModelBackend, NeMoBackend, resolve_backend
 
 
 class FakeBackend:
@@ -38,6 +38,15 @@ class FakeBackend:
         self.stream_calls.append(config)
         return None
 
+    def load_embedding_model(self, config: dict, device: str) -> Any:
+        return None
+
+    def embed_audio(self, model: Any, audio_paths: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
+        return []
+
+    def embed_text(self, model: Any, texts: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
+        return []
+
 
 class TestModelBackendProtocol:
     def test_nemo_backend_satisfies_protocol(self):
@@ -53,11 +62,41 @@ class TestModelBackendProtocol:
         assert backend.attn_mode == "full"
         assert backend.attn_auto_threshold_sec == 600
 
+    def test_eg2_backend_properties(self):
+        backend = EG2Backend()
+        assert backend.supports_streaming is False
+        assert backend.supports_embeddings is True
+
+    def test_eg2_backend_no_transcription(self):
+        backend = EG2Backend()
+        with pytest.raises(NotImplementedError):
+            backend.load_batch_model({}, "cpu")
+        with pytest.raises(NotImplementedError):
+            backend.transcribe_batch(None, {})
+
+    def test_eg2_backend_stream_returns_none(self):
+        backend = EG2Backend()
+        assert backend.build_stream_pipeline({}) is None
+
+    def test_eg2_float16_rejected(self):
+        backend = EG2Backend()
+        import logging
+        with patch("highperfasr.backends.log") as mock_log:
+            try:
+                backend.load_embedding_model({"name": "test", "dtype": "float16"}, "cpu")
+            except Exception:
+                pass
+            assert any("float16" in str(c) for c in mock_log.warning.call_args_list)
+
 
 class TestResolveBackend:
     def test_resolve_nemo(self):
         backend = resolve_backend("nemo")
         assert isinstance(backend, NeMoBackend)
+
+    def test_resolve_eg2(self):
+        backend = resolve_backend("eg2")
+        assert isinstance(backend, EG2Backend)
 
     def test_resolve_unknown_raises(self):
         with pytest.raises(ValueError, match="Unknown backend type"):
