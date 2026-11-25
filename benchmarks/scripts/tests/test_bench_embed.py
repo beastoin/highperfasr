@@ -321,6 +321,40 @@ def test_validate_embedding_non_numeric():
     assert "non-numeric" in err
 
 
+def test_validate_embedding_nan():
+    emb, err = _validate_embedding({"embedding": [0.1, float("nan"), 0.3]})
+    assert emb is None
+    assert "non-finite" in err
+
+
+def test_validate_embedding_inf():
+    emb, err = _validate_embedding({"embedding": [0.1, float("inf"), 0.3]})
+    assert emb is None
+    assert "non-finite" in err
+
+
+def test_quality_gates_retrieval_error():
+    report = {
+        "modality": "audio",
+        "concurrency_sweep": [
+            {
+                "concurrency": 1,
+                "embeds_per_sec": 200,
+                "failure_rate": 0.0,
+                "failures": 0,
+                "p99_s": 0.05,
+            },
+        ],
+        "vram": {"growth_mb": 50},
+        "retrieval_error": {"reason": "no evaluable pairs"},
+    }
+    gates = check_quality_gates(report)
+    assert gates["status"] == "fail"
+    retrieval_checks = [c for c in gates["checks"] if c["gate"] == "retrieval_evidence"]
+    assert len(retrieval_checks) == 1
+    assert not retrieval_checks[0]["passed"]
+
+
 def test_quality_gates_missing_config():
     with patch("bench_embed.SCRIPTS_DIR", Path("/nonexistent")):
         report = {"modality": "audio", "concurrency_sweep": []}

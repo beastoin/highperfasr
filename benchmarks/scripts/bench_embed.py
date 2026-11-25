@@ -200,12 +200,16 @@ def collect_gpu_memory_used_mb():
 
 
 def _validate_embedding(body):
-    """Validate embedding response has a non-empty numeric vector."""
+    """Validate embedding response has a non-empty finite numeric vector."""
+    import math
     emb = body.get("embedding")
     if not emb or not isinstance(emb, list) or len(emb) == 0:
         return None, "missing or empty embedding"
-    if not all(isinstance(v, (int, float)) for v in emb[:10]):
-        return None, "non-numeric values in embedding"
+    for v in emb:
+        if not isinstance(v, (int, float)):
+            return None, "non-numeric values in embedding"
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            return None, "non-finite values in embedding"
     return emb, None
 
 
@@ -554,9 +558,8 @@ async def main():
             }
             report["concurrency_sweep"].append(level_data)
 
-            if args.smart and fail_count > 0 and ok_count == 0:
-                log.warning(f"Smart mode: total failure at c={c}, stopping sweep")
-                break
+            if args.smart and fail_count > 0:
+                log.warning(f"Smart mode: {fail_count} failures at c={c}, continuing to find working level")
 
         # --- Sustained load ---
         if args.sustained_rounds > 0 and report["concurrency_sweep"]:
@@ -635,15 +638,30 @@ async def main():
                     text_embeddings.append(r["embedding"])
                     successful_text_refs[ref_utt_ids[i]] = sample_refs[ref_utt_ids[i]]
 
+            audio_failures = sum(1 for r in audio_results if r["status"] != "ok")
+            text_failures = sum(1 for r in text_results if r["status"] != "ok")
+
             retrieval = compute_retrieval_metrics(
                 audio_embeddings, text_embeddings, audio_utt_ids, successful_text_refs, k=args.retrieval_k,
             )
             if retrieval:
+                retrieval["audio_failures"] = audio_failures
+                retrieval["text_failures"] = text_failures
                 report["retrieval"] = retrieval
                 log.info(
                     f"Recall@{retrieval['k']}: {retrieval['recall_at_k']:.4f} "
-                    f"({retrieval['evaluated_pairs']} pairs evaluated)"
+                    f"({retrieval['evaluated_pairs']} pairs evaluated, "
+                    f"{audio_failures} audio failures, {text_failures} text failures)"
                 )
+            else:
+                report["retrieval_error"] = {
+                    "reason": "no evaluable pairs",
+                    "audio_attempted": len(sample_wavs),
+                    "audio_succeeded": len(audio_embeddings),
+                    "text_attempted": len(ref_texts),
+                    "text_succeeded": len(text_embeddings),
+                }
+                log.warning("Retrieval test failed — no evaluable pairs")
 
     # --- Quality gates ---
     report["quality_gates"] = check_quality_gates(report)
@@ -769,6 +787,14 @@ def check_quality_gates(report):
             "value": retrieval["recall_at_k"],
             "threshold": min_recall,
             "passed": passed,
+        })
+    elif report.get("retrieval_error"):
+        results["status"] = "fail"
+        results["checks"].append({
+            "gate": "retrieval_evidence",
+            "value": report["retrieval_error"].get("reason", "no evaluable pairs"),
+            "threshold": "retrieval must produce results",
+            "passed": False,
         })
 
     return results
