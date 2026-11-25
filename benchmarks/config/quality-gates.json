@@ -24,5 +24,16 @@
   "combined": {
     "max_wer_pct": 3.0,
     "max_failure_rate": 0.0
+  },
+  "embedding": {
+    "min_throughput_audio": 100,
+    "min_throughput_text": 500,
+    "min_throughput_mixed": 100,
+    "max_p99_ms_audio": 100,
+    "max_p99_ms_text": 50,
+    "max_p99_ms_mixed": 100,
+    "max_failure_rate": 0.0,
+    "max_vram_growth_mb": 100,
+    "min_recall_at_k": 0.8
   }
 }
