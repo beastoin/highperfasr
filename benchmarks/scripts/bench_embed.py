@@ -355,7 +355,14 @@ def compute_retrieval_metrics(audio_embeddings, text_embeddings, audio_utt_ids, 
             audio_filtered.append(emb)
             audio_ids_filtered.append(uid)
 
-    text_filtered = [e for e in text_embeddings if len(e) == text_dim]
+    text_labels = list(refs.keys())
+    text_filtered = []
+    text_labels_filtered = []
+    for emb, label in zip(text_embeddings, text_labels):
+        if len(emb) == text_dim:
+            text_filtered.append(emb)
+            text_labels_filtered.append(label)
+
     if not audio_filtered or not text_filtered:
         return None
 
@@ -372,17 +379,14 @@ def compute_retrieval_metrics(audio_embeddings, text_embeddings, audio_utt_ids, 
 
     similarity = audio_matrix @ text_matrix.T
 
-    text_labels = list(refs.keys())
-    text_label_set = set(text_labels)
+    text_label_set = set(text_labels_filtered)
 
     hits = 0
     evaluated = 0
     for i, utt_id in enumerate(audio_ids_filtered):
         if utt_id not in text_label_set:
             continue
-        target_idx = text_labels.index(utt_id)
-        if target_idx >= len(text_filtered):
-            continue
+        target_idx = text_labels_filtered.index(utt_id)
         top_k_indices = np.argsort(similarity[i])[::-1][:k]
         if target_idx in top_k_indices:
             hits += 1
@@ -676,7 +680,10 @@ async def main():
             retrieval = compute_retrieval_metrics(
                 audio_embeddings, text_embeddings, audio_utt_ids, successful_text_refs, k=args.retrieval_k,
             )
-            if retrieval:
+            if retrieval and retrieval.get("error"):
+                report["retrieval"] = retrieval
+                log.warning(f"Retrieval error: {retrieval['error']}")
+            elif retrieval and retrieval.get("recall_at_k") is not None:
                 retrieval["audio_failures"] = audio_failures
                 retrieval["text_failures"] = text_failures
                 report["retrieval"] = retrieval
