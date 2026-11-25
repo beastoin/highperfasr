@@ -28,8 +28,8 @@ class ModelBackend(Protocol):
         """Run batch transcription. Returns serialized result list."""
         ...
 
-    def build_stream_pipeline(self, config: dict) -> Any | None:
-        """Build and return a streaming pipeline, or None if unsupported."""
+    def build_stream_pipeline(self, config: dict) -> tuple[Any, int, str] | None:
+        """Build a streaming pipeline. Returns (pipeline, chunk_samples, source_language) or None."""
         ...
 
     @property

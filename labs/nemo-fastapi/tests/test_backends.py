@@ -34,7 +34,7 @@ class FakeBackend:
         self.transcribe_calls.append((model, payload))
         return ["fake transcription"]
 
-    def build_stream_pipeline(self, config: dict) -> Any | None:
+    def build_stream_pipeline(self, config: dict) -> tuple[Any, int, str] | None:
         self.stream_calls.append(config)
         return None
 
