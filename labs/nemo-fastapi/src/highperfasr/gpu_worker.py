@@ -197,9 +197,9 @@ class GPUWorker:
             self._run_pool_mode()
         elif self._batch_cfg.get("prefetch", False):
             self._run_prefetch_mode()
-        elif self.has_batch and not self.has_stream:
+        elif (self.has_batch or self.has_embeddings) and not self.has_stream:
             self._run_batch_only_mode()
-        elif self.has_stream and not self.has_batch:
+        elif self.has_stream and not self.has_batch and not self.has_embeddings:
             self._run_stream_only_mode()
         else:
             self._run_single_mode()

@@ -397,6 +397,14 @@ class EG2Backend:
     def _normalize(self, embeddings: torch.Tensor) -> torch.Tensor:
         return torch.nn.functional.normalize(embeddings, p=2, dim=-1)
 
+    @staticmethod
+    def _check_finite(embeddings: torch.Tensor) -> torch.Tensor:
+        if not torch.isfinite(embeddings).all():
+            nan_count = torch.isnan(embeddings).any(dim=-1).sum().item()
+            inf_count = torch.isinf(embeddings).any(dim=-1).sum().item()
+            raise RuntimeError(f"Non-finite embeddings detected: {nan_count} NaN, {inf_count} Inf vectors")
+        return embeddings
+
     def embed_audio(self, model: Any, audio_paths: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
         import soundfile as sf
 
@@ -422,7 +430,7 @@ class EG2Backend:
         embeddings = self._truncate(embeddings, dimensions)
         if normalize:
             embeddings = self._normalize(embeddings)
-        return embeddings.cpu().float().tolist()
+        return self._check_finite(embeddings).cpu().float().tolist()
 
     def embed_text(self, model: Any, texts: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
         device = next(model.parameters()).device
@@ -436,11 +444,16 @@ class EG2Backend:
 
         with torch.inference_mode():
             outputs = model(**inputs)
-        embeddings = outputs.last_hidden_state.mean(dim=1)
+        mask = inputs.get("attention_mask")
+        if mask is not None:
+            mask_expanded = mask.unsqueeze(-1).float()
+            embeddings = (outputs.last_hidden_state * mask_expanded).sum(dim=1) / mask_expanded.sum(dim=1).clamp(min=1e-9)
+        else:
+            embeddings = outputs.last_hidden_state.mean(dim=1)
         embeddings = self._truncate(embeddings, dimensions)
         if normalize:
             embeddings = self._normalize(embeddings)
-        return embeddings.cpu().float().tolist()
+        return self._check_finite(embeddings).cpu().float().tolist()
 
 
 def resolve_backend(backend_type: str = "nemo") -> ModelBackend:

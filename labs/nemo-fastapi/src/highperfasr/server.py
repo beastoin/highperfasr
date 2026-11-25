@@ -70,10 +70,11 @@ def _validate_startup_config() -> None:
     if serving_mode not in _VALID_MODES:
         raise RuntimeError("Invalid mode '%s' — must be one of: batch, stream, both" % serving_mode)
 
+    has_embedding_cfg = bool(config.get("embedding_model", {}).get("name"))
     if _batch_enabled():
         batch_cfg = config.get("batch_model")
-        if not batch_cfg:
-            raise RuntimeError(f"mode={serving_mode} requires batch_model config")
+        if not batch_cfg and not has_embedding_cfg:
+            raise RuntimeError(f"mode={serving_mode} requires batch_model or embedding_model config")
 
         attention_mode = batch_cfg.get("attention_mode", "full")
         if attention_mode not in _VALID_ATTENTION_MODES:
@@ -465,23 +466,38 @@ async def embed(
 
     content_type = request.headers.get("content-type", "")
 
+    _VALID_TEXT_MODALITIES = {"text", "code"}
+    _VALID_DIMENSIONS = {0, 128, 256, 512, 768}
+    _MAX_TEXT_BATCH = 64
+
     if "application/json" in content_type:
         body = await request.json()
         text_input = body.get("input")
         if not text_input:
             raise HTTPException(status_code=400, detail="JSON body must include 'input' field")
         modality = body.get("modality", "text")
+        if modality not in _VALID_TEXT_MODALITIES:
+            raise HTTPException(status_code=400, detail=f"JSON input supports modalities: {sorted(_VALID_TEXT_MODALITIES)}")
         req_normalize = body.get("normalize", True)
         req_dimensions = body.get("dimensions", 0)
+        if req_dimensions not in _VALID_DIMENSIONS:
+            raise HTTPException(status_code=400, detail=f"dimensions must be one of: {sorted(_VALID_DIMENSIONS)}")
+
+        texts = [text_input] if isinstance(text_input, str) else text_input
+        if not isinstance(texts, list) or len(texts) > _MAX_TEXT_BATCH:
+            raise HTTPException(status_code=400, detail=f"input must be a string or list of up to {_MAX_TEXT_BATCH} strings")
 
         loop = asyncio.get_running_loop()
         payload = {
             "modality": modality,
-            "texts": [text_input] if isinstance(text_input, str) else text_input,
+            "texts": texts,
             "normalize": req_normalize,
             "dimensions": req_dimensions,
         }
-        result = await gpu_worker.submit(WorkType.EMBED, payload, loop)
+        try:
+            result = await gpu_worker.submit(WorkType.EMBED, payload, loop)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=f"Embedding inference failed: {exc}")
         embeddings = result["embeddings"]
         return JSONResponse(content={
             "embedding": embeddings[0] if len(embeddings) == 1 else embeddings,
@@ -491,6 +507,9 @@ async def embed(
         })
 
     if file is not None:
+        if dimensions not in _VALID_DIMENSIONS:
+            raise HTTPException(status_code=400, detail=f"dimensions must be one of: {sorted(_VALID_DIMENSIONS)}")
+
         max_bytes = _max_upload_bytes()
         suffix = Path(file.filename).suffix if file.filename else ".wav"
 
@@ -509,7 +528,10 @@ async def embed(
                 "normalize": normalize,
                 "dimensions": dimensions,
             }
-            result = await gpu_worker.submit(WorkType.EMBED, payload, loop)
+            try:
+                result = await gpu_worker.submit(WorkType.EMBED, payload, loop)
+            except RuntimeError as exc:
+                raise HTTPException(status_code=500, detail=f"Embedding inference failed: {exc}")
             embeddings = result["embeddings"]
             return JSONResponse(content={
                 "embedding": embeddings[0],
