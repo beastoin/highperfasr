@@ -125,7 +125,7 @@ def test_quality_gates_fail_throughput():
         "concurrency_sweep": [
             {
                 "concurrency": 1,
-                "embeds_per_sec": 10,
+                "embeds_per_sec": 0.5,
                 "failure_rate": 0.0,
                 "failures": 0,
                 "p99_s": 0.05,
@@ -149,7 +149,7 @@ def test_quality_gates_fail_p99():
                 "embeds_per_sec": 200,
                 "failure_rate": 0.0,
                 "failures": 0,
-                "p99_s": 0.5,
+                "p99_s": 10.0,
             },
         ],
         "vram": {"growth_mb": 50},
@@ -206,7 +206,7 @@ def test_quality_gates_text_modality_thresholds():
         "concurrency_sweep": [
             {
                 "concurrency": 1,
-                "embeds_per_sec": 200,
+                "embeds_per_sec": 1.0,
                 "failure_rate": 0.0,
                 "failures": 0,
                 "p99_s": 0.03,
@@ -218,7 +218,7 @@ def test_quality_gates_text_modality_thresholds():
     assert gates["status"] == "fail"
     throughput_checks = [c for c in gates["checks"] if c["gate"] == "min_throughput"]
     assert len(throughput_checks) == 1
-    assert throughput_checks[0]["threshold"] == 500
+    assert throughput_checks[0]["threshold"] == 3.0
 
 
 def test_quality_gates_retrieval_pass():
