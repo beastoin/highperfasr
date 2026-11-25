@@ -406,14 +406,17 @@ class EG2Backend:
         return embeddings
 
     def embed_audio(self, model: Any, audio_paths: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
+        import numpy as np
         import soundfile as sf
 
         audios = []
         for path in audio_paths:
             data, sr = sf.read(path, dtype="float32")
+            if data.ndim > 1:
+                data = data.mean(axis=1)
             if sr != 16000:
                 import librosa
-                data = librosa.resample(data, orig_sr=sr, target_sr=16000)
+                data = librosa.resample(np.ascontiguousarray(data), orig_sr=sr, target_sr=16000)
             audios.append(data)
 
         device = next(model.parameters()).device

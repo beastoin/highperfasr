@@ -722,18 +722,26 @@ class GPUWorker:
         normalize = payload.get("normalize", True)
         dimensions = payload.get("dimensions", 0)
 
-        if modality == "audio":
-            vectors = eb.embed_audio(
-                self._embedding_model, payload["audio_paths"],
-                normalize=normalize, dimensions=dimensions,
-            )
-        elif modality in ("text", "code"):
-            vectors = eb.embed_text(
-                self._embedding_model, payload["texts"],
-                normalize=normalize, dimensions=dimensions,
-            )
-        else:
-            raise ValueError(f"Unsupported modality: {modality}")
+        try:
+            if modality == "audio":
+                vectors = eb.embed_audio(
+                    self._embedding_model, payload["audio_paths"],
+                    normalize=normalize, dimensions=dimensions,
+                )
+            elif modality in ("text", "code"):
+                vectors = eb.embed_text(
+                    self._embedding_model, payload["texts"],
+                    normalize=normalize, dimensions=dimensions,
+                )
+            else:
+                raise ValueError(f"Unsupported modality: {modality}")
+        finally:
+            if payload.get("owns_files"):
+                for p in payload.get("audio_paths", []):
+                    try:
+                        os.unlink(p)
+                    except OSError:
+                        pass
 
         return {"embeddings": vectors, "modality": modality, "dimensions": len(vectors[0]) if vectors else 0}
 

@@ -127,13 +127,16 @@ async def lifespan(app: FastAPI):
     gpu_worker.wait_ready(timeout=600)
 
     if _batch_enabled() and not gpu_worker.has_batch:
-        log.warning(f"mode={serving_mode} but batch model did not load — disabling batch endpoints")
-        serving_mode = "stream" if serving_mode == "both" else serving_mode
+        if gpu_worker.has_embeddings:
+            log.info("No batch model loaded — running in embedding-only mode")
+        else:
+            log.warning(f"mode={serving_mode} but batch model did not load — disabling batch endpoints")
+            serving_mode = "stream" if serving_mode == "both" else serving_mode
     if _stream_enabled() and not gpu_worker.has_stream:
         log.warning(f"mode={serving_mode} but stream model did not load — disabling stream endpoints")
         serving_mode = "batch" if serving_mode == "both" else serving_mode
 
-    if _batch_enabled():
+    if _batch_enabled() and gpu_worker.has_batch:
         batcher_cfg = config.get("batcher", {})
         batch_engine = BatchEngine(
             gpu_worker=gpu_worker,
@@ -471,21 +474,32 @@ async def embed(
     _MAX_TEXT_BATCH = 64
 
     if "application/json" in content_type:
-        body = await request.json()
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="JSON body must be an object")
+
         text_input = body.get("input")
         if not text_input:
             raise HTTPException(status_code=400, detail="JSON body must include 'input' field")
         modality = body.get("modality", "text")
-        if modality not in _VALID_TEXT_MODALITIES:
+        if not isinstance(modality, str) or modality not in _VALID_TEXT_MODALITIES:
             raise HTTPException(status_code=400, detail=f"JSON input supports modalities: {sorted(_VALID_TEXT_MODALITIES)}")
-        req_normalize = body.get("normalize", True)
+        req_normalize = bool(body.get("normalize", True))
         req_dimensions = body.get("dimensions", 0)
-        if req_dimensions not in _VALID_DIMENSIONS:
+        if not isinstance(req_dimensions, int) or req_dimensions not in _VALID_DIMENSIONS:
             raise HTTPException(status_code=400, detail=f"dimensions must be one of: {sorted(_VALID_DIMENSIONS)}")
 
-        texts = [text_input] if isinstance(text_input, str) else text_input
-        if not isinstance(texts, list) or len(texts) > _MAX_TEXT_BATCH:
-            raise HTTPException(status_code=400, detail=f"input must be a string or list of up to {_MAX_TEXT_BATCH} strings")
+        if isinstance(text_input, str):
+            texts = [text_input]
+        elif isinstance(text_input, list) and all(isinstance(t, str) for t in text_input):
+            texts = text_input
+        else:
+            raise HTTPException(status_code=400, detail="input must be a string or list of strings")
+        if len(texts) > _MAX_TEXT_BATCH or len(texts) == 0:
+            raise HTTPException(status_code=400, detail=f"input must contain 1 to {_MAX_TEXT_BATCH} strings")
 
         loop = asyncio.get_running_loop()
         payload = {
@@ -521,29 +535,28 @@ async def embed(
         except ValueError as exc:
             raise HTTPException(status_code=413, detail=str(exc))
 
+        payload = {
+            "modality": "audio",
+            "audio_paths": [tmp_path],
+            "owns_files": True,
+            "normalize": normalize,
+            "dimensions": dimensions,
+        }
         try:
-            payload = {
-                "modality": "audio",
-                "audio_paths": [tmp_path],
-                "normalize": normalize,
-                "dimensions": dimensions,
-            }
-            try:
-                result = await gpu_worker.submit(WorkType.EMBED, payload, loop)
-            except RuntimeError as exc:
-                raise HTTPException(status_code=500, detail=f"Embedding inference failed: {exc}")
-            embeddings = result["embeddings"]
-            return JSONResponse(content={
-                "embedding": embeddings[0],
-                "model": config.get("embedding_model", {}).get("name", "unknown"),
-                "modality": "audio",
-                "dimensions": result["dimensions"],
-            })
-        finally:
+            result = await gpu_worker.submit(WorkType.EMBED, payload, loop)
+        except RuntimeError as exc:
             try:
                 os.unlink(tmp_path)
             except OSError:
                 pass
+            raise HTTPException(status_code=500, detail=f"Embedding inference failed: {exc}")
+        embeddings = result["embeddings"]
+        return JSONResponse(content={
+            "embedding": embeddings[0],
+            "model": config.get("embedding_model", {}).get("name", "unknown"),
+            "modality": "audio",
+            "dimensions": result["dimensions"],
+        })
 
     raise HTTPException(status_code=400, detail="Provide JSON body with 'input' or multipart form with 'file'")
 
