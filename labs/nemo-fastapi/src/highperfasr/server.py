@@ -528,6 +528,9 @@ async def embed(
         max_bytes = _max_upload_bytes()
         suffix = Path(file.filename).suffix if file.filename else ".wav"
 
+        from highperfasr.backends import EG2Backend
+        detected_modality = EG2Backend.detect_modality(file.filename or "audio.wav")
+
         loop = asyncio.get_running_loop()
         try:
             tmp_path = await loop.run_in_executor(
@@ -536,13 +539,31 @@ async def embed(
         except ValueError as exc:
             raise HTTPException(status_code=413, detail=str(exc))
 
-        payload = {
-            "modality": "audio",
-            "audio_paths": [tmp_path],
-            "owns_files": True,
-            "normalize": normalize,
-            "dimensions": dimensions,
-        }
+        if detected_modality == "video":
+            payload = {
+                "modality": "video",
+                "video_paths": [tmp_path],
+                "owns_files": True,
+                "normalize": normalize,
+                "dimensions": dimensions,
+            }
+        elif detected_modality == "image":
+            payload = {
+                "modality": "image",
+                "image_paths": [tmp_path],
+                "owns_files": True,
+                "normalize": normalize,
+                "dimensions": dimensions,
+            }
+        else:
+            payload = {
+                "modality": "audio",
+                "audio_paths": [tmp_path],
+                "owns_files": True,
+                "normalize": normalize,
+                "dimensions": dimensions,
+            }
+
         try:
             result = await gpu_worker.submit(WorkType.EMBED, payload, loop)
         except RuntimeError as exc:
@@ -555,7 +576,7 @@ async def embed(
         return JSONResponse(content={
             "embedding": embeddings[0],
             "model": config.get("embedding_model", {}).get("name", "unknown"),
-            "modality": "audio",
+            "modality": result["modality"],
             "dimensions": result["dimensions"],
         })
 

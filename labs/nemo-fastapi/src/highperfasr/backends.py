@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 import torch
@@ -347,11 +348,16 @@ class EG2Backend:
     """EmbeddingGemma 2 backend for multimodal embeddings."""
 
     _VALID_DIMENSIONS = (768, 512, 256, 128)
+    _VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".wmv", ".m4v"}
+    _AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wma", ".opus"}
+    _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff"}
 
     def __init__(self) -> None:
         self._model = None
         self._processor = None
         self._embedding_dim = 768
+        self._video_max_frames = 8
+        self._video_max_soft_tokens = 70
 
     @property
     def supports_streaming(self) -> bool:
@@ -380,14 +386,46 @@ class EG2Backend:
             dtype_str = "bfloat16"
         dtype = getattr(torch, dtype_str, torch.bfloat16)
 
-        log.info(f"Loading EG2 model: {name} (dtype={dtype_str}, device={device})")
+        self._video_max_frames = config.get("video_max_frames", 8)
+        self._video_max_soft_tokens = config.get("video_max_soft_tokens", 70)
+        disable_audio = config.get("disable_audio_encoder", False)
+
+        quantize = config.get("quantize")
+
+        log.info(
+            f"Loading EG2 model: {name} (dtype={dtype_str}, device={device}, "
+            f"video_frames={self._video_max_frames}, video_tokens={self._video_max_soft_tokens}, "
+            f"quantize={quantize}, disable_audio={disable_audio})"
+        )
         self._processor = AutoProcessor.from_pretrained(name, trust_remote_code=True)
-        model = AutoModel.from_pretrained(
-            name, torch_dtype=dtype, trust_remote_code=True
-        ).to(device).eval()
+
+        from transformers import AutoConfig
+        model_config = None
+        if disable_audio:
+            model_config = AutoConfig.from_pretrained(name, trust_remote_code=True)
+            model_config.audio_config = None
+            log.info("Audio encoder disabled — saves ~305M params / ~583 MB bf16")
+
+        load_kwargs: dict = {"trust_remote_code": True}
+        if model_config is not None:
+            load_kwargs["config"] = model_config
+
+        if quantize == "int8":
+            from transformers import BitsAndBytesConfig
+            bnb_config = BitsAndBytesConfig(load_in_8bit=True, llm_int8_threshold=6.0)
+            model = AutoModel.from_pretrained(
+                name, quantization_config=bnb_config,
+                device_map="auto", **load_kwargs,
+            ).eval()
+            log.info("EG2 loaded with INT8 quantization (bitsandbytes)")
+        else:
+            model = AutoModel.from_pretrained(
+                name, torch_dtype=dtype, **load_kwargs,
+            ).to(device).eval()
+
         self._embedding_dim = config.get("dimensions", 768)
 
-        if config.get("compile", False):
+        if config.get("compile", False) and not quantize:
             log.info("Compiling EG2 model with torch.compile (reduce-overhead)")
             model = torch.compile(model, mode="reduce-overhead")
 
@@ -462,6 +500,69 @@ class EG2Backend:
         if normalize:
             embeddings = self._normalize(embeddings)
         return self._check_finite(embeddings).cpu().float().tolist()
+
+    def _read_video_frames(self, path: str) -> list:
+        import av
+        container = av.open(path)
+        frames = []
+        for frame in container.decode(video=0):
+            frames.append(frame.to_ndarray(format="rgb24"))
+            if len(frames) >= self._video_max_frames:
+                break
+        container.close()
+        return frames
+
+    def embed_video(self, model: Any, video_paths: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
+        device = next(model.parameters()).device
+        all_frames = []
+        for path in video_paths:
+            frames = self._read_video_frames(path)
+            if not frames:
+                raise RuntimeError(f"No video frames decoded from {path}")
+            all_frames.append(frames)
+
+        if self._video_max_soft_tokens != 280:
+            self._processor.image_processor.max_soft_tokens = self._video_max_soft_tokens
+        inputs = self._processor(
+            videos=all_frames,
+            return_tensors="pt",
+        ).to(device)
+
+        with torch.inference_mode():
+            outputs = model(**inputs)
+        embeddings = outputs.last_hidden_state.mean(dim=1)
+        embeddings = self._truncate(embeddings, dimensions)
+        if normalize:
+            embeddings = self._normalize(embeddings)
+        return self._check_finite(embeddings).cpu().float().tolist()
+
+    def embed_image(self, model: Any, image_paths: list[str], normalize: bool = True, dimensions: int = 0) -> list[list[float]]:
+        from PIL import Image
+        device = next(model.parameters()).device
+        images = [Image.open(p).convert("RGB") for p in image_paths]
+        inputs = self._processor(
+            images=images,
+            return_tensors="pt",
+        ).to(device)
+
+        with torch.inference_mode():
+            outputs = model(**inputs)
+        embeddings = outputs.last_hidden_state.mean(dim=1)
+        embeddings = self._truncate(embeddings, dimensions)
+        if normalize:
+            embeddings = self._normalize(embeddings)
+        return self._check_finite(embeddings).cpu().float().tolist()
+
+    @classmethod
+    def detect_modality(cls, filename: str) -> str:
+        ext = Path(filename).suffix.lower()
+        if ext in cls._VIDEO_EXTENSIONS:
+            return "video"
+        if ext in cls._IMAGE_EXTENSIONS:
+            return "image"
+        if ext in cls._AUDIO_EXTENSIONS:
+            return "audio"
+        return "audio"
 
 
 def resolve_backend(backend_type: str = "nemo") -> ModelBackend:

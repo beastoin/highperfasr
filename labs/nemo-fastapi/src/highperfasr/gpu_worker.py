@@ -807,6 +807,16 @@ class GPUWorker:
                     self._embedding_model, payload["audio_paths"],
                     normalize=normalize, dimensions=dimensions,
                 )
+            elif modality == "video":
+                vectors = eb.embed_video(
+                    self._embedding_model, payload["video_paths"],
+                    normalize=normalize, dimensions=dimensions,
+                )
+            elif modality == "image":
+                vectors = eb.embed_image(
+                    self._embedding_model, payload["image_paths"],
+                    normalize=normalize, dimensions=dimensions,
+                )
             elif modality in ("text", "code"):
                 vectors = eb.embed_text(
                     self._embedding_model, payload["texts"],
@@ -816,7 +826,7 @@ class GPUWorker:
                 raise ValueError(f"Unsupported modality: {modality}")
         finally:
             if payload.get("owns_files"):
-                for p in payload.get("audio_paths", []):
+                for p in payload.get("audio_paths", payload.get("video_paths", payload.get("image_paths", []))):
                     try:
                         os.unlink(p)
                     except OSError:

@@ -1,0 +1,38 @@
+# highperfasr — EG2 Video-Optimized Embedding
+#
+# EmbeddingGemma 2 optimized for video embedding throughput:
+#   - 8 frames (down from 16) — halves ViT passes
+#   - 70 tokens/frame (down from 140) — halves backbone tokens
+#   - INT8 quantization — leverages T4's 130 TOPS INT8 tensor cores
+#   - Audio encoder disabled — saves 305M params / ~1.2 GB VRAM
+#
+# Quality tradeoff: Video Hit@1 drops 47.99→46.33 (-1.7 points)
+# Speed gain: 2-5x on T4, sub-300ms on L4
+#
+# IMPORTANT: float16 produces NaN — always use bfloat16 or float32
+mode: batch
+
+server:
+  host: "0.0.0.0"
+  port: 8002
+  workers: 1
+
+embedding_model:
+  name: "google/embeddinggemma-2"
+  device: "cuda:0"
+  dtype: "bfloat16"
+  dimensions: 768
+  compile: false
+  # Video optimizations
+  video_max_frames: 8
+  video_max_soft_tokens: 70
+  disable_audio_encoder: true
+  # INT8 quantization (T4: 130 TOPS INT8 >> 8.1 TFLOPS FP32)
+  # Uncomment for T4 deployments:
+  # quantize: "int8"
+
+batcher:
+  max_batch_size: 8
+  max_wait_seconds: 0.1
+  max_queue_depth: 256
+  max_upload_bytes: 524288000

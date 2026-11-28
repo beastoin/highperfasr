@@ -176,3 +176,79 @@ class TestGPUWorkerBackendInjection:
         info = worker.vram_info
         assert info["attention_mode"] == "full"
         assert info["auto_threshold_sec"] == 600
+
+
+class TestEG2VideoSupport:
+    """Tests for video/image embedding support in EG2Backend."""
+
+    def test_detect_modality_video(self):
+        for ext in [".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".wmv", ".m4v"]:
+            assert EG2Backend.detect_modality(f"test{ext}") == "video"
+
+    def test_detect_modality_image(self):
+        for ext in [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif", ".tiff"]:
+            assert EG2Backend.detect_modality(f"test{ext}") == "image"
+
+    def test_detect_modality_audio(self):
+        for ext in [".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac", ".wma", ".opus"]:
+            assert EG2Backend.detect_modality(f"test{ext}") == "audio"
+
+    def test_detect_modality_default_audio(self):
+        assert EG2Backend.detect_modality("test.xyz") == "audio"
+        assert EG2Backend.detect_modality("noext") == "audio"
+
+    def test_detect_modality_case_insensitive(self):
+        assert EG2Backend.detect_modality("video.MP4") == "video"
+        assert EG2Backend.detect_modality("photo.JPG") == "image"
+        assert EG2Backend.detect_modality("audio.WAV") == "audio"
+
+    def test_video_config_defaults(self):
+        backend = EG2Backend()
+        assert backend._video_max_frames == 8
+        assert backend._video_max_soft_tokens == 70
+
+    def test_video_extensions_complete(self):
+        assert ".mp4" in EG2Backend._VIDEO_EXTENSIONS
+        assert ".webm" in EG2Backend._VIDEO_EXTENSIONS
+        assert ".mkv" in EG2Backend._VIDEO_EXTENSIONS
+
+    def test_image_extensions_complete(self):
+        assert ".jpg" in EG2Backend._IMAGE_EXTENSIONS
+        assert ".png" in EG2Backend._IMAGE_EXTENSIONS
+        assert ".webp" in EG2Backend._IMAGE_EXTENSIONS
+
+    def test_audio_extensions_complete(self):
+        assert ".wav" in EG2Backend._AUDIO_EXTENSIONS
+        assert ".mp3" in EG2Backend._AUDIO_EXTENSIONS
+        assert ".flac" in EG2Backend._AUDIO_EXTENSIONS
+
+    def test_eg2_supports_embeddings(self):
+        backend = EG2Backend()
+        assert backend.supports_embeddings is True
+        assert backend.supports_streaming is False
+
+    def test_eg2_raises_on_batch_model(self):
+        backend = EG2Backend()
+        with pytest.raises(NotImplementedError):
+            backend.load_batch_model({}, "cpu")
+
+    def test_eg2_raises_on_transcribe(self):
+        backend = EG2Backend()
+        with pytest.raises(NotImplementedError):
+            backend.transcribe_batch(None, {})
+
+    def test_video_config_applied(self):
+        backend = EG2Backend()
+        config = {
+            "video_max_frames": 4,
+            "video_max_soft_tokens": 140,
+        }
+        backend._video_max_frames = config["video_max_frames"]
+        backend._video_max_soft_tokens = config["video_max_soft_tokens"]
+        assert backend._video_max_frames == 4
+        assert backend._video_max_soft_tokens == 140
+
+    def test_read_video_frames_missing_av(self):
+        backend = EG2Backend()
+        with pytest.raises(Exception):
+            backend._read_video_frames("/nonexistent/video.mp4")
