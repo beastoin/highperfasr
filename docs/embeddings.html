@@ -139,9 +139,9 @@ tr.highlight{background:var(--accent-dim)}
     <div class="stat-sub">T4 text &middot; c=64 &middot; dynamic batch</div>
   </div>
   <div class="stat-card">
-    <div class="stat-val c-amber">-1%</div>
-    <div class="stat-label">768&rarr;128 Loss</div>
-    <div class="stat-sub">Matryoshka &middot; Spearman delta</div>
+    <div class="stat-val c-amber">3.1s</div>
+    <div class="stat-label">Video / T4</div>
+    <div class="stat-sub">8 frames &middot; 4 concurrent OK</div>
   </div>
 </div>
 
@@ -253,15 +253,42 @@ tr.highlight{background:var(--accent-dim)}
   </div>
 </div>
 
+<!-- VIDEO PERFORMANCE -->
+<div class="section-title">Video Embedding (Optimized)</div>
+<div class="card">
+  <h3><span class="badge badge-serving">Serving</span> Video &middot; 8 Frames &middot; No Audio Encoder</h3>
+  <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="metric"><div class="metric-label">Single Video</div><div class="metric-val c-accent">3.1s</div><div class="metric-note">T4 &middot; 320&times;240</div></div>
+    <div class="metric"><div class="metric-label">1080p</div><div class="metric-val">3.4s</div><div class="metric-note">1920&times;1080</div></div>
+    <div class="metric"><div class="metric-label">Max Concurrent</div><div class="metric-val c-accent">4</div><div class="metric-note">0 OOM &middot; T4</div></div>
+    <div class="metric"><div class="metric-label">vs Baseline</div><div class="metric-val c-accent">1.6&times;</div><div class="metric-note">was 5.1s (16f)</div></div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th class="text-c">Streams</th><th class="text-r">Total</th><th class="text-r">Per Video</th><th class="text-c">Status</th></tr></thead>
+      <tbody>
+        <tr><td class="text-c">1</td><td class="text-r">3.1s</td><td class="text-r">3.1s</td><td class="text-c" style="color:var(--accent)">OK</td></tr>
+        <tr><td class="text-c">2</td><td class="text-r">5.4s</td><td class="text-r">2.7s</td><td class="text-c" style="color:var(--accent)">OK</td></tr>
+        <tr><td class="text-c">3</td><td class="text-r">7.8s</td><td class="text-r">2.6s</td><td class="text-c" style="color:var(--accent)">OK</td></tr>
+        <tr><td class="text-c">4</td><td class="text-r">10.4s</td><td class="text-r">2.6s</td><td class="text-c" style="color:var(--accent)">OK (was OOM)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-top:8px;line-height:1.8">
+    <strong style="color:var(--text)">Optimizations:</strong> 8 frames (vs 16), audio encoder disabled (-583 MB), auto-modality detection<br>
+    <strong style="color:var(--text)">L4 projection:</strong> sub-300ms/video with bf16 + FlashAttention-2 (1.86&times; compute, native bf16)
+  </div>
+</div>
+
 <!-- VRAM & CO-LOCATION -->
 <div class="section-title">Resource Footprint</div>
 <div class="card">
   <h3><span class="badge badge-t4">T4</span> VRAM &amp; Co-location</h3>
   <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
-    <div class="metric"><div class="metric-label">EG2 Model</div><div class="metric-val">~1.5 GB</div><div class="metric-note">740M params bfloat16</div></div>
-    <div class="metric"><div class="metric-label">ASR Model</div><div class="metric-val">~5.0 GB</div><div class="metric-note">parakeet-tdt 0.6B</div></div>
-    <div class="metric"><div class="metric-label">Combined</div><div class="metric-val">6.5 GB</div><div class="metric-note">of 15 GB T4</div></div>
-    <div class="metric"><div class="metric-label">Headroom</div><div class="metric-val c-accent">57%</div><div class="metric-note">8.5 GB free</div></div>
+    <div class="metric"><div class="metric-label">EG2 (video opt)</div><div class="metric-val">849 MB</div><div class="metric-note">439M params &middot; no audio</div></div>
+    <div class="metric"><div class="metric-label">EG2 (full)</div><div class="metric-val">~1.4 GB</div><div class="metric-note">740M params bfloat16</div></div>
+    <div class="metric"><div class="metric-label">Combined</div><div class="metric-val">5.5 GB</div><div class="metric-note">of 15 GB T4</div></div>
+    <div class="metric"><div class="metric-label">Headroom</div><div class="metric-val c-accent">64%</div><div class="metric-note">9.9 GB free</div></div>
   </div>
   <div style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-top:12px;line-height:1.8">
     EG2 coexists with batch ASR on the same GPU with no VRAM pressure.<br>
@@ -276,8 +303,9 @@ tr.highlight{background:var(--accent-dim)}
     <span class="env-label">Model</span><span>google/embeddinggemma-2 (EG2)</span>
     <span class="env-label">Parameters</span><span>740M &middot; bfloat16 (float16 produces NaN)</span>
     <span class="env-label">Dimensions</span><span>768 (Matryoshka: 512, 256, 128)</span>
-    <span class="env-label">Modalities</span><span>text, code, audio, image, video</span>
+    <span class="env-label">Modalities</span><span>text, code, audio, image, video (auto-detected by extension)</span>
     <span class="env-label">Published nDCG</span><span>68.46 (MTEB En v2) &middot; 65.67 (MIEB-lite)</span>
+    <span class="env-label">Video Config</span><span>8 frames, 70 tokens/frame, audio encoder disabled (-583 MB)</span>
     <span class="env-label">Serving</span><span>HuggingFace transformers 5.x &middot; dynamic batching (32 max, 5ms window)</span>
     <span class="env-label">GPU</span><span>NVIDIA T4 16GB &middot; GKE g2-standard-4</span>
     <span class="env-label">Framework</span><span>PyTorch 2.6 &middot; CUDA 12.8</span>
