@@ -1,0 +1,27 @@
+# highperfasr — EG2 Embedding Only
+#
+# EmbeddingGemma 2 (740M) for multimodal embeddings:
+#   5 modalities: text, code, audio, image, video → 768-dim
+#   VRAM: ~3 GB (full model, bfloat16)
+#   Matryoshka: truncate to 512/256/128 dims with minimal quality loss
+#
+# IMPORTANT: float16 produces NaN — always use bfloat16 or float32
+mode: batch
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+
+embedding_model:
+  name: "google/embeddinggemma-2"
+  device: "cuda:0"
+  dtype: "bfloat16"
+  dimensions: 768
+  compile: true
+
+batcher:
+  max_batch_size: 32
+  max_wait_seconds: 0.005
+  max_queue_depth: 4096
+  max_upload_bytes: 104857600

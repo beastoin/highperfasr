@@ -24,5 +24,24 @@
   "combined": {
     "max_wer_pct": 3.0,
     "max_failure_rate": 0.0
+  },
+  "embedding": {
+    "min_throughput_text": 3.0,
+    "min_throughput_audio": 1.0,
+    "min_throughput_mixed": 1.0,
+    "max_p99_ms_text": 1000,
+    "max_p99_ms_audio": 5000,
+    "max_p99_ms_mixed": 5000,
+    "max_failure_rate": 0.0,
+    "max_vram_growth_mb": 100,
+    "_comment_serving": "T4 baseline: 5.1 text/sec c=1, 101.9 text/sec c=64 (dynamic batching). Gates set at ~60% of c=1."
+  },
+  "embedding_quality": {
+    "min_retrieval_ndcg_at_10": 0.85,
+    "min_sts_spearman": 0.75,
+    "min_classification_accuracy": 0.35,
+    "min_clustering_v_measure": 0.40,
+    "min_dim_256_spearman": 0.70,
+    "_comment": "Quality gates for EG2 Matryoshka embeddings. Based on bench_embed_quality.py measurements: nDCG@10=1.0, Spearman=0.87, dim-256 retains >99% STS quality."
   }
 }

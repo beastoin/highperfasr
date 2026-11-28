@@ -5,6 +5,8 @@ and GIL-related performance issues. The async server communicates with this
 thread via a work queue.
 """
 
+from __future__ import annotations
+
 import asyncio
 import gc
 import logging
@@ -18,6 +20,8 @@ from typing import Any, Optional
 
 import torch
 
+from highperfasr.backends import ModelBackend, NeMoBackend, resolve_backend
+
 log = logging.getLogger(__name__)
 
 _MAX_GPU_QUEUE = 4096
@@ -28,6 +32,7 @@ class WorkType(Enum):
     STREAM_CHUNK = "stream_chunk"
     STREAM_OPEN = "stream_open"
     STREAM_CLOSE = "stream_close"
+    EMBED = "embed"
     SHUTDOWN = "shutdown"
 
 
@@ -43,7 +48,9 @@ class WorkItem:
 class GPUWorker:
     """Runs inference on a dedicated thread. Async callers submit WorkItems."""
 
-    def __init__(self):
+    def __init__(self, backend: ModelBackend | None = None, embedding_backend: ModelBackend | None = None):
+        self._backend: ModelBackend = backend or NeMoBackend()
+        self._embedding_backend: ModelBackend | None = embedding_backend
         self._batch_queue: queue.Queue[WorkItem] = queue.Queue(maxsize=_MAX_GPU_QUEUE)
         self._stream_queue: queue.Queue[WorkItem] = queue.Queue(maxsize=_MAX_GPU_QUEUE)
         self._thread: Optional[threading.Thread] = None
@@ -55,6 +62,7 @@ class GPUWorker:
         self._next_pool_idx = 0
         self._prefetch_thread: Optional[threading.Thread] = None
         self._prefetch_queue: Optional[queue.Queue] = None
+        self._embedding_model = None
         self._stream_pipeline = None
         self._stream_sessions: dict[str, dict] = {}
         self._free_stream_ids: list[int] = []
@@ -66,12 +74,6 @@ class GPUWorker:
         self._load_error: Optional[Exception] = None
         self._running = False
         self._submit_lock = threading.Lock()
-        self._attn_mode = "full"
-        self._attn_auto_threshold_sec = 600
-        self._attn_local_context = [128, 128]
-        self._attn_is_local = False
-        self._max_file_duration_sec = 0
-        self._raw_batch_model = None
         self._vram_total_mb = 0.0
         self._vram_baseline_mb = 0.0
 
@@ -81,11 +83,16 @@ class GPUWorker:
 
     @property
     def vram_info(self) -> dict:
+        attn_mode = "full"
+        attn_threshold = 600
+        if isinstance(self._backend, NeMoBackend):
+            attn_mode = self._backend.attn_mode
+            attn_threshold = self._backend.attn_auto_threshold_sec
         return {
             "total_mb": self._vram_total_mb,
             "baseline_mb": self._vram_baseline_mb,
-            "attention_mode": self._attn_mode,
-            "auto_threshold_sec": self._attn_auto_threshold_sec,
+            "attention_mode": attn_mode,
+            "auto_threshold_sec": attn_threshold,
         }
 
     @property
@@ -97,9 +104,10 @@ class GPUWorker:
             pass
         return int(self._vram_baseline_mb * 1024 * 1024)
 
-    def start(self, batch_cfg: Optional[dict] = None, stream_cfg: Optional[dict] = None) -> None:
+    def start(self, batch_cfg: Optional[dict] = None, stream_cfg: Optional[dict] = None, embedding_cfg: Optional[dict] = None) -> None:
         self._batch_cfg = batch_cfg or {}
         self._stream_cfg = stream_cfg or {}
+        self._embedding_cfg = embedding_cfg or {}
         self._running = True
         self._gc_interval = self._batch_cfg.get("gc_interval", 50)
         self._gc_counter = 0
@@ -150,10 +158,10 @@ class GPUWorker:
                 idx = self._next_pool_idx % self._pool_size
                 self._next_pool_idx += 1
                 q = self._pool_queues[idx]
-            elif work_type != WorkType.BATCH_TRANSCRIBE:
-                q = self._stream_queue
-            else:
+            elif work_type in (WorkType.BATCH_TRANSCRIBE, WorkType.EMBED):
                 q = self._batch_queue
+            else:
+                q = self._stream_queue
             try:
                 q.put_nowait(WorkItem(work_type, payload, fut, loop))
             except queue.Full:
@@ -167,6 +175,10 @@ class GPUWorker:
     @property
     def has_stream(self) -> bool:
         return self._stream_pipeline is not None
+
+    @property
+    def has_embeddings(self) -> bool:
+        return self._embedding_model is not None
 
     def _run_loop(self) -> None:
         log.info("GPU worker thread started")
@@ -185,14 +197,17 @@ class GPUWorker:
             self._run_pool_mode()
         elif self._batch_cfg.get("prefetch", False):
             self._run_prefetch_mode()
-        elif self.has_batch and not self.has_stream:
+        elif (self.has_batch or self.has_embeddings) and not self.has_stream:
             self._run_batch_only_mode()
-        elif self.has_stream and not self.has_batch:
+        elif self.has_stream and not self.has_batch and not self.has_embeddings:
             self._run_stream_only_mode()
         else:
             self._run_single_mode()
 
         log.info("GPU worker thread stopped")
+
+    _EMBED_BATCH_MAX = 32
+    _EMBED_BATCH_WAIT_S = 0.005
 
     def _run_batch_only_mode(self) -> None:
         log.info("Running in batch-only mode")
@@ -203,6 +218,9 @@ class GPUWorker:
                 continue
             if item.work_type == WorkType.SHUTDOWN:
                 break
+            if item.work_type == WorkType.EMBED:
+                self._batch_embed_dispatch(item)
+                continue
             try:
                 result = self._dispatch(item)
                 item.loop.call_soon_threadsafe(self._safe_set_result, item.future, result)
@@ -211,6 +229,79 @@ class GPUWorker:
             finally:
                 self._maybe_gc()
         self._drain_queues([self._batch_queue, self._stream_queue])
+
+    def _batch_embed_dispatch(self, first_item: WorkItem) -> None:
+        """Accumulate EMBED items and process in a single batched forward pass."""
+        items = [first_item]
+        deadline = time.monotonic() + self._EMBED_BATCH_WAIT_S
+        while len(items) < self._EMBED_BATCH_MAX:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                item = self._batch_queue.get(timeout=remaining)
+            except queue.Empty:
+                break
+            if item.work_type == WorkType.SHUTDOWN:
+                self._batch_queue.put(item)
+                break
+            if item.work_type != WorkType.EMBED:
+                try:
+                    result = self._dispatch(item)
+                    item.loop.call_soon_threadsafe(self._safe_set_result, item.future, result)
+                except Exception as exc:
+                    item.loop.call_soon_threadsafe(self._safe_set_exception, item.future, exc)
+                continue
+            items.append(item)
+
+        modality = items[0].payload.get("modality", "text")
+        same_modality = all(it.payload.get("modality", "text") == modality for it in items)
+
+        if same_modality and modality in ("text", "code") and len(items) > 1:
+            self._batched_text_embed(items)
+        else:
+            for it in items:
+                try:
+                    result = self._embed(it.payload)
+                    it.loop.call_soon_threadsafe(self._safe_set_result, it.future, result)
+                except Exception as exc:
+                    it.loop.call_soon_threadsafe(self._safe_set_exception, it.future, exc)
+        self._maybe_gc()
+
+    def _batched_text_embed(self, items: list[WorkItem]) -> None:
+        """Process multiple text embedding requests in one forward pass."""
+        if self._embedding_model is None:
+            for it in items:
+                it.loop.call_soon_threadsafe(
+                    self._safe_set_exception, it.future, RuntimeError("Embedding model not loaded")
+                )
+            return
+        eb = self._embedding_backend or self._backend
+
+        all_texts = []
+        boundaries = []
+        for it in items:
+            texts = it.payload.get("texts", [])
+            boundaries.append((len(all_texts), len(all_texts) + len(texts)))
+            all_texts.extend(texts)
+
+        normalize = items[0].payload.get("normalize", True)
+        dimensions = items[0].payload.get("dimensions", 0)
+
+        try:
+            all_vectors = eb.embed_text(
+                self._embedding_model, all_texts,
+                normalize=normalize, dimensions=dimensions,
+            )
+            dim = len(all_vectors[0]) if all_vectors else 0
+            modality = items[0].payload.get("modality", "text")
+            for it, (start, end) in zip(items, boundaries):
+                vectors = all_vectors[start:end]
+                result = {"embeddings": vectors, "modality": modality, "dimensions": dim}
+                it.loop.call_soon_threadsafe(self._safe_set_result, it.future, result)
+        except Exception as exc:
+            for it in items:
+                it.loop.call_soon_threadsafe(self._safe_set_exception, it.future, exc)
 
     def _run_stream_only_mode(self) -> None:
         log.info(f"Running in stream-only mode (max_stream_drain={self._max_stream_drain})")
@@ -505,7 +596,7 @@ class GPUWorker:
                 break
             try:
                 with torch.cuda.stream(stream):
-                    result = self._batch_transcribe_with_model(model, item.payload)
+                    result = self._backend.transcribe_batch(model, item.payload)
                 item.loop.call_soon_threadsafe(self._safe_set_result, item.future, result)
             except Exception as exc:
                 item.loop.call_soon_threadsafe(self._safe_set_exception, item.future, exc)
@@ -630,64 +721,14 @@ class GPUWorker:
             return self._stream_chunk(item.payload)
         elif item.work_type == WorkType.STREAM_CLOSE:
             return self._stream_close(item.payload)
+        elif item.work_type == WorkType.EMBED:
+            return self._embed(item.payload)
         raise ValueError(f"Unknown work type: {item.work_type}")
 
-    @staticmethod
-    def _load_asr_model(nemo_asr, name: str, device):
-        """Load a NeMo ASR model from HuggingFace ID or local .nemo path."""
-        if name.endswith(".nemo") or os.path.isfile(name):
-            return nemo_asr.models.ASRModel.restore_from(name, map_location=device)
-        return nemo_asr.models.ASRModel.from_pretrained(name, map_location=device)
-
-    def _load_one_model(self, nemo_asr, device, idx=0):
-        tag = f" (pool #{idx})" if self._pool_size > 1 else ""
-        log.info(f"Loading batch model{tag}: {self._batch_cfg['name']}")
-        model = self._load_asr_model(nemo_asr, self._batch_cfg["name"], device)
-        model.eval()
-
-        self._attn_mode = self._batch_cfg.get("attention_mode", "full")
-        self._attn_local_context = self._batch_cfg.get("local_attn_context", [128, 128])
-        self._attn_auto_threshold_sec = self._batch_cfg.get("auto_local_attn_threshold_sec", 600)
-        self._max_file_duration_sec = self._batch_cfg.get("max_file_duration_sec", 0)
-
-        if self._attn_mode == "auto" and self._pool_size > 1:
-            log.warning(
-                f"Auto attention mode is unsafe with model_pool_size={self._pool_size} "
-                f"(shared mutable state). Falling back to full attention mode."
-            )
-            self._attn_mode = "full"
-
-        if self._attn_mode == "local":
-            model.change_attention_model("rel_pos_local_attn", self._attn_local_context)
-            model.change_subsampling_conv_chunking_factor(1)
-            self._attn_is_local = True
-            log.info(f"Attention mode: local{tag} (context={self._attn_local_context})")
-        elif self._attn_mode == "auto":
-            log.info(
-                f"Attention mode: auto{tag} — full for <{self._attn_auto_threshold_sec}s, "
-                f"local for >={self._attn_auto_threshold_sec}s (torch.compile disabled)"
-            )
-            self._raw_batch_model = model
-        else:
-            log.info(f"Attention mode: full{tag} (default)")
-
-        if self._max_file_duration_sec > 0:
-            log.info(f"Max file duration: {self._max_file_duration_sec}s")
-
-        if not self._batch_cfg.get("cuda_graphs", True):
-            if hasattr(model, 'decoding') and hasattr(model.decoding, 'decoding'):
-                disabled = model.decoding.decoding.disable_cuda_graphs()
-                log.info(f"CUDA graph decoding disabled{tag} (was active: {disabled})")
-        if self._batch_cfg.get("compile", False) and self._attn_mode != "auto":
-            log.info(f"Compiling batch model{tag} with torch.compile")
-            model = torch.compile(model)
-        elif self._attn_mode == "auto" and self._batch_cfg.get("compile", False):
-            log.info(f"Skipping torch.compile{tag} — incompatible with auto attention switching")
-        return model
+    def _load_one_model(self, device: str, idx: int = 0) -> Any:
+        return self._backend.load_batch_model(self._batch_cfg, device, pool_index=idx)
 
     def _load_models(self) -> None:
-        import nemo.collections.asr as nemo_asr
-
         torch.backends.cudnn.benchmark = True
         if hasattr(torch, 'set_float32_matmul_precision'):
             torch.set_float32_matmul_precision('high')
@@ -700,18 +741,19 @@ class GPUWorker:
             if self._pool_size > 1:
                 log.info(f"Loading model pool: {self._pool_size} instances")
                 for i in range(self._pool_size):
-                    model = self._load_one_model(nemo_asr, device, i)
+                    model = self._load_one_model(device, i)
                     self._batch_models.append(model)
                     torch.cuda.empty_cache()
                 self._batch_model = self._batch_models[0]
             else:
-                self._batch_model = self._load_one_model(nemo_asr, device)
+                self._batch_model = self._load_one_model(device)
 
             torch.cuda.empty_cache()
         else:
             log.info("No batch model configured, batch transcription will be unavailable")
 
         self._build_stream_pipeline()
+        self._load_embedding_model()
 
         device = self._batch_cfg.get("device", "cuda:0") if self._batch_cfg.get("name") else "cuda:0"
         dev_idx = int(device.split(":")[-1]) if ":" in device else 0
@@ -723,210 +765,74 @@ class GPUWorker:
             f"{self._vram_total_mb:.0f}MiB total ({free_bytes / (1024 * 1024):.0f}MiB free)"
         )
 
-        if self._batch_model is None and self._stream_pipeline is None:
-            raise RuntimeError("No models loaded — configure batch_model and/or stream_model")
+        if self._batch_model is None and self._stream_pipeline is None and self._embedding_model is None:
+            raise RuntimeError("No models loaded — configure batch_model, stream_model, and/or embedding_model")
 
         log.info("Models loaded and ready")
 
-    _LATENCY_MODE_TO_RIGHT_CONTEXT = {
-        "80ms": 0,
-        "160ms": 1,
-        "480ms": 6,
-        "1040ms": 13,
-    }
-
     def _build_stream_pipeline(self) -> None:
-        if not self._stream_cfg or not self._stream_cfg.get("name"):
-            log.info("No stream model configured, streaming will be unavailable")
+        result = self._backend.build_stream_pipeline(self._stream_cfg)
+        if result is None:
             return
-
-        from omegaconf import OmegaConf
-
-        from nemo.collections.asr.inference.factory.pipeline_builder import PipelineBuilder
-
-        device = self._stream_cfg.get("device", "cuda:0")
-        device_parts = device.split(":")
-        device_name = device_parts[0]
-        device_id = int(device_parts[1]) if len(device_parts) > 1 else 0
-
-        ref_config_path = self._stream_cfg.get("pipeline_config")
-        if ref_config_path is None:
-            import nemo
-
-            nemo_root = os.path.dirname(os.path.dirname(nemo.__file__))
-            candidates = [
-                os.path.join(nemo_root, "examples", "asr", "conf", "asr_streaming_inference", "cache_aware_rnnt.yaml"),
-                os.path.join(os.path.dirname(__file__), "..", "..", "configs", "cache_aware_rnnt.yaml"),
-            ]
-            for c in candidates:
-                if os.path.exists(c):
-                    ref_config_path = c
-                    break
-            if ref_config_path is None:
-                raise FileNotFoundError(
-                    "Streaming pipeline config (cache_aware_rnnt.yaml) not found. "
-                    "Set stream_model.pipeline_config in your serving config."
-                )
-
-        base_cfg = OmegaConf.load(ref_config_path)
-        overrides = OmegaConf.create(
-            {
-                "asr": {
-                    "model_name": self._stream_cfg["name"],
-                    "device": device_name,
-                    "device_id": device_id,
-                    "compute_dtype": "float16",
-                    "use_amp": self._stream_cfg.get("amp", True),
-                },
-                "enable_itn": False,
-                "enable_nmt": False,
-            }
-        )
-
-        source_lang = self._stream_cfg.get("source_language", "English")
-        overrides["source_language"] = source_lang
-        self._source_language = source_lang
-
-        max_streams = self._stream_cfg.get("max_concurrent_streams", 256)
-        overrides["streaming"] = {
-            "att_context_size": None,
-            "num_slots": max_streams,
-        }
-        cfg = OmegaConf.merge(base_cfg, overrides)
-
-        self._stream_pipeline = PipelineBuilder.build_pipeline(cfg)
-
-        try:
-            self._stream_chunk_samples = int(
-                self._stream_pipeline.chunk_size_in_secs * self._stream_pipeline.sample_rate
-            )
-        except AttributeError:
-            self._stream_chunk_samples = int(self._stream_cfg.get("chunk_samples", 5120))
-        log.info(
-            f"Stream chunk target: {self._stream_chunk_samples} samples "
-            f"({self._stream_chunk_samples / 16000 * 1000:.0f}ms)"
-        )
-
-        latency_mode = self._stream_cfg.get("latency_mode", "480ms")
-        right_ctx = self._LATENCY_MODE_TO_RIGHT_CONTEXT.get(latency_mode)
-        if right_ctx is not None:
-            left_ctx = self._stream_pipeline.asr_model.get_att_context_size()[0]
-            att_context = [left_ctx, right_ctx]
-            self._stream_pipeline.asr_model.set_default_att_context_size(att_context)
-            log.info(f"Streaming latency mode: {latency_mode} (att_context_size={att_context})")
-
-        self._stream_pipeline.open_session()
-        log.info("Streaming pipeline built and session opened")
+        self._stream_pipeline, self._stream_chunk_samples, self._source_language = result
 
     def _batch_transcribe(self, payload: dict) -> list:
         if self._batch_model is None:
             raise RuntimeError("Batch model not loaded — server started in streaming-only mode")
-        return self._batch_transcribe_with_model(self._batch_model, payload)
+        return self._backend.transcribe_batch(self._batch_model, payload)
 
-    def _get_audio_duration_sec(self, path: str) -> float:
+    def _load_embedding_model(self) -> None:
+        if not self._embedding_cfg.get("name"):
+            log.info("No embedding model configured")
+            return
+        eb = self._embedding_backend or self._backend
+        if not eb.supports_embeddings:
+            log.warning(f"Backend {type(eb).__name__} does not support embeddings — skipping")
+            return
+        device = self._embedding_cfg.get("device", "cuda:0")
+        self._embedding_model = eb.load_embedding_model(self._embedding_cfg, device)
+        torch.cuda.empty_cache()
+
+    def _embed(self, payload: dict) -> dict:
+        if self._embedding_model is None:
+            raise RuntimeError("Embedding model not loaded")
+        eb = self._embedding_backend or self._backend
+        modality = payload.get("modality", "text")
+        normalize = payload.get("normalize", True)
+        dimensions = payload.get("dimensions", 0)
+
         try:
-            import torchaudio
-
-            info = torchaudio.info(path)
-            return info.num_frames / info.sample_rate
-        except Exception as exc:
-            try:
-                import wave
-
-                with wave.open(path) as wf:
-                    return wf.getnframes() / wf.getframerate()
-            except Exception:
-                log.warning(f"Cannot determine audio duration for {path}: {exc}")
-                return 0.0
-
-    def _switch_attention(self, to_local: bool) -> None:
-        if to_local == self._attn_is_local:
-            return
-        model = self._raw_batch_model
-        if model is None:
-            return
-        if to_local:
-            model.change_attention_model("rel_pos_local_attn", self._attn_local_context)
-            model.change_subsampling_conv_chunking_factor(1)
-            self._attn_is_local = True
-        else:
-            model.change_attention_model("rel_pos")
-            self._attn_is_local = False
-
-    def _batch_transcribe_with_model(self, model, payload: dict) -> list:
-        timestamps = payload.get("timestamps", False)
-        batch_size = payload.get("batch_size", 16)
-
-        audio_input = payload.get("audio_tensors", payload["audio_paths"])
-
-        if self._max_file_duration_sec > 0 and isinstance(audio_input, list):
-            for path in audio_input:
-                if isinstance(path, str):
-                    dur = self._get_audio_duration_sec(path)
-                    if dur > self._max_file_duration_sec:
-                        raise RuntimeError(
-                            f"Audio file {dur:.0f}s exceeds max_file_duration_sec "
-                            f"({self._max_file_duration_sec}s). Use shorter files or "
-                            f"set attention_mode: local/auto for longer audio."
-                        )
-
-        if self._attn_mode == "auto":
-            durations_from_batcher = payload.get("durations")
-            if durations_from_batcher:
-                max_dur = max(durations_from_batcher)
-            elif isinstance(audio_input, list):
-                max_dur = max(
-                    (self._get_audio_duration_sec(p) for p in audio_input if isinstance(p, str)),
-                    default=0.0,
+            if modality == "audio":
+                vectors = eb.embed_audio(
+                    self._embedding_model, payload["audio_paths"],
+                    normalize=normalize, dimensions=dimensions,
+                )
+            elif modality == "video":
+                vectors = eb.embed_video(
+                    self._embedding_model, payload["video_paths"],
+                    normalize=normalize, dimensions=dimensions,
+                )
+            elif modality == "image":
+                vectors = eb.embed_image(
+                    self._embedding_model, payload["image_paths"],
+                    normalize=normalize, dimensions=dimensions,
+                )
+            elif modality in ("text", "code"):
+                vectors = eb.embed_text(
+                    self._embedding_model, payload["texts"],
+                    normalize=normalize, dimensions=dimensions,
                 )
             else:
-                max_dur = 0.0
-            need_local = max_dur >= self._attn_auto_threshold_sec
-            if need_local != self._attn_is_local:
-                mode_name = "local" if need_local else "full"
-                log.info(f"Auto-switching attention to {mode_name} (longest file: {max_dur:.0f}s)")
-                self._switch_attention(need_local)
+                raise ValueError(f"Unsupported modality: {modality}")
+        finally:
+            if payload.get("owns_files"):
+                for p in payload.get("audio_paths", payload.get("video_paths", payload.get("image_paths", []))):
+                    try:
+                        os.unlink(p)
+                    except OSError:
+                        pass
 
-        results = model.transcribe(
-            audio_input,
-            batch_size=batch_size,
-            timestamps=timestamps,
-            return_hypotheses=timestamps,
-            num_workers=0,
-            verbose=False,
-        )
-        serialized = self._extract_results(results, timestamps)
-        del results
-        return serialized
-
-    @staticmethod
-    def _extract_results(results, timestamps: bool) -> list:
-        out = []
-        items = results if isinstance(results, list) else [results]
-        for r in items:
-            if timestamps and hasattr(r, 'text') and hasattr(r, 'timestamp'):
-                ts = {}
-                if isinstance(r.timestamp, dict):
-                    for k, entries in r.timestamp.items():
-                        if k == 'timestep':
-                            continue
-                        ts[k] = [
-                            {
-                                ek: (
-                                    round(ev, 4)
-                                    if isinstance(ev, float)
-                                    else str(ev) if not isinstance(ev, (int, str)) else ev
-                                )
-                                for ek, ev in e.items()
-                            }
-                            for e in entries
-                        ]
-                out.append({"text": str(r.text), "timestamp": ts})
-            elif hasattr(r, 'text'):
-                out.append(str(r.text))
-            else:
-                out.append(str(r))
-        return out
+        return {"embeddings": vectors, "modality": modality, "dimensions": len(vectors[0]) if vectors else 0}
 
     _MAX_BUFFER_SAMPLES = 5120 * 10
 

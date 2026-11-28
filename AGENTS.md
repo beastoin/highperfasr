@@ -9,14 +9,15 @@ Target: B2B companies self-hosting ASR. Value prop: one L4 GPU serving 512 concu
 ```
 beastoin/highperfasr (main branch)
 ├── Dockerfile                    # multi-target: batch + stream
+├── Dockerfile.eg2                # slim embedding-only image (~8 GB)
 ├── compose.yaml                  # docker compose up -d
 ├── gke-l4.yaml                   # GKE L4 GPU deployment
 ├── labs/nemo-fastapi/
-│   ├── configs/                  # serving-batch.yaml, serving-stream.yaml, cache_aware_rnnt.yaml
-│   ├── src/highperfasr/          # server.py, gpu_worker.py, stream_engine.py, batch_engine.py, compat.py, config.py, cli.py
+│   ├── configs/                  # serving-batch.yaml, serving-stream.yaml, serving-embedding.yaml, cache_aware_rnnt.yaml
+│   ├── src/highperfasr/          # server.py, gpu_worker.py, backends.py, stream_engine.py, batch_engine.py, compat.py, config.py, cli.py
 │   └── pyproject.toml
 ├── benchmarks/
-│   ├── scripts/                  # bench_batch.py, bench_stream.py, bench_stream_soak.py, tune_gpu.py, gates.py, wer_utils.py
+│   ├── scripts/                  # bench_batch.py, bench_stream.py, bench_stream_soak.py, bench_embed.py, bench_embed_quality.py, tune_gpu.py, gates.py, wer_utils.py
 │   ├── results/                  # published reports ({gpu}-{mode}-{timestamp}/)
 │   ├── config/quality-gates.json
 │   └── baselines/registry.json
@@ -44,7 +45,7 @@ beastoin/highperfasr (main branch)
 
 ## Benchmark Rules
 
-- Always use repo bench scripts (`bench_batch.py`, `bench_stream.py`) — never compute WER manually
+- Always use repo bench scripts (`bench_batch.py`, `bench_stream.py`, `bench_embed.py`) — never compute WER manually
 - Whisper normalization required for WER comparability
 - Real speech only for WER (LibriSpeech test-clean) — silence/tone WAVs inflate RNNT throughput
 - `--image-tag <semver>` required — records container version in reports
@@ -55,12 +56,19 @@ beastoin/highperfasr (main branch)
 
 ## Quality Gates
 
-| Gate | Batch | Stream |
-|------|-------|--------|
-| max_wer_pct | 2.5% | 4.0% |
-| max_failure_rate | 0.0 | 0.0 |
-| wer_delta (vs baseline) | 0.3% | 0.3% |
-| min_rtfx | 1.0 | 1.0 |
+| Gate | Batch | Stream | Embed Serving | Embed Quality |
+|------|-------|--------|---------------|---------------|
+| max_wer_pct | 2.5% | 4.0% | — | — |
+| max_failure_rate | 0.0 | 0.0 | 0.0 | — |
+| wer_delta (vs baseline) | 0.3% | 0.3% | — | — |
+| min_rtfx | 1.0 | 1.0 | — | — |
+| min_throughput | — | — | 3.0 text, 1.0 audio | — |
+| max_p99_ms (c=1) | — | — | 1000 text, 5000 audio | — |
+| max_vram_growth_mb | — | — | 100 | — |
+| min_retrieval_ndcg_at_10 | — | — | — | 0.85 |
+| min_sts_spearman | — | — | — | 0.75 |
+| min_classification_accuracy | — | — | — | 0.35 |
+| min_clustering_v_measure | — | — | — | 0.40 |
 
 ## Current Baselines (L4, v0.3.0)
 
@@ -116,6 +124,38 @@ python3 benchmarks/scripts/bench_stream.py \
 
 # Quick validation (200 samples)
 python3 benchmarks/scripts/bench_batch.py --quick ...
+
+# Embedding benchmark (text)
+python3 benchmarks/scripts/bench_embed.py \
+  --server http://localhost:8000 \
+  --modality text \
+  --concurrency 1,8,16,32,64 \
+  --sustained-rounds 4 \
+  --gpu T4 \
+  --output /tmp/bench_embed_text.json
+
+# Embedding benchmark (audio)
+python3 benchmarks/scripts/bench_embed.py \
+  --server http://localhost:8000 \
+  --modality audio \
+  --concurrency 1,8,16,32 \
+  --sustained-rounds 4 \
+  --gpu T4 \
+  --output /tmp/bench_embed_audio.json
+
+# Quick embedding smoke test
+python3 benchmarks/scripts/bench_embed.py --quick --modality text ...
+
+# Embedding quality benchmark (MTEB-aligned: nDCG, Spearman, V-measure, accuracy)
+python3 benchmarks/scripts/bench_embed_quality.py \
+  --server http://localhost:8000 \
+  --suite all \
+  --dimensions 768,512,256,128 \
+  --gpu T4 \
+  --output /tmp/bench_embed_quality.json
+
+# Quick quality check (STS + classification + clustering, no retrieval)
+python3 benchmarks/scripts/bench_embed_quality.py --suite quick ...
 
 # Generate HTML run pages
 python3 docs/scripts/gen-run-pages.py

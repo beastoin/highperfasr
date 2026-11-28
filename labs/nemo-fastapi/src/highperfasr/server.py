@@ -18,14 +18,15 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from highperfasr.backends import resolve_backend
 from highperfasr.batch_engine import BatchEngine, QueueFullError
 from highperfasr.compat import apply_compat
 from highperfasr.config import load_config
-from highperfasr.gpu_worker import GPUWorker
+from highperfasr.gpu_worker import GPUWorker, WorkType
 from highperfasr.stream_engine import ChunkTooLargeError, StreamEngine, StreamExpiredError, TooManyStreamsError
 
 logging.basicConfig(
@@ -69,17 +70,19 @@ def _validate_startup_config() -> None:
     if serving_mode not in _VALID_MODES:
         raise RuntimeError("Invalid mode '%s' — must be one of: batch, stream, both" % serving_mode)
 
+    has_embedding_cfg = bool(config.get("embedding_model", {}).get("name"))
     if _batch_enabled():
         batch_cfg = config.get("batch_model")
-        if not batch_cfg:
-            raise RuntimeError(f"mode={serving_mode} requires batch_model config")
+        if not batch_cfg and not has_embedding_cfg:
+            raise RuntimeError(f"mode={serving_mode} requires batch_model or embedding_model config")
 
-        attention_mode = batch_cfg.get("attention_mode", "full")
-        if attention_mode not in _VALID_ATTENTION_MODES:
-            raise RuntimeError(
-                "Invalid batch_model.attention_mode '%s' — must be one of: %s"
-                % (attention_mode, ", ".join(_VALID_ATTENTION_MODES))
-            )
+        if batch_cfg:
+            attention_mode = batch_cfg.get("attention_mode", "full")
+            if attention_mode not in _VALID_ATTENTION_MODES:
+                raise RuntimeError(
+                    "Invalid batch_model.attention_mode '%s' — must be one of: %s"
+                    % (attention_mode, ", ".join(_VALID_ATTENTION_MODES))
+                )
 
     if _stream_enabled():
         stream_cfg = config.get("stream_model")
@@ -109,19 +112,32 @@ async def lifespan(app: FastAPI):
         stream_section = config.get("stream", {})
         stream_cfg["max_concurrent_streams"] = stream_section.get("max_concurrent_streams", 256)
 
-    gpu_worker = GPUWorker()
-    gpu_worker.start(batch_cfg=batch_cfg, stream_cfg=stream_cfg)
+    embedding_cfg = config.get("embedding_model", {})
+
+    backend_type = config.get("backend", "nemo")
+    if embedding_cfg.get("name") and backend_type == "nemo":
+        from highperfasr.backends import EG2Backend
+        embedding_backend = EG2Backend()
+    else:
+        embedding_backend = None
+
+    backend = resolve_backend(backend_type)
+    gpu_worker = GPUWorker(backend=backend, embedding_backend=embedding_backend)
+    gpu_worker.start(batch_cfg=batch_cfg, stream_cfg=stream_cfg, embedding_cfg=embedding_cfg)
     log.info("Waiting for GPU models to load...")
     gpu_worker.wait_ready(timeout=600)
 
     if _batch_enabled() and not gpu_worker.has_batch:
-        log.warning(f"mode={serving_mode} but batch model did not load — disabling batch endpoints")
-        serving_mode = "stream" if serving_mode == "both" else serving_mode
+        if gpu_worker.has_embeddings:
+            log.info("No batch model loaded — running in embedding-only mode")
+        else:
+            log.warning(f"mode={serving_mode} but batch model did not load — disabling batch endpoints")
+            serving_mode = "stream" if serving_mode == "both" else serving_mode
     if _stream_enabled() and not gpu_worker.has_stream:
         log.warning(f"mode={serving_mode} but stream model did not load — disabling stream endpoints")
         serving_mode = "batch" if serving_mode == "both" else serving_mode
 
-    if _batch_enabled():
+    if _batch_enabled() and gpu_worker.has_batch:
         batcher_cfg = config.get("batcher", {})
         batch_engine = BatchEngine(
             gpu_worker=gpu_worker,
@@ -187,6 +203,7 @@ async def health():
         "mode": serving_mode,
         "batch_model": (config.get("batch_model") or {}).get("name") if _batch_enabled() else None,
         "stream_model": (config.get("stream_model") or {}).get("name") if _stream_enabled() else None,
+        "embedding_model": (config.get("embedding_model") or {}).get("name") if (gpu_worker and gpu_worker.has_embeddings) else None,
         "uptime_seconds": round(time.monotonic() - start_time, 1),
     }
 
@@ -429,6 +446,141 @@ async def transcribe_batch(
                     os.unlink(p)
                 except OSError:
                     pass
+
+
+# --- Embeddings ---
+
+
+def _require_embeddings():
+    if gpu_worker is None or not gpu_worker.has_embeddings:
+        raise HTTPException(
+            status_code=404,
+            detail="Embeddings not available — configure embedding_model in server config",
+        )
+
+
+@app.post("/v1/embeddings")
+async def embed(
+    request: Request,
+    file: UploadFile | None = File(None),
+    normalize: bool = Form(True),
+    dimensions: int = Form(0),
+):
+    _require_embeddings()
+
+    content_type = request.headers.get("content-type", "")
+
+    _VALID_TEXT_MODALITIES = {"text", "code"}
+    _VALID_DIMENSIONS = {0, 128, 256, 512, 768}
+    _MAX_TEXT_BATCH = 64
+
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="JSON body must be an object")
+
+        text_input = body.get("input")
+        if not text_input:
+            raise HTTPException(status_code=400, detail="JSON body must include 'input' field")
+        modality = body.get("modality", "text")
+        if not isinstance(modality, str) or modality not in _VALID_TEXT_MODALITIES:
+            raise HTTPException(status_code=400, detail=f"JSON input supports modalities: {sorted(_VALID_TEXT_MODALITIES)}")
+        req_normalize = bool(body.get("normalize", True))
+        req_dimensions = body.get("dimensions", 0)
+        if not isinstance(req_dimensions, int) or req_dimensions not in _VALID_DIMENSIONS:
+            raise HTTPException(status_code=400, detail=f"dimensions must be one of: {sorted(_VALID_DIMENSIONS)}")
+
+        if isinstance(text_input, str):
+            texts = [text_input]
+        elif isinstance(text_input, list) and all(isinstance(t, str) for t in text_input):
+            texts = text_input
+        else:
+            raise HTTPException(status_code=400, detail="input must be a string or list of strings")
+        if len(texts) > _MAX_TEXT_BATCH or len(texts) == 0:
+            raise HTTPException(status_code=400, detail=f"input must contain 1 to {_MAX_TEXT_BATCH} strings")
+
+        loop = asyncio.get_running_loop()
+        payload = {
+            "modality": modality,
+            "texts": texts,
+            "normalize": req_normalize,
+            "dimensions": req_dimensions,
+        }
+        try:
+            result = await gpu_worker.submit(WorkType.EMBED, payload, loop)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=f"Embedding inference failed: {exc}")
+        embeddings = result["embeddings"]
+        return JSONResponse(content={
+            "embedding": embeddings[0] if len(embeddings) == 1 else embeddings,
+            "model": config.get("embedding_model", {}).get("name", "unknown"),
+            "modality": result["modality"],
+            "dimensions": result["dimensions"],
+        })
+
+    if file is not None:
+        if dimensions not in _VALID_DIMENSIONS:
+            raise HTTPException(status_code=400, detail=f"dimensions must be one of: {sorted(_VALID_DIMENSIONS)}")
+
+        max_bytes = _max_upload_bytes()
+        suffix = Path(file.filename).suffix if file.filename else ".wav"
+
+        from highperfasr.backends import EG2Backend
+        detected_modality = EG2Backend.detect_modality(file.filename or "audio.wav")
+
+        loop = asyncio.get_running_loop()
+        try:
+            tmp_path = await loop.run_in_executor(
+                None, functools.partial(_save_upload_sync, file.file, suffix, max_bytes)
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=413, detail=str(exc))
+
+        if detected_modality == "video":
+            payload = {
+                "modality": "video",
+                "video_paths": [tmp_path],
+                "owns_files": True,
+                "normalize": normalize,
+                "dimensions": dimensions,
+            }
+        elif detected_modality == "image":
+            payload = {
+                "modality": "image",
+                "image_paths": [tmp_path],
+                "owns_files": True,
+                "normalize": normalize,
+                "dimensions": dimensions,
+            }
+        else:
+            payload = {
+                "modality": "audio",
+                "audio_paths": [tmp_path],
+                "owns_files": True,
+                "normalize": normalize,
+                "dimensions": dimensions,
+            }
+
+        try:
+            result = await gpu_worker.submit(WorkType.EMBED, payload, loop)
+        except RuntimeError as exc:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise HTTPException(status_code=500, detail=f"Embedding inference failed: {exc}")
+        embeddings = result["embeddings"]
+        return JSONResponse(content={
+            "embedding": embeddings[0],
+            "model": config.get("embedding_model", {}).get("name", "unknown"),
+            "modality": result["modality"],
+            "dimensions": result["dimensions"],
+        })
+
+    raise HTTPException(status_code=400, detail="Provide JSON body with 'input' or multipart form with 'file'")
 
 
 # --- Streaming Transcription ---

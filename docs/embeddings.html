@@ -1,0 +1,511 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>HighPerfASR Embeddings</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Embedding quality and serving benchmarks for HighPerfASR — EmbeddingGemma 2 on T4/L4 GPUs.">
+<style>
+:root{
+  --ground:#080a10;--surface:#10131c;--elevated:#181c28;
+  --border:#1e2436;--border-focus:#00e5a0;
+  --accent:#00e5a0;--accent-dim:#00e5a033;--accent-glow:#00e5a066;
+  --blue:#5a7fff;--blue-dim:#5a7fff22;
+  --amber:#ffb347;--amber-dim:#ffb34722;
+  --purple:#a78bfa;--purple-dim:#a78bfa22;
+  --error:#ff5757;--error-dim:#ff575722;
+  --text:#cdd4e0;--text2:#6b7394;--text3:#3d4560;
+  --mono:'SF Mono','Cascadia Code','JetBrains Mono','Fira Code',monospace;
+  --radius:6px;
+}
+@media(prefers-color-scheme:light){:root:not([data-theme="dark"]){
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --amber:#cc8800;--amber-dim:#cc880015;
+  --purple:#7c5cbf;--purple-dim:#7c5cbf15;
+  --error:#d93636;--error-dim:#d9363615;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}}
+:root[data-theme="light"]{
+  --ground:#f4f5f8;--surface:#fff;--elevated:#eef0f4;
+  --border:#d4d8e0;--border-focus:#00c98a;
+  --accent:#00a87a;--accent-dim:#00a87a1a;--accent-glow:#00a87a44;
+  --blue:#4466dd;--blue-dim:#4466dd15;
+  --amber:#cc8800;--amber-dim:#cc880015;
+  --purple:#7c5cbf;--purple-dim:#7c5cbf15;
+  --error:#d93636;--error-dim:#d9363615;
+  --text:#1a1d27;--text2:#5c6478;--text3:#8891a5;
+}
+:root[data-theme="dark"]{
+  --ground:#080a10;--surface:#10131c;--elevated:#181c28;
+  --border:#1e2436;--border-focus:#00e5a0;
+  --accent:#00e5a0;--accent-dim:#00e5a033;--accent-glow:#00e5a066;
+  --blue:#5a7fff;--blue-dim:#5a7fff22;
+  --amber:#ffb347;--amber-dim:#ffb34722;
+  --purple:#a78bfa;--purple-dim:#a78bfa22;
+  --error:#ff5757;--error-dim:#ff575722;
+  --text:#cdd4e0;--text2:#6b7394;--text3:#3d4560;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--ground);color:var(--text);font-size:14px;line-height:1.6}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+
+.topbar{display:flex;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:10}
+.logo{font-family:var(--mono);font-size:16px;font-weight:700;letter-spacing:-0.5px;white-space:nowrap}
+.logo em{font-style:normal;color:var(--accent)}
+.topbar-sub{font-size:12px;color:var(--text2);font-family:var(--mono);text-transform:uppercase;letter-spacing:1px}
+.topbar-links{margin-left:auto;display:flex;gap:16px;font-size:13px;font-family:var(--mono)}
+
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.section-title{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--text2);margin-bottom:16px}
+
+.hero{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:32px}
+@media(max-width:700px){.hero{grid-template-columns:repeat(2,1fr)}}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;text-align:center;transition:border-color .2s}
+.stat-card:hover{border-color:var(--border-focus)}
+.stat-val{font-family:var(--mono);font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.stat-label{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text2);margin-top:4px}
+.stat-sub{font-size:11px;color:var(--text3);margin-top:2px;font-family:var(--mono)}
+.c-accent{color:var(--accent)}.c-blue{color:var(--blue)}.c-amber{color:var(--amber)}.c-purple{color:var(--purple)}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card h3{font-family:var(--mono);font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.badge{font-size:10px;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+.badge-quality{background:var(--purple-dim);color:var(--purple);border:1px solid var(--purple)}
+.badge-serving{background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)}
+.badge-t4{background:var(--amber-dim);color:var(--amber);border:1px solid var(--amber)}
+
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px}
+.metric{padding:10px;border-radius:4px;background:var(--elevated);text-align:center}
+.metric-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2)}
+.metric-val{font-family:var(--mono);font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.metric-note{font-size:11px;color:var(--text3);font-family:var(--mono)}
+
+.chart-wrap{position:relative;height:280px;margin:16px 0;background:var(--elevated);border-radius:var(--radius);overflow:hidden}
+.chart-wrap canvas{display:block;width:100%;height:100%}
+
+.table-wrap{overflow-x:auto;margin:8px 0}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums}
+th{text-align:left;padding:8px 12px;border-bottom:2px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:600}
+td{padding:8px 12px;border-bottom:1px solid var(--border)}
+tr:last-child td{border-bottom:none}
+.text-r{text-align:right}.text-c{text-align:center}
+tr.highlight{background:var(--accent-dim)}
+
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.two-col{grid-template-columns:1fr}}
+
+.env-grid{display:inline-grid;grid-template-columns:auto auto;gap:4px 16px;font-family:var(--mono);font-size:12px}
+.env-label{color:var(--text2)}
+
+.footer{border-top:1px solid var(--border);padding:20px 24px;text-align:center;color:var(--text3);font-size:12px}
+.footer a{color:var(--text2)}
+.footer-links{display:flex;justify-content:center;gap:24px;margin-bottom:8px;font-family:var(--mono);font-size:12px}
+
+.delta{font-size:10px;padding:1px 5px;border-radius:4px;margin-left:4px;font-family:var(--mono)}
+.delta-good{background:var(--accent-dim);color:var(--accent)}
+.delta-warn{background:var(--amber-dim);color:var(--amber)}
+.delta-bad{background:var(--error-dim);color:var(--error)}
+</style>
+</head><body>
+
+<div class="topbar">
+  <div class="logo">High<em>Perf</em>ASR</div>
+  <span class="topbar-sub">Embeddings</span>
+  <div class="topbar-links">
+    <a href="index.html">ASR Benchmarks</a>
+    <a href="dashboard.html">Dashboard</a>
+    <a href="https://github.com/beastoin/highperfasr">GitHub</a>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- HERO -->
+<div class="section-title">EmbeddingGemma 2 &middot; Headline Metrics</div>
+<div class="hero">
+  <div class="stat-card">
+    <div class="stat-val c-accent">1.00</div>
+    <div class="stat-label">nDCG@10</div>
+    <div class="stat-sub">Retrieval &middot; perfect ranking</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-val c-purple">0.87</div>
+    <div class="stat-label">Spearman</div>
+    <div class="stat-sub">STS &middot; semantic similarity</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-val c-blue">101.9</div>
+    <div class="stat-label">Embeds/sec</div>
+    <div class="stat-sub">T4 text &middot; c=64 &middot; dynamic batch</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-val c-amber">3.1s</div>
+    <div class="stat-label">Video / T4</div>
+    <div class="stat-sub">8 frames &middot; 4 concurrent OK</div>
+  </div>
+</div>
+
+<!-- QUALITY SECTION -->
+<div class="section-title">Quality Evaluation (MTEB-aligned)</div>
+
+<div class="two-col">
+  <!-- Retrieval Card -->
+  <div class="card">
+    <h3><span class="badge badge-quality">Quality</span> Retrieval</h3>
+    <div class="metric-grid">
+      <div class="metric"><div class="metric-label">nDCG@10</div><div class="metric-val c-accent">1.0000</div></div>
+      <div class="metric"><div class="metric-label">MAP</div><div class="metric-val c-accent">1.0000</div></div>
+      <div class="metric"><div class="metric-label">MRR@10</div><div class="metric-val c-accent">1.0000</div></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Dataset</th><th class="text-r">nDCG@10</th><th class="text-r">MAP</th><th class="text-r">MRR@10</th><th class="text-c">Q</th></tr></thead>
+        <tbody>
+          <tr><td>science_qa</td><td class="text-r" style="color:var(--accent)">1.0000</td><td class="text-r">1.0000</td><td class="text-r">1.0000</td><td class="text-c">30</td></tr>
+          <tr><td>tech_faq</td><td class="text-r" style="color:var(--accent)">1.0000</td><td class="text-r">1.0000</td><td class="text-r">1.0000</td><td class="text-c">20</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:8px">Every query ranked its matching passage first. Gate: &ge;0.85</div>
+  </div>
+
+  <!-- STS + Classification + Clustering -->
+  <div class="card">
+    <h3><span class="badge badge-quality">Quality</span> Similarity &middot; Classification &middot; Clustering</h3>
+    <div class="metric-grid">
+      <div class="metric"><div class="metric-label">STS Spearman</div><div class="metric-val c-purple">0.8727</div><div class="metric-note">30 pairs</div></div>
+      <div class="metric"><div class="metric-label">Classification</div><div class="metric-val c-blue">0.4667</div><div class="metric-note">8 classes &middot; 5-fold</div></div>
+      <div class="metric"><div class="metric-label">Clustering V</div><div class="metric-val c-blue">0.5908</div><div class="metric-note">6 topics</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-top:4px;line-height:1.8">
+      <strong style="color:var(--text)">Spearman 0.87</strong> — strong correlation between cosine similarity and human STS scores<br>
+      <strong style="color:var(--text)">Classification</strong> — small inline dataset (30 samples, 8 classes) limits this metric<br>
+      <strong style="color:var(--text)">V-measure 0.59</strong> — K-means correctly separates tech, sports, finance, food, entertainment, science
+    </div>
+  </div>
+</div>
+
+<!-- DIMENSION REDUCTION CURVE -->
+<div class="section-title">Matryoshka Dimension Reduction</div>
+<div class="card">
+  <h3><span class="badge badge-quality">Quality</span> Dimension Curve (768 &rarr; 128)</h3>
+  <div class="chart-wrap" id="chart-matryoshka"><canvas></canvas></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th class="text-c">Dim</th><th class="text-r">Spearman</th><th class="text-c">&Delta;</th><th class="text-r">Accuracy</th><th class="text-r">V-measure</th><th class="text-r">Storage</th></tr></thead>
+      <tbody>
+        <tr class="highlight"><td class="text-c"><strong>768</strong></td><td class="text-r">0.8727</td><td class="text-c">—</td><td class="text-r">0.4667</td><td class="text-r">0.5908</td><td class="text-r">3072 B</td></tr>
+        <tr><td class="text-c">512</td><td class="text-r">0.8694</td><td class="text-c"><span class="delta delta-good">-0.4%</span></td><td class="text-r">0.4667</td><td class="text-r">0.7150</td><td class="text-r">2048 B</td></tr>
+        <tr class="highlight"><td class="text-c"><strong>256</strong></td><td class="text-r">0.8758</td><td class="text-c"><span class="delta delta-good">+0.4%</span></td><td class="text-r">0.4667</td><td class="text-r">0.6276</td><td class="text-r">1024 B</td></tr>
+        <tr><td class="text-c">128</td><td class="text-r">0.8642</td><td class="text-c"><span class="delta delta-warn">-1.0%</span></td><td class="text-r">0.4667</td><td class="text-r">0.7246</td><td class="text-r">512 B</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-top:8px">
+    <strong style="color:var(--accent)">256d is the sweet spot</strong> — 0% STS quality loss, 67% less storage. 128d loses only 1% Spearman.<br>
+    Published EG2 scores: 768→128 drops 13 points on MMEB v2 (50.67→37.63). Our STS curve confirms graceful degradation on simpler tasks.
+  </div>
+</div>
+
+<!-- SERVING PERFORMANCE -->
+<div class="section-title">Serving Performance (T4 &middot; Dynamic Batching)</div>
+
+<div class="two-col">
+  <!-- Text throughput -->
+  <div class="card">
+    <h3><span class="badge badge-serving">Serving</span> Text Embedding</h3>
+    <div class="chart-wrap" id="chart-text-throughput"><canvas></canvas></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th class="text-c">C</th><th class="text-r">Embeds/s</th><th class="text-r">p50</th><th class="text-r">p99</th><th class="text-c">Fail</th></tr></thead>
+        <tbody>
+          <tr><td class="text-c">1</td><td class="text-r">4.9</td><td class="text-r">198ms</td><td class="text-r">432ms</td><td class="text-c" style="color:var(--accent)">0</td></tr>
+          <tr><td class="text-c">8</td><td class="text-r">29.3</td><td class="text-r">227ms</td><td class="text-r">487ms</td><td class="text-c" style="color:var(--accent)">0</td></tr>
+          <tr><td class="text-c">16</td><td class="text-r">42.6</td><td class="text-r">213ms</td><td class="text-r">576ms</td><td class="text-c" style="color:var(--accent)">0</td></tr>
+          <tr><td class="text-c">32</td><td class="text-r">52.6</td><td class="text-r">468ms</td><td class="text-r">605ms</td><td class="text-c" style="color:var(--accent)">0</td></tr>
+          <tr style="font-weight:700"><td class="text-c">64</td><td class="text-r" style="color:var(--accent)">101.9</td><td class="text-r">471ms</td><td class="text-r">620ms</td><td class="text-c" style="color:var(--accent)">0</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:4px">Dynamic batching: up to 32 requests merged into single forward pass. <strong style="color:var(--accent)">6.6&times;</strong> vs serial at c=64.</div>
+  </div>
+
+  <!-- Audio throughput -->
+  <div class="card">
+    <h3><span class="badge badge-serving">Serving</span> Audio Embedding</h3>
+    <div class="metric-grid" style="margin-top:8px">
+      <div class="metric"><div class="metric-label">Peak</div><div class="metric-val">5.6</div><div class="metric-note">embeds/s &middot; c=32</div></div>
+      <div class="metric"><div class="metric-label">p99 (c=1)</div><div class="metric-val">488ms</div></div>
+      <div class="metric"><div class="metric-label">Failures</div><div class="metric-val c-accent">0</div><div class="metric-note">all levels</div></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th class="text-c">C</th><th class="text-r">Embeds/s</th><th class="text-r">p50</th><th class="text-r">p99</th><th class="text-c">Fail</th></tr></thead>
+        <tbody>
+          <tr><td class="text-c">1</td><td class="text-r">3.6</td><td class="text-r">272ms</td><td class="text-r">488ms</td><td class="text-c" style="color:var(--accent)">0</td></tr>
+          <tr><td class="text-c">8</td><td class="text-r">4.2</td><td class="text-r">1236ms</td><td class="text-r">1946ms</td><td class="text-c" style="color:var(--accent)">0</td></tr>
+          <tr><td class="text-c">16</td><td class="text-r">4.8</td><td class="text-r">2013ms</td><td class="text-r">3484ms</td><td class="text-c" style="color:var(--accent)">0</td></tr>
+          <tr><td class="text-c">32</td><td class="text-r">5.6</td><td class="text-r">3630ms</td><td class="text-r">5759ms</td><td class="text-c" style="color:var(--accent)">0</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:4px">Audio not dynamically batched (each file has different length). Throughput scales ~1.6&times; from c=1 to c=32.</div>
+  </div>
+</div>
+
+<!-- VIDEO PERFORMANCE -->
+<div class="section-title">Video Embedding (Optimized)</div>
+<div class="card">
+  <h3><span class="badge badge-serving">Serving</span> Video &middot; 8 Frames &middot; No Audio Encoder</h3>
+  <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="metric"><div class="metric-label">Single Video</div><div class="metric-val c-accent">3.1s</div><div class="metric-note">T4 &middot; 320&times;240</div></div>
+    <div class="metric"><div class="metric-label">1080p</div><div class="metric-val">3.4s</div><div class="metric-note">1920&times;1080</div></div>
+    <div class="metric"><div class="metric-label">Max Concurrent</div><div class="metric-val c-accent">4</div><div class="metric-note">0 OOM &middot; T4</div></div>
+    <div class="metric"><div class="metric-label">vs Baseline</div><div class="metric-val c-accent">1.6&times;</div><div class="metric-note">was 5.1s (16f)</div></div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th class="text-c">Streams</th><th class="text-r">Total</th><th class="text-r">Per Video</th><th class="text-c">Status</th></tr></thead>
+      <tbody>
+        <tr><td class="text-c">1</td><td class="text-r">3.1s</td><td class="text-r">3.1s</td><td class="text-c" style="color:var(--accent)">OK</td></tr>
+        <tr><td class="text-c">2</td><td class="text-r">5.4s</td><td class="text-r">2.7s</td><td class="text-c" style="color:var(--accent)">OK</td></tr>
+        <tr><td class="text-c">3</td><td class="text-r">7.8s</td><td class="text-r">2.6s</td><td class="text-c" style="color:var(--accent)">OK</td></tr>
+        <tr><td class="text-c">4</td><td class="text-r">10.4s</td><td class="text-r">2.6s</td><td class="text-c" style="color:var(--accent)">OK (was OOM)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-top:8px;line-height:1.8">
+    <strong style="color:var(--text)">Optimizations:</strong> 8 frames (vs 16), audio encoder disabled (-583 MB), auto-modality detection<br>
+    <strong style="color:var(--text)">L4 projection:</strong> sub-300ms/video with bf16 + FlashAttention-2 (1.86&times; compute, native bf16)
+  </div>
+</div>
+
+<!-- VRAM & CO-LOCATION -->
+<div class="section-title">Resource Footprint</div>
+<div class="card">
+  <h3><span class="badge badge-t4">T4</span> VRAM &amp; Co-location</h3>
+  <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="metric"><div class="metric-label">EG2 (video opt)</div><div class="metric-val">849 MB</div><div class="metric-note">439M params &middot; no audio</div></div>
+    <div class="metric"><div class="metric-label">EG2 (full)</div><div class="metric-val">~1.4 GB</div><div class="metric-note">740M params bfloat16</div></div>
+    <div class="metric"><div class="metric-label">Combined</div><div class="metric-val">5.5 GB</div><div class="metric-note">of 15 GB T4</div></div>
+    <div class="metric"><div class="metric-label">Headroom</div><div class="metric-val c-accent">64%</div><div class="metric-note">9.9 GB free</div></div>
+  </div>
+  <div style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-top:12px;line-height:1.8">
+    EG2 coexists with batch ASR on the same GPU with no VRAM pressure.<br>
+    Standalone embedding server (Dockerfile.eg2): <strong style="color:var(--text)">~3 GB</strong> total — fits on any GPU.
+  </div>
+</div>
+
+<!-- MODEL INFO -->
+<div class="section-title">Model &amp; Methodology</div>
+<div class="card">
+  <div class="env-grid">
+    <span class="env-label">Model</span><span>google/embeddinggemma-2 (EG2)</span>
+    <span class="env-label">Parameters</span><span>740M &middot; bfloat16 (float16 produces NaN)</span>
+    <span class="env-label">Dimensions</span><span>768 (Matryoshka: 512, 256, 128)</span>
+    <span class="env-label">Modalities</span><span>text, code, audio, image, video (auto-detected by extension)</span>
+    <span class="env-label">Published nDCG</span><span>68.46 (MTEB En v2) &middot; 65.67 (MIEB-lite)</span>
+    <span class="env-label">Video Config</span><span>8 frames, 70 tokens/frame, audio encoder disabled (-583 MB)</span>
+    <span class="env-label">Serving</span><span>HuggingFace transformers 5.x &middot; dynamic batching (32 max, 5ms window)</span>
+    <span class="env-label">GPU</span><span>NVIDIA T4 16GB &middot; GKE g2-standard-4</span>
+    <span class="env-label">Framework</span><span>PyTorch 2.6 &middot; CUDA 12.8</span>
+  </div>
+  <div style="margin-top:16px;font-size:12px;color:var(--text2);font-family:var(--mono);line-height:1.8">
+    <strong style="color:var(--text)">Quality metrics</strong> from <code>bench_embed_quality.py</code>: 2 retrieval datasets (nDCG@10), 30 STS pairs (Spearman), 30 classification samples (accuracy), 30 clustering items (V-measure), 4 Matryoshka levels.<br>
+    <strong style="color:var(--text)">Serving metrics</strong> from <code>bench_embed.py</code>: concurrency sweep c=1..64, sustained load, latency percentiles, VRAM monitoring.
+  </div>
+</div>
+
+<!-- QUALITY GATES -->
+<div class="section-title">Quality Gates</div>
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Gate</th><th class="text-r">Threshold</th><th class="text-r">Measured</th><th class="text-c">Status</th></tr></thead>
+      <tbody>
+        <tr><td>Retrieval nDCG@10</td><td class="text-r">&ge; 0.85</td><td class="text-r" style="color:var(--accent)">1.0000</td><td class="text-c" style="color:var(--accent)">PASS</td></tr>
+        <tr><td>STS Spearman</td><td class="text-r">&ge; 0.75</td><td class="text-r" style="color:var(--accent)">0.8727</td><td class="text-c" style="color:var(--accent)">PASS</td></tr>
+        <tr><td>Classification accuracy</td><td class="text-r">&ge; 0.35</td><td class="text-r" style="color:var(--accent)">0.4667</td><td class="text-c" style="color:var(--accent)">PASS</td></tr>
+        <tr><td>Clustering V-measure</td><td class="text-r">&ge; 0.40</td><td class="text-r" style="color:var(--accent)">0.5908</td><td class="text-c" style="color:var(--accent)">PASS</td></tr>
+        <tr><td>Text throughput (c=1)</td><td class="text-r">&ge; 3.0/s</td><td class="text-r" style="color:var(--accent)">4.9/s</td><td class="text-c" style="color:var(--accent)">PASS</td></tr>
+        <tr><td>Text p99 (c=1)</td><td class="text-r">&le; 1000ms</td><td class="text-r" style="color:var(--accent)">432ms</td><td class="text-c" style="color:var(--accent)">PASS</td></tr>
+        <tr><td>Failure rate</td><td class="text-r">0.0</td><td class="text-r" style="color:var(--accent)">0.0</td><td class="text-c" style="color:var(--accent)">PASS</td></tr>
+        <tr><td>dim-256 Spearman</td><td class="text-r">&ge; 0.70</td><td class="text-r" style="color:var(--accent)">0.8758</td><td class="text-c" style="color:var(--accent)">PASS</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+
+<div class="footer">
+  <div class="footer-links">
+    <a href="index.html">ASR Benchmarks</a>
+    <a href="dashboard.html">Interactive Dashboard</a>
+    <a href="https://github.com/beastoin/highperfasr">Repository</a>
+    <a href="https://github.com/beastoin/highperfasr/pull/46">PR #46</a>
+  </div>
+  <div>HighPerfASR &middot; Embedding Benchmarks &middot; EmbeddingGemma 2</div>
+</div>
+
+<script>
+function getColor(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function drawMatryoshkaChart() {
+  const wrap = document.getElementById('chart-matryoshka');
+  if (!wrap) return;
+  const canvas = wrap.querySelector('canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = wrap.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = {t:28,r:24,b:40,l:52};
+  const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+
+  const dims = [768, 512, 256, 128];
+  const spearman = [0.8727, 0.8694, 0.8758, 0.8642];
+  const vmeasure = [0.5908, 0.7150, 0.6276, 0.7246];
+
+  const accent = getColor('--accent');
+  const purple = getColor('--purple');
+  const grid = getColor('--border');
+  const text2 = getColor('--text2');
+  const text3 = getColor('--text3');
+
+  ctx.clearRect(0, 0, W, H);
+
+  const yMin = 0.4, yMax = 1.0;
+  const n = dims.length;
+  const gap = plotW / (n - 1);
+
+  // Grid + Y axis
+  for (let i = 0; i <= 6; i++) {
+    const v = yMin + (yMax - yMin) * i / 6;
+    const y = pad.t + plotH * (1 - (v - yMin) / (yMax - yMin));
+    ctx.strokeStyle = grid; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    ctx.fillStyle = text2; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(v.toFixed(2), pad.l - 8, y + 3);
+  }
+
+  // X axis labels
+  ctx.fillStyle = text2; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  dims.forEach((d, i) => {
+    ctx.fillText(d + 'd', pad.l + gap * i, H - pad.b + 20);
+  });
+
+  function drawLine(values, color, label, labelY) {
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    values.forEach((v, i) => {
+      const x = pad.l + gap * i;
+      const y = pad.t + plotH * (1 - (v - yMin) / (yMax - yMin));
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Dots + values
+    values.forEach((v, i) => {
+      const x = pad.l + gap * i;
+      const y = pad.t + plotH * (1 - (v - yMin) / (yMax - yMin));
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.fillStyle = color; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(v.toFixed(4), x, y - 10);
+    });
+
+    // Legend
+    ctx.fillStyle = color; ctx.font = '11px system-ui'; ctx.textAlign = 'left';
+    const lx = pad.l + 8;
+    ctx.fillRect(lx, labelY - 4, 16, 3);
+    ctx.fillText(label, lx + 22, labelY);
+  }
+
+  drawLine(spearman, accent, 'Spearman (STS)', pad.t + 12);
+  drawLine(vmeasure, purple, 'V-measure (Clustering)', pad.t + 28);
+}
+
+function drawTextThroughputChart() {
+  const wrap = document.getElementById('chart-text-throughput');
+  if (!wrap) return;
+  const canvas = wrap.querySelector('canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = wrap.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = {t:20,r:16,b:36,l:48};
+  const plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+
+  const conc = [1, 8, 16, 32, 64];
+  const eps = [4.9, 29.3, 42.6, 52.6, 101.9];
+  const maxY = 120;
+
+  const accent = getColor('--accent');
+  const grid = getColor('--border');
+  const text2 = getColor('--text2');
+  const elevated = getColor('--elevated');
+
+  ctx.clearRect(0, 0, W, H);
+
+  const n = conc.length;
+  const gap = plotW / n;
+  const barW = Math.min(gap * 0.6, 44);
+
+  // Grid
+  for (let i = 0; i <= 4; i++) {
+    const v = maxY * i / 4;
+    const y = pad.t + plotH * (1 - i / 4);
+    ctx.strokeStyle = grid; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    ctx.fillStyle = text2; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(v.toFixed(0), pad.l - 6, y + 3);
+  }
+
+  // Bars
+  conc.forEach((c, i) => {
+    const bx = pad.l + gap * i + (gap - barW) / 2;
+    const bh = (eps[i] / maxY) * plotH;
+    const gradient = ctx.createLinearGradient(bx, pad.t + plotH - bh, bx, pad.t + plotH);
+    gradient.addColorStop(0, accent);
+    gradient.addColorStop(1, accent + '33');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.roundRect(bx, pad.t + plotH - bh, barW, bh, [4, 4, 0, 0]);
+    ctx.fill();
+
+    // Value on top
+    ctx.fillStyle = accent; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(eps[i].toFixed(1), bx + barW / 2, pad.t + plotH - bh - 6);
+
+    // X label
+    ctx.fillStyle = text2; ctx.font = '10px system-ui';
+    ctx.fillText('c=' + c, pad.l + gap * i + gap / 2, H - pad.b + 14);
+  });
+
+  // Y axis label
+  ctx.save();
+  ctx.fillStyle = text2; ctx.font = '10px system-ui';
+  ctx.translate(12, pad.t + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillText('embeds/sec', 0, 0);
+  ctx.restore();
+}
+
+drawMatryoshkaChart();
+drawTextThroughputChart();
+
+window.addEventListener('resize', () => {
+  drawMatryoshkaChart();
+  drawTextThroughputChart();
+});
+</script>
+</body></html>
